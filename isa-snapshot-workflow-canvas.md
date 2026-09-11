@@ -1,6 +1,6 @@
 # ISA ETL Snapshot
 
-Generated: 2026-09-11T21:53:31Z
+Generated: 2026-09-11T22:49:27Z
 
 ## Index
 - src/components/isa/etl/workflow-canvas.tsx
@@ -52,7 +52,7 @@ import { getSettingsPanelKind } from "@/lib/etl-node-config";
 import {
   DEFAULT_DISPLAY,
   DISPLAY_OPTIONS,
-  getTransformCardLayout,
+  getCardIconLayout,
 } from "@/lib/etl-display";
 import type { BubbleGeometry } from "@/lib/etl-bubble";
 import { computeBubbles } from "@/lib/etl-bubble";
@@ -71,14 +71,14 @@ import type {
   LayoutMode,
   NodeStatus,
 } from "@/lib/etl-workflow";
-
-export const NODE_W = 128;
-export const NODE_H = 128;
-
-const MIN_NODE_SIZE = 112;
-const MIN_NODE_HEIGHT = 88;
-const MAX_NODE_SIZE = 248;
-const ROUTE_GAP = 24;
+import type { NodeSize } from "@/lib/etl-node-size";
+import {
+  MIN_NODE_HEIGHT,
+  NODE_H,
+  NODE_W,
+  ROUTE_GAP,
+  estimateNodeSize,
+} from "@/lib/etl-node-size";
 
 /*
  * Raggio (px, coordinate superficie) con cui vengono arrotondati i
@@ -153,11 +153,6 @@ type Pending = {
   targetNode: string | null;
 } | null;
 
-type NodeSize = {
-  width: number;
-  height: number;
-};
-
 /** Snapshot di una card stazionaria catturato all'inizio di un drag. */
 type BaseNode = Point &
   NodeSize & {
@@ -207,218 +202,6 @@ const STATUS: Record<
     color: "var(--destructive)",
   },
 };
-
-/* -------------------------------------------------------------------------- */
-/*                            CARD DIMENSION                                  */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Altezza della card per un dato `width` e un dato `showDetail` (mostrare
- * o no la riga di dettaglio/formula). Isolata dal resto di
- * `estimateNodeSize` perché serve calcolarla due volte: una con la
- * regola di visibilità "reale" del nodo, una con quella dei nodi
- * `sources` (per il lato del quadrato dei nodi transform, vedi sotto).
- */
-function estimateCardHeight(
-  node: EtlNode,
-  display: EtlDisplaySettings,
-  width: number,
-  detail: string,
-  showDetail: boolean,
-): number {
-  const CARD_PADDING = 12;
-  const BODY_GAP = 12;
-
-  /*
-   * Header: icona (36px) affiancata a titolo + label.
-   * Il titolo può andare a capo: stimiamo le righe in base
-   * allo spazio orizzontale realmente disponibile.
-   */
-  const headerTextWidth = Math.max(
-    40,
-    width - 36 - 8 - 28 - CARD_PADDING * 2,
-  );
-
-  const titleLines = Math.min(
-    3,
-    Math.max(
-      1,
-      Math.ceil(
-        (node.title.length * 6.4) /
-          headerTextWidth,
-      ),
-    ),
-  );
-
-  const HEADER_HEIGHT = Math.max(
-    36,
-    titleLines * 15 + 12,
-  );
-
-  let bodyHeight = 0;
-
-  if (showDetail && detail) {
-    const charsPerLine = Math.max(
-      1,
-      Math.floor(
-        (width -
-          CARD_PADDING * 2 -
-          20) /
-          5.2,
-      ),
-    );
-
-    const lines = Math.min(
-      4,
-      Math.max(
-        1,
-        Math.ceil(
-          detail.length / charsPerLine,
-        ),
-      ),
-    );
-
-    bodyHeight += 16 + lines * 14;
-  }
-
-  if (display.metrics) {
-    bodyHeight +=
-      (bodyHeight > 0 ? 8 : 0) + 24;
-  }
-
-  if (display.status) {
-    bodyHeight +=
-      (bodyHeight > 0 ? 6 : 0) + 20;
-  }
-
-  if (bodyHeight === 0) {
-    /* Solo la label di fallback. */
-    bodyHeight = 16;
-  }
-
-  return Math.min(
-    MAX_NODE_SIZE,
-    Math.max(
-      MIN_NODE_HEIGHT,
-      Math.ceil(
-        (CARD_PADDING * 2 +
-          HEADER_HEIGHT +
-          BODY_GAP +
-          bodyHeight) /
-          8,
-      ) * 8,
-    ),
-  );
-}
-
-function estimateNodeSize(
-  node: EtlNode,
-  workflow: EtlWorkflow,
-  display: EtlDisplaySettings,
-): NodeSize {
-  const def = nodeDef(node.type);
-
-  if (!def) {
-    return {
-      width: NODE_W,
-      height: MIN_NODE_HEIGHT,
-    };
-  }
-
-  const analysis = analyzeNode(
-    workflow,
-    node,
-  );
-
-  const detail = nodeSummary(
-    node.type,
-    node.config,
-  );
-
-  const isSource =
-    def.category === "sources";
-
-  const showDetail =
-    (display.source && isSource) ||
-    (display.formula && !isSource);
-
-  const metricsText = display.metrics
-    ? `${formatRows(analysis.rows)} rows · ${analysis.columns.length} cols`
-    : "";
-
-  /* ------------------------------------------------------------------ */
-  /*  LARGHEZZA — guidata dal testo più lungo (header / metriche).      */
-  /* ------------------------------------------------------------------ */
-
-  const longestText = Math.max(
-    node.title.length,
-    def.label.length,
-    metricsText.length,
-    8,
-  );
-
-  const textWidth = Math.min(
-    210,
-    Math.max(
-      90,
-      longestText * 6.2,
-    ),
-  );
-
-  /*
-   * Header: icona (size-9) + gap + testo + menu (size-7) + padding card.
-   */
-  const headerWidth =
-    textWidth + 36 + 8 + 28 + 24;
-
-  const width = Math.min(
-    MAX_NODE_SIZE,
-    Math.max(
-      MIN_NODE_SIZE,
-      Math.ceil(headerWidth / 8) * 8,
-    ),
-  );
-
-  /* ------------------------------------------------------------------ */
-  /*  ALTEZZA — si adatta al contenuto reale, senza spazio in eccesso.  */
-  /* ------------------------------------------------------------------ */
-
-  if (!isSource) {
-    /*
-     * Card "transform" (ogni categoria diversa da sources): sempre
-     * quadrata, con lato pari all'altezza che avrebbe una card Dataset
-     * con lo stesso livello di dettaglio visualizzato — non un valore
-     * fisso, ma la stessa `estimateCardHeight` usata per i nodi
-     * sources, così i due tipi restano visivamente allineati anche se
-     * cambiano i display settings.
-     */
-    const side = estimateCardHeight(
-      node,
-      display,
-      width,
-      detail,
-      display.source,
-    );
-
-    return {
-      width: side,
-      height: side,
-    };
-  }
-
-  const height = estimateCardHeight(
-    node,
-    display,
-    width,
-    detail,
-    showDetail,
-  );
-
-  return {
-    width,
-    height,
-  };
-}
 
 /* -------------------------------------------------------------------------- */
 /*                               GEOMETRY                                     */
@@ -1778,7 +1561,6 @@ export function WorkflowCanvas({
   selectedId,
   onSelect,
   onMove,
-  onAdd,
   onAddAt,
   onConnect,
   onRemoveNode,
@@ -1801,14 +1583,16 @@ export function WorkflowCanvas({
     y: number,
     commit?: boolean,
   ) => void;
-  onAdd: (
-    type: string,
-  ) => void;
+  /**
+   * Ritorna l'id del nodo creato (o `undefined` se il tipo non esiste),
+   * così il canvas può marcarlo "in attesa di essere raccolto" quando
+   * la creazione arriva da un doppio click sulla palette (PARTE B).
+   */
   onAddAt: (
     type: string,
     x: number,
     y: number,
-  ) => void;
+  ) => string | undefined;
   onConnect: (
     fromNode: string,
     fromPort: string,
@@ -1899,6 +1683,21 @@ export function WorkflowCanvas({
     paletteDock,
     setPaletteDock,
   ] = useState<Dock>("top");
+
+  /*
+   * Id dei nodi creati con doppio click dalla palette (PARTE B) e non
+   * ancora "raccolti" con il primo pointerdown sulla card — stato
+   * puramente visivo, non persistito nel workflow: sparisce alla prima
+   * interazione, quindi non ha senso sopravvivere a reload/localStorage.
+   * Nome distinto da `pending` (sopra, stato di un collegamento in
+   * corso) per evitare ambiguità: concetti diversi.
+   */
+  const [
+    freshNodeIds,
+    setFreshNodeIds,
+  ] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const paletteRef =
     useRef<HTMLDivElement>(
@@ -2158,6 +1957,113 @@ export function WorkflowCanvas({
     },
     [zoom],
   );
+
+  /*
+   * PARTE B, doppio click dalla palette: crea il nodo nell'angolo
+   * visibile del canvas più vicino al puntatore, invece di un angolo
+   * fisso. La palette non conosce zoom/pan del canvas (solo questo
+   * componente ha `toLocal`), quindi riceve le coordinate schermo del
+   * doppio click e fa qui tutta la conversione.
+   */
+  const handlePaletteDoubleClick =
+    useCallback(
+      (
+        type: string,
+        clientX: number,
+        clientY: number,
+      ) => {
+        const rect =
+          boxRef.current?.getBoundingClientRect();
+
+        if (!rect) {
+          return;
+        }
+
+        const corners: Point[] = [
+          {
+            x: rect.left,
+            y: rect.top,
+          },
+          {
+            x: rect.right,
+            y: rect.top,
+          },
+          {
+            x: rect.left,
+            y: rect.bottom,
+          },
+          {
+            x: rect.right,
+            y: rect.bottom,
+          },
+        ];
+
+        let nearest = corners[0]!;
+        let bestDistance =
+          Infinity;
+
+        for (const corner of corners) {
+          const distance =
+            Math.hypot(
+              corner.x - clientX,
+              corner.y - clientY,
+            );
+
+          if (
+            distance <
+            bestDistance
+          ) {
+            bestDistance =
+              distance;
+            nearest = corner;
+          }
+        }
+
+        const insetX =
+          nearest.x === rect.left
+            ? ROUTE_GAP
+            : -ROUTE_GAP;
+
+        const insetY =
+          nearest.y === rect.top
+            ? ROUTE_GAP
+            : -ROUTE_GAP;
+
+        const point = toLocal(
+          nearest.x + insetX,
+          nearest.y + insetY,
+        );
+
+        const dropped = placeNode(
+          point.x - NODE_W / 2,
+          point.y - NODE_H / 2,
+          NODE_W,
+          NODE_H,
+        );
+
+        const id = onAddAt(
+          type,
+          dropped.x,
+          dropped.y,
+        );
+
+        if (id) {
+          setFreshNodeIds(
+            (current) => {
+              const next =
+                new Set(current);
+              next.add(id);
+              return next;
+            },
+          );
+        }
+      },
+      [
+        onAddAt,
+        placeNode,
+        toLocal,
+      ],
+    );
 
   const nodeSizes =
     useMemo(
@@ -3346,7 +3252,9 @@ export function WorkflowCanvas({
         onDockChange={
           setPaletteDock
         }
-        onAdd={onAdd}
+        onAdd={
+          handlePaletteDoubleClick
+        }
       />
     </div>
   );
@@ -3596,14 +3504,6 @@ export function WorkflowCanvas({
       nodeById,
     ]);
 
-  /*
-   * Statico e indipendente dal singolo nodo: calcolato una volta per
-   * render invece che dentro il map delle card. Vedi
-   * lib/etl-display.ts per le assunzioni implementative.
-   */
-  const transformCardLayout =
-    getTransformCardLayout();
-
   /* ---------------------------------------------------------------------- */
   /*                               RENDER                                    */
   /* ---------------------------------------------------------------------- */
@@ -3800,6 +3700,8 @@ export function WorkflowCanvas({
               ? LayoutGrid
               : Move
           }
+          boundaryRef={boxRef}
+          placement="auto"
         >
           {(close) => (
             <>
@@ -3841,6 +3743,8 @@ export function WorkflowCanvas({
         <IsaMenu
           label="Visualizza sulle card"
           Icon={Eye}
+          boundaryRef={boxRef}
+          placement="auto"
         >
           {() => (
             <>
@@ -4412,10 +4316,6 @@ export function WorkflowCanvas({
                   node.config,
                 );
 
-              const isSource =
-                def.category ===
-                "sources";
-
               /*
                * Fase 4: quale pannello impostazioni dedicato mostrare
                * dal trigger tre puntini (null = tipo non ancora
@@ -4436,11 +4336,28 @@ export function WorkflowCanvas({
                     )?.memberIds
                   : undefined;
 
-              const showSource =
-                isSource &&
-                display.source;
+              /*
+               * Redesign "la card e' l'icona": layout icona centrale
+               * per TUTTE le categorie -- calcolato sul lato MINORE
+               * della card cosi' l'icona resta quadrata anche sulle
+               * card sources (non forzate quadrate come le transform,
+               * vedi estimateNodeSize).
+               */
+              const iconLayout =
+                getCardIconLayout(
+                  node.width,
+                  node.height,
+                );
 
-              const metricsTooltip =
+              /*
+               * Redesign "la card è l'icona": dettaglio, metriche e
+               * stato esecuzione non sono più mostrati in permanenza
+               * sulla card (erano un badge solo per le sources) — restano
+               * tutti accessibili in un unico tooltip on-hover, per
+               * qualunque categoria.
+               */
+              const cardTooltip = [
+                detail,
                 display.metrics
                   ? `${formatRows(
                       analysis.rows,
@@ -4449,7 +4366,14 @@ export function WorkflowCanvas({
                         .columns
                         .length
                     } cols`
-                  : undefined;
+                  : null,
+                display.status
+                  ? status.label
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+
               /*
                * Scegliamo il lato visuale dei port
                * in funzione dei collegamenti esistenti.
@@ -4531,7 +4455,7 @@ export function WorkflowCanvas({
                   data-node-id={
                     node.id
                   }
-                  className={`glass-panel absolute flex flex-col overflow-visible rounded-2xl p-3 transition-shadow select-none ${
+                  className={`glass-panel ${categoryAccent(def.category)} absolute flex flex-col overflow-visible rounded-2xl p-3 transition-shadow select-none ${
                     selected
                       ? "node-selected"
                       : ""
@@ -4539,6 +4463,12 @@ export function WorkflowCanvas({
                     pending?.targetNode ===
                     node.id
                       ? "node-link-target"
+                      : ""
+                  } ${
+                    freshNodeIds.has(
+                      node.id,
+                    )
+                      ? "node-pending"
                       : ""
                   }`}
                   style={{
@@ -4562,12 +4492,32 @@ export function WorkflowCanvas({
                   }}
                   onPointerDown={(
                     event,
-                  ) =>
+                  ) => {
+                    if (
+                      freshNodeIds.has(
+                        node.id,
+                      )
+                    ) {
+                      setFreshNodeIds(
+                        (
+                          current,
+                        ) => {
+                          const next =
+                            new Set(
+                              current,
+                            );
+                          next.delete(
+                            node.id,
+                          );
+                          return next;
+                        },
+                      );
+                    }
                     startDragNode(
                       event,
                       node.id,
-                    )
-                  }
+                    );
+                  }}
                   onPointerMove={
                     moveDragNode
                   }
@@ -4578,221 +4528,13 @@ export function WorkflowCanvas({
                     endDragNode
                   }
                 >
-                  {isSource ? (
-                    <>
-                      {/* ------------------------------------------------ */}
-                      {/* Header (Dataset)                                 */}
-                      {/* ------------------------------------------------ */}
-
-                      <div className="flex min-w-0 items-start gap-2 whitespace-nowrap">
-                        <span
-                          className={`${categoryAccent(
-                            def.category,
-                          )} flex size-9 shrink-0 items-center justify-center rounded-lg`}
-                        >
-                          <def.Icon className="size-5" />
-                        </span>
-
-                        <span className="min-w-0 flex-1 pt-0.5">
-                          <span className="block whitespace-normal break-normal text-[12px] font-semibold leading-tight">
-                            {
-                              node.title
-                            }
-                          </span>
-
-                          <span className="mt-0.5 block whitespace-normal break-normal text-[9px] leading-tight text-muted-foreground">
-                            {
-                              def.label
-                            }
-                          </span>
-                        </span>
-
-                        <span
-                          data-node-control
-                          onPointerDown={(
-                            event,
-                          ) =>
-                            event.stopPropagation()
-                          }
-                        >
-                          <IsaMenu
-                            label={`Azioni per ${node.title}`}
-                            triggerClassName="size-7 rounded-lg border border-border/60 text-foreground"
-                          >
-                            {(close) => (
-                              <>
-                                <IsaMenuItem
-                                  Icon={
-                                    Copy
-                                  }
-                                  label="Duplica nodo"
-                                  onClick={() => {
-                                    onDuplicateNode(
-                                      node.id,
-                                    );
-                                    close();
-                                  }}
-                                />
-
-                                {hasIncoming && (
-                                  <IsaMenuItem
-                                    Icon={
-                                      Unlink
-                                    }
-                                    label="Scollega input"
-                                    onClick={() => {
-                                      unlinkNode(
-                                        node.id,
-                                      );
-                                      close();
-                                    }}
-                                  />
-                                )}
-
-                                {node.groupId && (
-                                  <IsaMenuItem
-                                    Icon={
-                                      Ungroup
-                                    }
-                                    label="Rimuovi dal gruppo"
-                                    onClick={() => {
-                                      onUngroupNode(
-                                        node.id,
-                                      );
-                                      close();
-                                    }}
-                                  />
-                                )}
-
-                                <IsaMenuItem
-                                  Icon={
-                                    Trash2
-                                  }
-                                  label="Elimina nodo"
-                                  danger
-                                  onClick={() => {
-                                    onRemoveNode(
-                                      node.id,
-                                    );
-                                    close();
-                                  }}
-                                />
-
-                                <span className="my-1 block h-px bg-border" />
-
-                                <span className="block px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                  Visualizza
-                                </span>
-
-                                {DISPLAY_OPTIONS.map(
-                                  (
-                                    option,
-                                  ) => (
-                                    <IsaMenuCheckItem
-                                      key={
-                                        option.key
-                                      }
-                                      label={
-                                        option.label
-                                      }
-                                      checked={
-                                        display[
-                                          option.key
-                                        ]
-                                      }
-                                      onToggle={() =>
-                                        setDisplay(
-                                          (
-                                            current,
-                                          ) => ({
-                                            ...current,
-                                            [option.key]:
-                                              !current[
-                                                option.key
-                                              ],
-                                          }),
-                                        )
-                                      }
-                                    />
-                                  ),
-                                )}
-                              </>
-                            )}
-                          </IsaMenu>
-                        </span>
-                      </div>
-
-                      {/* ------------------------------------------------ */}
-                      {/* Body (Dataset)                                   */}
-                      {/* ------------------------------------------------ */}
-
-                      <div className="mt-3 min-h-0 flex-1 overflow-hidden">
-                        {showSource ? (
-                          <div className="rounded-xl border border-border/50 bg-background/20 px-2.5 py-2">
-                            <span className="block wrap-break-word text-[10px] leading-relaxed text-foreground">
-                              {
-                                detail
-                              }
-                            </span>
-                          </div>
-                        ) : null}
-
-                        {display.metrics && (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            <span className="glass-chip rounded-full px-2 py-1 text-[9px] text-muted-foreground">
-                              {formatRows(
-                                analysis.rows,
-                              )}{" "}
-                              rows
-                            </span>
-
-                            <span className="glass-chip rounded-full px-2 py-1 text-[9px] text-muted-foreground">
-                              {
-                                analysis
-                                  .columns
-                                  .length
-                              }{" "}
-                              cols
-                            </span>
-                          </div>
-                        )}
-
-                        {!showSource &&
-                          !display.metrics && (
-                            <span className="block wrap-break-word text-[10px] leading-relaxed text-muted-foreground">
-                              {
-                                def.label
-                              }
-                            </span>
-                          )}
-
-                        {display.status && (
-                          <span
-                            title={
-                              status.label
-                            }
-                            className="mt-2 inline-flex items-center gap-1 rounded-full border border-border/50 bg-background/20 px-2 py-0.5 text-[9px] font-medium text-muted-foreground"
-                          >
-                            <span
-                              className="size-1.5 shrink-0 rounded-full"
-                              style={{
-                                background:
-                                  status.color,
-                              }}
-                            />
-                            {
-                              status.label
-                            }
-                          </span>
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      {/* ------------------------------------------------ */}
-                      {/* Transform card — icona centrale, titolo sopra,   */}
-                      {/* menu impostazioni in basso al centro.            */}
-                      {/* ------------------------------------------------ */}
+                  <>
+                    {/* ------------------------------------------------ */}
+                    {/* Card unificata (redesign "la card e' l'icona"):  */}
+                    {/* icona centrale, titolo sopra, menu impostazioni  */}
+                    {/* in basso al centro -- per TUTTE le categorie,    */}
+                    {/* sources incluse (non solo transform).            */}
+                    {/* ------------------------------------------------ */}
 
                       <span
                         className="block truncate px-1 text-center text-[11px] font-semibold leading-tight"
@@ -4806,36 +4548,32 @@ export function WorkflowCanvas({
                       </span>
 
                       {/*
-                       * Body permanente (dettagli/metriche testuali)
-                       * rimosso dal nuovo layout: il riepilogo resta
-                       * disponibile come tooltip nativo on-hover sul
-                       * riquadro icona, così non serve un pannello
-                       * dedicato solo per questo in questa fase.
+                       * Body permanente (dettagli/metriche/stato)
+                       * rimosso dal nuovo layout per tutte le
+                       * categorie: il riepilogo resta disponibile
+                       * come tooltip nativo on-hover sull'icona.
                        */}
                       <div
                         className="flex min-h-0 flex-1 items-center justify-center"
                         title={
-                          metricsTooltip ??
-                          detail
+                          cardTooltip
                         }
                       >
                         <span
-                          className={`${categoryAccent(
-                            def.category,
-                          )} flex shrink-0 items-center justify-center rounded-2xl`}
+                          className="flex shrink-0 items-center justify-center rounded-2xl"
                           style={{
                             width:
-                              transformCardLayout.iconBoxSize,
+                              iconLayout.iconBoxSize,
                             height:
-                              transformCardLayout.iconBoxSize,
+                              iconLayout.iconBoxSize,
                           }}
                         >
                           <def.Icon
                             style={{
                               width:
-                                transformCardLayout.iconGlyphSize,
+                                iconLayout.iconGlyphSize,
                               height:
-                                transformCardLayout.iconGlyphSize,
+                                iconLayout.iconGlyphSize,
                             }}
                           />
                         </span>
@@ -4877,6 +4615,10 @@ export function WorkflowCanvas({
                                 : undefined
                             }
                             triggerClassName="size-7 text-muted-foreground hover:text-foreground"
+                            boundaryRef={
+                              boxRef
+                            }
+                            placement="auto"
                           >
                             {(close) =>
                               settingsPanelKind ? (
@@ -5071,7 +4813,6 @@ export function WorkflowCanvas({
                         </span>
                       </div>
                     </>
-                  )}
 
                   {/* ------------------------------------------------ */}
                   {/* Input ports                                       */}
