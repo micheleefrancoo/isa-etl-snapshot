@@ -1,6 +1,6 @@
 # ISA ETL Snapshot
 
-Generated: 2026-09-11T21:53:31Z
+Generated: 2026-09-11T22:49:27Z
 
 ## Index
 - src/components/isa/etl/data-preview.tsx
@@ -17,6 +17,7 @@ Generated: 2026-09-11T21:53:31Z
 - src/lib/etl-display.ts
 - src/lib/etl-motion.ts
 - src/lib/etl-node-config.ts
+- src/lib/etl-node-size.ts
 - src/lib/etl-schema.ts
 - src/lib/etl-workflow.tsx
 
@@ -1441,7 +1442,7 @@ import {
   List,
   Shrink,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IsaMenu, IsaMenuItem } from "@/components/isa/ui/isa-menu";
 import type { EtlCategory, EtlNodeDef } from "@/lib/etl-catalog";
@@ -1455,7 +1456,8 @@ function NodeChip({
   onAdd,
 }: {
   node: EtlNodeDef;
-  onAdd: (type: string) => void;
+  /** Doppio click (PARTE B): niente più singolo click per aggiungere. */
+  onAdd: (type: string, clientX: number, clientY: number) => void;
 }) {
   const { type, label, description, Icon, category } = node;
 
@@ -1471,13 +1473,18 @@ function NodeChip({
     event.stopPropagation();
   };
 
+  const handleDoubleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onAdd(type, event.clientX, event.clientY);
+  };
+
   return (
     <button
       type="button"
       draggable={true}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      onClick={() => onAdd(type)}
+      onDoubleClick={handleDoubleClick}
       title={description}
       aria-label={`Aggiungi ${label}`}
       className="flex shrink-0 select-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
@@ -1504,15 +1511,22 @@ export function ToolPalette({
 }: {
   dock: Dock;
   onDockChange: (dock: Dock) => void;
-  onAdd: (type: string) => void;
+  /** Doppio click su un NodeChip (PARTE B): coordinate schermo del click, la conversione in coordinate canvas la fa WorkflowCanvas. */
+  onAdd: (type: string, clientX: number, clientY: number) => void;
 }) {
   const [open, setOpen] = useState<EtlCategory | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const workspaceRef = useRef<HTMLElement | null>(null);
   const vertical = dock === "left" || dock === "right";
   const secondLevel = expanded || open !== null;
   const dragging = ghost !== null;
+
+  useEffect(() => {
+    workspaceRef.current =
+      ref.current?.closest<HTMLElement>("[data-palette-workspace]") ?? null;
+  }, []);
 
   const startDrag = (event: React.PointerEvent) => {
     event.preventDefault();
@@ -1606,7 +1620,12 @@ export function ToolPalette({
 
       <span className={`bg-border ${vertical ? "my-0.5 h-px w-4" : "mx-0.5 h-4 w-px"}`} />
 
-      <IsaMenu label="Posizione barra" Icon={vertical ? AlignStartVertical : AlignStartHorizontal}>
+      <IsaMenu
+        label="Posizione barra"
+        Icon={vertical ? AlignStartVertical : AlignStartHorizontal}
+        boundaryRef={workspaceRef}
+        placement="auto"
+      >
         {(close) => (
           <>
             <IsaMenuItem Icon={AlignStartHorizontal} label="Aggancia in alto" onClick={() => { onDockChange("top"); close(); }} />
@@ -2894,29 +2913,37 @@ export const CATEGORY_ICONS: Record<EtlCategory, LucideIcon> = {
   output: Save,
 };
 
-/** Layout interno delle card "transform" (tutto ciò che non è "sources"). */
-export type TransformCardLayout = {
-  /** Lato del riquadro icona, in % del lato quadrato della card. */
-  iconBoxSize: string;
-  /** Lato del glifo Lucide, in % del riquadro icona. */
-  iconGlyphSize: string;
+/** Layout interno icona-centrale di una card, in pixel. */
+export type CardIconLayout = {
+  /** Lato del riquadro icona, in px. */
+  iconBoxSize: number;
+  /** Lato del glifo Lucide, in px. */
+  iconGlyphSize: number;
 };
 
 /**
- * Calcolo puro del layout icona-centrale delle card "transform" (fase 1
- * del redesign, isolato dal JSX come richiesto per la futura estensione
+ * Calcolo puro del layout icona-centrale di una card ETL (fase 2 del
+ * redesign, "la card è l'icona": esteso a TUTTE le categorie, non solo
+ * "transform" — isolato dal JSX come richiesto per la futura estensione
  * con agenti/tool AI sulla codebase).
  *
- * Assunzione non specificata nel brief: 40% è stato scelto come valore
- * centrale del range indicato (35-45%) per il riquadro icona, con il
- * glifo Lucide al 50% del riquadro (indicazione "fulcro visivo
- * dominante", nessuna proporzione glifo/riquadro data). Libreria icone:
- * lucide-react, già usata in tutto il progetto.
+ * Percentuali invariate dalla fase 1 (40% del lato per il riquadro
+ * icona, 50% del riquadro per il glifo — assunzione originale: valore
+ * centrale del range 35-45% indicato nel brief, con "fulcro visivo
+ * dominante" per il glifo). Calcolate qui in PIXEL sul lato MINORE tra
+ * width/height (non una % CSS diretta) perché le card "sources" non
+ * sono forzate quadrate come le "transform": una % CSS su width e
+ * height separatamente distorcerebbe l'icona su una card rettangolare.
  */
-export function getTransformCardLayout(): TransformCardLayout {
+export function getCardIconLayout(
+  width: number,
+  height: number,
+): CardIconLayout {
+  const side = Math.min(width, height);
+  const iconBoxSize = side * 0.4;
   return {
-    iconBoxSize: "40%",
-    iconGlyphSize: "50%",
+    iconBoxSize,
+    iconGlyphSize: iconBoxSize * 0.5,
   };
 }
 
@@ -3199,6 +3226,254 @@ export function getAggregateFieldSpecs(
 }
 
 
+=== FILE: src/lib/etl-node-size.ts ===
+import { nodeDef, nodeSummary } from "./etl-catalog";
+import type { EtlDisplaySettings } from "./etl-display";
+import { DEFAULT_DISPLAY } from "./etl-display";
+import { analyzeNode, formatRows } from "./etl-schema";
+import type { EtlNode, EtlWorkflow } from "./etl-workflow";
+
+/**
+ * Stima delle dimensioni di una card e costanti di spaziatura correlate
+ * — condivise da workflow-canvas.tsx (rendering) e etl-workflow.tsx
+ * (autoLayout, che deve conoscere la dimensione REALE delle card per
+ * calcolare un passo di griglia adattivo, PARTE C del redesign) così la
+ * logica di calcolo dimensioni vive in UN solo posto e i due non
+ * possono disallinearsi.
+ */
+
+export type NodeSize = {
+  width: number;
+  height: number;
+};
+
+export const NODE_W = 128;
+export const NODE_H = 128;
+
+const MIN_NODE_SIZE = 112;
+export const MIN_NODE_HEIGHT = 88;
+const MAX_NODE_SIZE = 248;
+
+/* Margine/gap standard tra elementi del canvas (card, colonne, righe). */
+export const ROUTE_GAP = 24;
+
+/**
+ * Altezza della card per un dato `width` e un dato `showDetail` (mostrare
+ * o no la riga di dettaglio/formula). Isolata dal resto di
+ * `estimateNodeSize` perché serve calcolarla due volte: una con la
+ * regola di visibilità "reale" del nodo, una con quella dei nodi
+ * `sources` (per il lato del quadrato dei nodi transform, vedi sotto).
+ */
+function estimateCardHeight(
+  node: EtlNode,
+  display: EtlDisplaySettings,
+  width: number,
+  detail: string,
+  showDetail: boolean,
+): number {
+  const CARD_PADDING = 12;
+  const BODY_GAP = 12;
+
+  /*
+   * Header: icona (36px) affiancata a titolo + label.
+   * Il titolo può andare a capo: stimiamo le righe in base
+   * allo spazio orizzontale realmente disponibile.
+   */
+  const headerTextWidth = Math.max(
+    40,
+    width - 36 - 8 - 28 - CARD_PADDING * 2,
+  );
+
+  const titleLines = Math.min(
+    3,
+    Math.max(
+      1,
+      Math.ceil(
+        (node.title.length * 6.4) /
+          headerTextWidth,
+      ),
+    ),
+  );
+
+  const HEADER_HEIGHT = Math.max(
+    36,
+    titleLines * 15 + 12,
+  );
+
+  let bodyHeight = 0;
+
+  if (showDetail && detail) {
+    const charsPerLine = Math.max(
+      1,
+      Math.floor(
+        (width -
+          CARD_PADDING * 2 -
+          20) /
+          5.2,
+      ),
+    );
+
+    const lines = Math.min(
+      4,
+      Math.max(
+        1,
+        Math.ceil(
+          detail.length / charsPerLine,
+        ),
+      ),
+    );
+
+    bodyHeight += 16 + lines * 14;
+  }
+
+  if (display.metrics) {
+    bodyHeight +=
+      (bodyHeight > 0 ? 8 : 0) + 24;
+  }
+
+  if (display.status) {
+    bodyHeight +=
+      (bodyHeight > 0 ? 6 : 0) + 20;
+  }
+
+  if (bodyHeight === 0) {
+    /* Solo la label di fallback. */
+    bodyHeight = 16;
+  }
+
+  return Math.min(
+    MAX_NODE_SIZE,
+    Math.max(
+      MIN_NODE_HEIGHT,
+      Math.ceil(
+        (CARD_PADDING * 2 +
+          HEADER_HEIGHT +
+          BODY_GAP +
+          bodyHeight) /
+          8,
+      ) * 8,
+    ),
+  );
+}
+
+/**
+ * `display` di default a `DEFAULT_DISPLAY`: autoLayout() (etl-workflow.ts)
+ * non ha accesso alle preferenze di visualizzazione dell'utente (stato
+ * locale del componente canvas, non del workflow persistito), quindi usa
+ * questa baseline coerente per stimare le dimensioni ai fini della
+ * spaziatura a griglia. Il rendering reale (workflow-canvas.tsx) passa
+ * sempre il `display` live dell'utente.
+ */
+export function estimateNodeSize(
+  node: EtlNode,
+  workflow: EtlWorkflow,
+  display: EtlDisplaySettings = DEFAULT_DISPLAY,
+): NodeSize {
+  const def = nodeDef(node.type);
+
+  if (!def) {
+    return {
+      width: NODE_W,
+      height: MIN_NODE_HEIGHT,
+    };
+  }
+
+  const analysis = analyzeNode(
+    workflow,
+    node,
+  );
+
+  const detail = nodeSummary(
+    node.type,
+    node.config,
+  );
+
+  const isSource =
+    def.category === "sources";
+
+  const showDetail =
+    (display.source && isSource) ||
+    (display.formula && !isSource);
+
+  const metricsText = display.metrics
+    ? `${formatRows(analysis.rows)} rows · ${analysis.columns.length} cols`
+    : "";
+
+  /* ------------------------------------------------------------------ */
+  /*  LARGHEZZA — guidata dal testo più lungo (header / metriche).      */
+  /* ------------------------------------------------------------------ */
+
+  const longestText = Math.max(
+    node.title.length,
+    def.label.length,
+    metricsText.length,
+    8,
+  );
+
+  const textWidth = Math.min(
+    210,
+    Math.max(
+      90,
+      longestText * 6.2,
+    ),
+  );
+
+  /*
+   * Header: icona (size-9) + gap + testo + menu (size-7) + padding card.
+   */
+  const headerWidth =
+    textWidth + 36 + 8 + 28 + 24;
+
+  const width = Math.min(
+    MAX_NODE_SIZE,
+    Math.max(
+      MIN_NODE_SIZE,
+      Math.ceil(headerWidth / 8) * 8,
+    ),
+  );
+
+  /* ------------------------------------------------------------------ */
+  /*  ALTEZZA — si adatta al contenuto reale, senza spazio in eccesso.  */
+  /* ------------------------------------------------------------------ */
+
+  if (!isSource) {
+    /*
+     * Card "transform" (ogni categoria diversa da sources): sempre
+     * quadrata, con lato pari all'altezza che avrebbe una card Dataset
+     * con lo stesso livello di dettaglio visualizzato — non un valore
+     * fisso, ma la stessa `estimateCardHeight` usata per i nodi
+     * sources, così i due tipi restano visivamente allineati anche se
+     * cambiano i display settings.
+     */
+    const side = estimateCardHeight(
+      node,
+      display,
+      width,
+      detail,
+      display.source,
+    );
+
+    return {
+      width: side,
+      height: side,
+    };
+  }
+
+  const height = estimateCardHeight(
+    node,
+    display,
+    width,
+    detail,
+    showDetail,
+  );
+
+  return {
+    width,
+    height,
+  };
+}
+
+
 === FILE: src/lib/etl-schema.ts ===
 import type { ColumnDef, ColumnType } from "./etl-catalog";
 import { SAMPLE_DATASETS, nodeDef } from "./etl-catalog";
@@ -3459,6 +3734,8 @@ export function previewRows(columns: ColumnDef[], seed: string, count = 8) {
 === FILE: src/lib/etl-workflow.tsx ===
 import { useCallback, useSyncExternalStore } from "react";
 import { nodeDef } from "./etl-catalog";
+import type { NodeSize } from "./etl-node-size";
+import { NODE_H, NODE_W, ROUTE_GAP, estimateNodeSize } from "./etl-node-size";
 
 export type NodeStatus = "ready" | "running" | "succeeded" | "error";
 
@@ -3500,9 +3777,7 @@ type Entry = {
 const EMPTY: EtlWorkflow = { nodes: [], edges: [], layout: "auto" };
 const EMPTY_ENTRY: Entry = { present: EMPTY, past: [], future: [], savedAt: 0 };
 
-/** Passo della griglia di auto-layout (deve restare coerente con il canvas). */
-export const LAYOUT_STEP_X = 260;
-export const LAYOUT_STEP_Y = 120;
+/** Origine della griglia di auto-layout. */
 export const LAYOUT_ORIGIN = 32;
 
 // Stato client-side dell'authoring del workflow, per soluzione.
@@ -3530,7 +3805,26 @@ function dissolveSingletonGroups(nodes: EtlNode[]): EtlNode[] {
   return nodes.map((n) => (n.groupId && (counts.get(n.groupId) ?? 0) < 2 ? { ...n, groupId: undefined } : n));
 }
 
-/** Disposizione automatica a colonne, seguendo la direzione del flusso dati. */
+/**
+ * Disposizione automatica a colonne, seguendo la direzione del flusso
+ * dati. Passo di griglia ADATTIVO (PARTE C del redesign): usa la
+ * dimensione REALE di ogni card (stessa `estimateNodeSize` del
+ * rendering, condivisa via lib/etl-node-size.ts per non disallineare le
+ * due logiche) invece di un passo fisso — che con card di dimensioni
+ * molto diverse (una card sources può essere più larga o più stretta di
+ * una transform quadrata) causava sovrapposizioni o spazi vuoti
+ * eccessivi.
+ *
+ * `estimateNodeSize` qui non riceve i `display` settings dell'utente
+ * (stato locale del componente canvas, non del workflow persistito):
+ * usa la sua baseline di default, coerente in ogni run di autoLayout
+ * indipendentemente da chi/quando lo invoca.
+ *
+ * Un nodo appena aggiunto e ancora privo di collegamenti ha profondità
+ * 0: finisce quindi nella prima colonna, all'ultima riga (comportamento
+ * voluto, PARTE B — niente eccezioni per rispettare la posizione di
+ * drop/doppio click quando il layout è "automatico").
+ */
 export function autoLayout(workflow: EtlWorkflow): EtlNode[] {
   const depth = new Map<string, number>();
   const order = pipelineOrder(workflow);
@@ -3541,17 +3835,52 @@ export function autoLayout(workflow: EtlWorkflow): EtlNode[] {
       : 0;
     depth.set(n.id, d);
   }
-  const perColumn = new Map<number, number>();
-  const positions = new Map<string, { x: number; y: number }>();
+
+  const sizes = new Map<string, NodeSize>();
+  for (const n of workflow.nodes) {
+    sizes.set(n.id, estimateNodeSize(n, workflow));
+  }
+
+  const columns = new Map<number, EtlNode[]>();
   for (const n of order) {
     const d = depth.get(n.id) ?? 0;
-    const row = perColumn.get(d) ?? 0;
-    perColumn.set(d, row + 1);
-    positions.set(n.id, {
-      x: LAYOUT_ORIGIN + d * LAYOUT_STEP_X,
-      y: LAYOUT_ORIGIN + row * LAYOUT_STEP_Y,
-    });
+    const list = columns.get(d);
+    if (list) {
+      list.push(n);
+    } else {
+      columns.set(d, [n]);
+    }
   }
+
+  const maxDepth = Math.max(0, ...Array.from(columns.keys()));
+
+  /*
+   * Larghezza di ogni colonna = card più larga che contiene, così le
+   * card della colonna successiva non si sovrappongono mai a quelle
+   * larghe di questa. Righe allineate in ALTO nella colonna (non
+   * centrate): impilate una sotto l'altra con l'altezza reale di
+   * ciascuna, non un passo fisso.
+   */
+  const columnX: number[] = [];
+  let x = LAYOUT_ORIGIN;
+  for (let d = 0; d <= maxDepth; d++) {
+    columnX.push(x);
+    const widest = Math.max(
+      NODE_W,
+      ...(columns.get(d) ?? []).map((n) => sizes.get(n.id)?.width ?? NODE_W),
+    );
+    x += widest + ROUTE_GAP;
+  }
+
+  const positions = new Map<string, { x: number; y: number }>();
+  for (let d = 0; d <= maxDepth; d++) {
+    let y = LAYOUT_ORIGIN;
+    for (const n of columns.get(d) ?? []) {
+      positions.set(n.id, { x: columnX[d]!, y });
+      y += (sizes.get(n.id)?.height ?? NODE_H) + ROUTE_GAP;
+    }
+  }
+
   return workflow.nodes.map((n) => ({ ...n, ...(positions.get(n.id) ?? {}) }));
 }
 
