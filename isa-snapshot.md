@@ -1,6 +1,6 @@
 # ISA ETL Snapshot
 
-Generated: 2026-09-11T22:49:27Z
+Generated: 2026-09-11T22:54:15Z
 
 ## Index
 - src/components/isa/etl/data-preview.tsx
