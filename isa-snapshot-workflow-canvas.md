@@ -1,6 +1,6 @@
 # ISA ETL Snapshot
 
-Generated: 2026-09-11T22:54:15Z
+Generated: 2026-09-12T13:12:13Z
 
 ## Index
 - src/components/isa/etl/workflow-canvas.tsx
@@ -101,6 +101,13 @@ const ROUTE_BLOCKED = 100_000;
 
 /* Spazio minimo lasciato tra due card quando si "respingono". */
 const COLLISION_GAP = 8;
+
+/*
+ * Spazio minimo lasciato tra una card e l'ingombro reale della barra
+ * delle risorse (bug 1.2): una card può stare comunque accanto alla
+ * palette, non deve solo evitare di finirci esattamente sotto.
+ */
+const PALETTE_GAP = 12;
 
 /* Margine di sicurezza attorno a una card "ostacolo" nel routing frecce. */
 const OBSTACLE_MARGIN = 8;
@@ -1587,11 +1594,17 @@ export function WorkflowCanvas({
    * Ritorna l'id del nodo creato (o `undefined` se il tipo non esiste),
    * così il canvas può marcarlo "in attesa di essere raccolto" quando
    * la creazione arriva da un doppio click sulla palette (PARTE B).
+   * `manual` (bug 1.3): quando true, il workflow passa a
+   * `layout: "manual"` così l'auto-layout non ricolloca la card appena
+   * rilasciata — usato dal drag-and-drop esplicito dalla palette, non
+   * dal doppio click (che mantiene il comportamento "l'auto-layout
+   * vince sempre").
    */
   onAddAt: (
     type: string,
     x: number,
     y: number,
+    manual?: boolean,
   ) => string | undefined;
   onConnect: (
     fromNode: string,
@@ -1834,34 +1847,68 @@ export function WorkflowCanvas({
     );
 
   /*
-   * Banda occupata dalla palette (in coordinate superficie): serve a
-   * tenere le card fuori dall'ingombro della toolbar.
+   * Ingombro REALE della palette, in coordinate superficie (bug 1.2:
+   * prima si riservava una banda che attraversava tutto il lato di
+   * dock, anche dove la palette — centrata sul lato — non c'è
+   * visivamente). La palette è renderizzata fuori da `surfaceRef` (non
+   * scalata dallo zoom del canvas) ma ancorata/centrata sul bordo
+   * `paletteDock` dello stesso `<section>`: la sua posizione in
+   * coordinate superficie si può quindi derivare analiticamente dalla
+   * stessa regola di centratura usata da `dockPosition` più sotto,
+   * senza dover leggere una getBoundingClientRect ad ogni render.
    */
-  const paletteBand = useMemo(() => {
-    const vertical =
-      paletteDock === "left" ||
-      paletteDock === "right";
+  const paletteRect = useMemo((): Rect => {
+    const w = paletteBox.w / zoom;
+    const h = paletteBox.h / zoom;
 
-    return {
-      w: vertical
-        ? (paletteBox.w + 12) / zoom
-        : 0,
-      h: vertical
-        ? 0
-        : (paletteBox.h + 12) / zoom,
-    };
+    switch (paletteDock) {
+      case "left":
+        return {
+          x: 0,
+          y: (surfaceH - h) / 2,
+          width: w,
+          height: h,
+        };
+      case "right":
+        return {
+          x: Math.max(0, surfaceW - w),
+          y: (surfaceH - h) / 2,
+          width: w,
+          height: h,
+        };
+      case "bottom":
+        return {
+          x: (surfaceW - w) / 2,
+          y: Math.max(0, surfaceH - h),
+          width: w,
+          height: h,
+        };
+      case "top":
+      default:
+        return {
+          x: (surfaceW - w) / 2,
+          y: 0,
+          width: w,
+          height: h,
+        };
+    }
   }, [
     paletteDock,
     paletteBox.w,
     paletteBox.h,
     zoom,
+    surfaceW,
+    surfaceH,
   ]);
 
   /*
    * Posizione "reale" di una card: un solo punto di verità usato sia
    * per il rendering della card sia per gli endpoint delle frecce e per
-   * l'hit-test dei collegamenti. Clampa dentro la superficie ed esclude
-   * la banda della palette, così box e frecce non possono desincronizzarsi.
+   * l'hit-test dei collegamenti. Clampa dentro la superficie e, se la
+   * card finisce per sovrapporsi all'ingombro REALE della palette (non
+   * più una banda a tutta larghezza/altezza, bug 1.2), la spinge fuori
+   * lungo l'asse di minima penetrazione — così lo spazio libero
+   * accanto a una palette centrata resta utilizzabile.
    */
   const placeNode = useCallback(
     (
@@ -1870,67 +1917,31 @@ export function WorkflowCanvas({
       width: number,
       height: number,
     ): Point => {
-      let nx = Math.min(
-        Math.max(0, x),
-        Math.max(0, surfaceW - width),
+      const clamp = (px: number, py: number): Point => ({
+        x: Math.min(
+          Math.max(0, px),
+          Math.max(0, surfaceW - width),
+        ),
+        y: Math.min(
+          Math.max(0, py),
+          Math.max(0, surfaceH - height),
+        ),
+      });
+
+      const base = clamp(x, y);
+
+      const pushed = pushOutOfOverlap(
+        { x: base.x, y: base.y, width, height },
+        paletteRect,
+        PALETTE_GAP,
       );
 
-      let ny = Math.min(
-        Math.max(0, y),
-        Math.max(0, surfaceH - height),
-      );
-
-      if (paletteDock === "left") {
-        nx = Math.max(
-          nx,
-          Math.min(
-            paletteBand.w,
-            Math.max(0, surfaceW - width),
-          ),
-        );
-      } else if (
-        paletteDock === "right"
-      ) {
-        nx = Math.min(
-          nx,
-          Math.max(
-            0,
-            surfaceW -
-              width -
-              paletteBand.w,
-          ),
-        );
-      } else if (
-        paletteDock === "top"
-      ) {
-        ny = Math.max(
-          ny,
-          Math.min(
-            paletteBand.h,
-            Math.max(0, surfaceH - height),
-          ),
-        );
-      } else if (
-        paletteDock === "bottom"
-      ) {
-        ny = Math.min(
-          ny,
-          Math.max(
-            0,
-            surfaceH -
-              height -
-              paletteBand.h,
-          ),
-        );
-      }
-
-      return { x: nx, y: ny };
+      return pushed ? clamp(pushed.x, pushed.y) : base;
     },
     [
       surfaceW,
       surfaceH,
-      paletteDock,
-      paletteBand,
+      paletteRect,
     ],
   );
 
@@ -2057,6 +2068,58 @@ export function WorkflowCanvas({
             },
           );
         }
+      },
+      [
+        onAddAt,
+        placeNode,
+        toLocal,
+      ],
+    );
+
+  /*
+   * Bug 1.1: il drag da tool-palette.tsx al canvas usava HTML5 Drag &
+   * Drop (`draggable` + `dataTransfer`), un sistema di eventi separato
+   * e in conflitto con i Pointer Events usati ovunque altro sul
+   * canvas (drag delle card, drag della palette stessa, link tra
+   * porte). La palette ora fa un drag basato su Pointer Events
+   * identico agli altri (ghost che segue il puntatore via portal, vedi
+   * ToolPalette) e chiama questo handler al rilascio, con le
+   * coordinate SCHERMO del punto di drop: qui avviene tutta la
+   * conversione in coordinate canvas, esattamente come per il doppio
+   * click sopra — ma il punto di drop è quello REALE sotto il
+   * puntatore, non l'angolo più vicino.
+   */
+  const handlePaletteDrop =
+    useCallback(
+      (
+        type: string,
+        clientX: number,
+        clientY: number,
+      ) => {
+        const point = toLocal(
+          clientX,
+          clientY,
+        );
+
+        const dropped = placeNode(
+          point.x - NODE_W / 2,
+          point.y - NODE_H / 2,
+          NODE_W,
+          NODE_H,
+        );
+
+        /*
+         * Bug 1.3: a differenza del doppio click, un drag esplicito è
+         * un'intenzione di posizionamento manuale — il nodo deve
+         * restare dove è stato rilasciato anche se il workflow è in
+         * layout "auto".
+         */
+        onAddAt(
+          type,
+          dropped.x,
+          dropped.y,
+          true,
+        );
       },
       [
         onAddAt,
@@ -3255,6 +3318,9 @@ export function WorkflowCanvas({
         onAdd={
           handlePaletteDoubleClick
         }
+        onDragAdd={
+          handlePaletteDrop
+        }
       />
     </div>
   );
@@ -3520,48 +3586,6 @@ export function WorkflowCanvas({
       onContextMenu={
         openContextMenu
       }
-      onDragEnter={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      onDragOver={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        event.dataTransfer.dropEffect =
-          "copy";
-      }}
-      onDrop={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-
-        const type =
-          event.dataTransfer.getData(
-            "application/isa-node",
-          );
-
-        if (!type) {
-          return;
-        }
-
-        const point =
-          toLocal(
-            event.clientX,
-            event.clientY,
-          );
-
-        const dropped = placeNode(
-          point.x - NODE_W / 2,
-          point.y - NODE_H / 2,
-          NODE_W,
-          NODE_H,
-        );
-
-        onAddAt(
-          type,
-          dropped.x,
-          dropped.y,
-        );
-      }}
     >
       <CanvasContextMenu
         state={contextMenu}
