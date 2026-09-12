@@ -1,6 +1,6 @@
 # ISA ETL Snapshot
 
-Generated: 2026-09-11T22:54:15Z
+Generated: 2026-09-12T13:12:13Z
 
 ## Index
 - src/components/isa/etl/data-preview.tsx
@@ -1442,7 +1442,7 @@ import {
   List,
   Shrink,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IsaMenu, IsaMenuItem } from "@/components/isa/ui/isa-menu";
 import type { EtlCategory, EtlNodeDef } from "@/lib/etl-catalog";
@@ -1451,39 +1451,50 @@ import { CATEGORY_ICONS } from "@/lib/etl-display";
 
 export type Dock = "top" | "bottom" | "left" | "right";
 
+/*
+ * Bug 1.1: sotto una soglia minima di spostamento un pointerdown+up
+ * sul chip è un click/doppio click, non un drag — evita di far
+ * scattare un fantasma di drag per una semplice pressione.
+ */
+const RESOURCE_DRAG_THRESHOLD = 4;
+
+type ResourceDrag = {
+  node: EtlNodeDef;
+  x: number;
+  y: number;
+};
+
 function NodeChip({
   node,
   onAdd,
+  onDragStart,
 }: {
   node: EtlNodeDef;
   /** Doppio click (PARTE B): niente più singolo click per aggiungere. */
   onAdd: (type: string, clientX: number, clientY: number) => void;
+  /**
+   * Bug 1.1: avvio del drag-to-canvas via Pointer Events, non più HTML5
+   * Drag & Drop (in conflitto con i Pointer Events usati ovunque altro
+   * sul canvas — card, palette, porte). Lo stato del drag vive nel
+   * genitore ToolPalette (un solo ghost alla volta, coerente con la
+   * palette stessa).
+   */
+  onDragStart: (
+    node: EtlNodeDef,
+    event: React.PointerEvent<HTMLButtonElement>,
+  ) => void;
 }) {
-  const { type, label, description, Icon, category } = node;
-
-  const handleDragStart = (event: React.DragEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-
-    event.dataTransfer.effectAllowed = "copy";
-    event.dataTransfer.setData("application/isa-node", type);
-    event.dataTransfer.setData("text/plain", `isa-node:${type}`);
-  };
-
-  const handleDragEnd = (event: React.DragEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-  };
+  const { label, description, Icon, category } = node;
 
   const handleDoubleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    onAdd(type, event.clientX, event.clientY);
+    onAdd(node.type, event.clientX, event.clientY);
   };
 
   return (
     <button
       type="button"
-      draggable={true}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
+      onPointerDown={(event) => onDragStart(node, event)}
       onDoubleClick={handleDoubleClick}
       title={description}
       aria-label={`Aggiungi ${label}`}
@@ -1508,15 +1519,24 @@ export function ToolPalette({
   dock,
   onDockChange,
   onAdd,
+  onDragAdd,
 }: {
   dock: Dock;
   onDockChange: (dock: Dock) => void;
   /** Doppio click su un NodeChip (PARTE B): coordinate schermo del click, la conversione in coordinate canvas la fa WorkflowCanvas. */
   onAdd: (type: string, clientX: number, clientY: number) => void;
+  /**
+   * Bug 1.1: drag-and-drop di un NodeChip sul canvas, coordinate
+   * schermo del punto di rilascio (stessa conversione di `onAdd`, fatta
+   * da WorkflowCanvas). Chiamato solo se il rilascio avviene
+   * effettivamente sopra il canvas.
+   */
+  onDragAdd: (type: string, clientX: number, clientY: number) => void;
 }) {
   const [open, setOpen] = useState<EtlCategory | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
+  const [resourceDrag, setResourceDrag] = useState<ResourceDrag | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLElement | null>(null);
   const vertical = dock === "left" || dock === "right";
@@ -1527,6 +1547,51 @@ export function ToolPalette({
     workspaceRef.current =
       ref.current?.closest<HTMLElement>("[data-palette-workspace]") ?? null;
   }, []);
+
+  const startResourceDrag = useCallback(
+    (node: EtlNodeDef, event: React.PointerEvent<HTMLButtonElement>) => {
+      if (event.button !== 0) return;
+
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let dragStarted = false;
+
+      const move = (pointer: PointerEvent) => {
+        if (!dragStarted) {
+          const moved = Math.hypot(pointer.clientX - startX, pointer.clientY - startY);
+          if (moved < RESOURCE_DRAG_THRESHOLD) return;
+          dragStarted = true;
+        }
+        setResourceDrag({ node, x: pointer.clientX, y: pointer.clientY });
+      };
+
+      const cleanup = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", finish);
+        window.removeEventListener("pointercancel", cleanup);
+      };
+
+      const finish = (pointer: PointerEvent) => {
+        cleanup();
+        setResourceDrag(null);
+
+        if (!dragStarted) return;
+
+        // Il rilascio conta solo se avviene sopra il canvas: fuori da
+        // lì (es. sulla stessa palette) il drag viene semplicemente
+        // annullato, coerente col comportamento di un vero drag & drop.
+        const dropTarget = document.elementFromPoint(pointer.clientX, pointer.clientY);
+        if (dropTarget?.closest("[data-palette-workspace]")) {
+          onDragAdd(node.type, pointer.clientX, pointer.clientY);
+        }
+      };
+
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", finish);
+      window.addEventListener("pointercancel", cleanup);
+    },
+    [onDragAdd],
+  );
 
   const startDrag = (event: React.PointerEvent) => {
     event.preventDefault();
@@ -1657,7 +1722,14 @@ export function ToolPalette({
                 </span>
               )}
               <div className={vertical ? "flex flex-col gap-0.5" : "flex items-center gap-0.5"}>
-                {nodes.map((node) => <NodeChip key={node.type} node={node} onAdd={onAdd} />)}
+                {nodes.map((node) => (
+                  <NodeChip
+                    key={node.type}
+                    node={node}
+                    onAdd={onAdd}
+                    onDragStart={startResourceDrag}
+                  />
+                ))}
               </div>
             </div>
           );
@@ -1693,6 +1765,23 @@ export function ToolPalette({
             style={{ left: ghost.x - 22, top: ghost.y - 22 }}
           >
             <Boxes className="size-4 text-muted-foreground" />
+          </div>,
+          document.body,
+        )}
+
+      {resourceDrag &&
+        createPortal(
+          <div
+            aria-hidden
+            className="glass-panel animate-scale-in pointer-events-none fixed z-50 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-foreground shadow-xl"
+            style={{ left: resourceDrag.x + 14, top: resourceDrag.y + 14 }}
+          >
+            <span
+              className={`${categoryAccent(resourceDrag.node.category)} flex size-5 shrink-0 items-center justify-center rounded-md`}
+            >
+              <resourceDrag.node.Icon className="size-3" />
+            </span>
+            <span className="truncate">{resourceDrag.node.label}</span>
           </div>,
           document.body,
         )}
@@ -3954,14 +4043,33 @@ export function useEtlWorkflow(solutionId: string) {
   const workflow = entry.present;
 
   const addNode = useCallback(
-    (type: string, x: number, y: number, config?: Record<string, string>, title?: string) => {
+    (
+      type: string,
+      x: number,
+      y: number,
+      config?: Record<string, string>,
+      title?: string,
+      // Bug 1.3: un nodo aggiunto via drag-and-drop esplicito è
+      // un'intenzione di posizionamento manuale, esattamente come
+      // moveNode — se il workflow resta in layout "auto", `commit()`
+      // (via `arranged()`) ricalcolerebbe subito tutte le posizioni con
+      // autoLayout(), facendo "sparire" la card dal punto di rilascio.
+      // Il doppio click dalla palette NON passa questo flag: per quel
+      // percorso lo schema a colonne dell'auto-layout vince sempre,
+      // comportamento invariato.
+      manual = false,
+    ) => {
       const def = nodeDef(type);
       if (!def) return undefined;
       const base: Record<string, string> = {};
       for (const f of def.fields) base[f.key] = f.defaultValue ?? "";
       const created = node(type, title ?? def.label, x, y, { ...base, ...config });
       const current = entryOf(solutionId).present;
-      commit(solutionId, { ...current, nodes: [...current.nodes, created] });
+      commit(solutionId, {
+        ...current,
+        ...(manual ? { layout: "manual" as const } : {}),
+        nodes: [...current.nodes, created],
+      });
       return created.id;
     },
     [solutionId],
