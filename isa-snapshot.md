@@ -1,6 +1,6 @@
 # ISA ETL Snapshot
 
-Generated: 2026-09-19T10:29:17Z
+Generated: 2026-09-19T10:46:13Z
 
 ## Index
 - src/canvas/.reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md
