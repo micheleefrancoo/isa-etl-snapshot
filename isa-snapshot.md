@@ -1,6 +1,6 @@
 # ISA ETL Snapshot
 
-Generated: 2026-09-19T10:28:53Z
+Generated: 2026-09-19T10:29:17Z
 
 ## Index
 - src/canvas/.reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md
@@ -198,6 +198,24 @@ lavoro — e una decisione — di fase 2.
       residui sono lint style, pattern preesistente nella repo)
 - [x] README aggiornato (`src/canvas/README.md`) con come usare
       `useCanvasBounds`/`usePanelState`/`CanvasContainer`
+
+## 8. Sync snapshot
+
+`scripts/sync-snapshot.sh` aggiornato per includere `src/canvas/**/*.ts(x)`
+e `src/canvas/**/*.md` (README, FUNCTIONAL_CHECKS, questo report) nel
+bucket "main" esistente — nessun nuovo file fisso creato, coerente con la
+policy dello script ("redistribute across these SAME files").
+
+Eseguito con successo alle **2026-09-19T10:29:01Z**. Nota tecnica: il
+token `GITHUB_TOKEN` di Codespaces (attivo di default) non ha accesso al
+repo `isa-etl-snapshot` (403) — usato invece l'account OAuth con scope
+`repo` già presente in `gh auth status` (`env -u GITHUB_TOKEN
+./scripts/sync-snapshot.sh`). Nessuna modifica permanente alla
+configurazione gh: solo un override di environment per l'invocazione.
+
+Raw URL aggiornati:
+- https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/main/isa-snapshot-workflow-canvas.md
+- https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/main/isa-snapshot.md
 
 
 === FILE: src/canvas/FUNCTIONAL_CHECKS.md ===
