@@ -1,6 +1,6 @@
 # ISA ETL Snapshot
 
-Generated: 2026-09-19T10:28:53Z
+Generated: 2026-09-19T10:29:17Z
 
 ## Index
 - src/components/isa/etl/workflow-canvas.tsx
