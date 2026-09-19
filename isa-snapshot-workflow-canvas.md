@@ -1,6 +1,6 @@
 # ISA ETL Snapshot
 
-Generated: 2026-09-19T10:46:13Z
+Generated: 2026-09-19T11:39:13Z
 
 ## Index
 - src/components/isa/etl/workflow-canvas.tsx
@@ -34,6 +34,8 @@ import { createPortal } from "react-dom";
 
 import { ToolPalette } from "@/components/isa/etl/tool-palette";
 import type { Dock } from "@/components/isa/etl/tool-palette";
+import { CanvasContainer } from "@/canvas/components/CanvasContainer";
+import { CanvasStoreProvider } from "@/canvas/store/canvasStore";
 import { AggregatePanel } from "@/components/isa/etl/settings-panels/aggregate-panel";
 import { CombinePanel } from "@/components/isa/etl/settings-panels/combine-panel";
 import { FilterPanel } from "@/components/isa/etl/settings-panels/filter-panel";
@@ -1578,6 +1580,7 @@ export function WorkflowCanvas({
   onAddDataset,
   onLayoutChange,
   onUpdateNodeConfig,
+  children,
 }: {
   workflow: EtlWorkflow;
   selectedId: string | null;
@@ -1636,6 +1639,15 @@ export function WorkflowCanvas({
     id: string,
     patch: Record<string, string>,
   ) => void;
+  /**
+   * Fase 2A: pannelli ausiliari (Inspector, Data Preview) montati DENTRO
+   * la superficie zoomata invece che come sibling nel file di rotta —
+   * necessario perché il trucco del controscale (vedi
+   * src/canvas/layout/surfacePanels.ts) richiede che vivano nello stesso
+   * albero DOM scalato da `zoom` delle card. Il file di rotta li passa
+   * come children invece di renderizzarli accanto a `<WorkflowCanvas>`.
+   */
+  children?: React.ReactNode;
 }) {
   const boxRef =
     useRef<HTMLDivElement>(null);
@@ -3575,6 +3587,8 @@ export function WorkflowCanvas({
   /* ---------------------------------------------------------------------- */
 
   return (
+    <CanvasStoreProvider>
+    <CanvasContainer containerSize={{ width: surfaceW, height: surfaceH }} zoom={zoom}>
     <section
       ref={boxRef}
       data-palette-workspace
@@ -4946,6 +4960,14 @@ export function WorkflowCanvas({
               );
             },
           )}
+
+          {/* ------------------------------------------------------------ */}
+          {/* Fase 2A: pannelli ausiliari (Inspector, Data Preview) —       */}
+          {/* vivono qui, nella superficie zoomata, non come sibling nel   */}
+          {/* file di rotta: vedi src/canvas/README.md                     */}
+          {/* ------------------------------------------------------------ */}
+
+          {children}
         </div>
 
         {/* -------------------------------------------------------------- */}
@@ -4983,6 +5005,8 @@ export function WorkflowCanvas({
         )}
       </div>
     </section>
+    </CanvasContainer>
+    </CanvasStoreProvider>
   );
 }
 
