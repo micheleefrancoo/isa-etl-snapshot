@@ -1,8 +1,21 @@
 # ISA ETL Snapshot
 
-Generated: 2026-09-12T13:12:13Z
+Generated: 2026-09-19T10:28:53Z
 
 ## Index
+- src/canvas/.reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md
+- src/canvas/FUNCTIONAL_CHECKS.md
+- src/canvas/README.md
+- src/canvas/components/CanvasContainer.tsx
+- src/canvas/hooks/useCanvasBounds.ts
+- src/canvas/hooks/usePanelState.ts
+- src/canvas/layout/__tests__/canvasBounds.test.ts
+- src/canvas/layout/__tests__/dropZones.test.ts
+- src/canvas/layout/__tests__/panelRegistry.test.ts
+- src/canvas/layout/canvasBounds.ts
+- src/canvas/layout/dropZones.ts
+- src/canvas/layout/panelRegistry.ts
+- src/canvas/store/canvasStore.tsx
 - src/components/isa/etl/data-preview.tsx
 - src/components/isa/etl/inspector.tsx
 - src/components/isa/etl/isa-context-menu.tsx
@@ -20,6 +33,1468 @@ Generated: 2026-09-12T13:12:13Z
 - src/lib/etl-node-size.ts
 - src/lib/etl-schema.ts
 - src/lib/etl-workflow.tsx
+
+
+=== FILE: src/canvas/.reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md ===
+# VALIDATION REPORT — Canvas Edge System (Fase 1)
+
+**Timestamp:** 2026-09-19T10:24:53Z
+**Scope:** `src/canvas/layout/`, `src/canvas/store/`, `src/canvas/hooks/`, `src/canvas/components/`
+
+## 1. Linting & type check
+
+```
+npx tsc --noEmit                          → PASS, 0 errori
+npx eslint src/canvas vitest.config.ts    → PASS, 0 errori
+```
+
+5 warning `react-refresh/only-export-components`, tutti su file che
+esportano sia un componente React sia hook/tipi dallo stesso modulo
+(`canvasStore.tsx`, `CanvasContainer.tsx`). Confermato che è un pattern
+già presente e tollerato nella repo: `src/lib/theme.tsx` e
+`src/lib/solutions-store.tsx` producono lo stesso identico warning.
+Nessun errore, nessun `console.error` introdotto.
+
+## 2. Unit test
+
+```
+npm test -- src/canvas/layout/__tests__
+```
+
+**32/32 test passati**, 3 file:
+
+| File | Test | Esito |
+|---|---|---|
+| `canvasBounds.test.ts` | 12 | ✅ tutti passati |
+| `dropZones.test.ts` | 10 | ✅ tutti passati |
+| `panelRegistry.test.ts` | 10 | ✅ tutti passati |
+
+Coperto: bounds invariati senza pannelli aperti; riduzione bounds per
+pannelli "stretch" su ciascun lato; nessuna riduzione per pannelli
+"center"; somma corretta di più pannelli aperti; nessuna larghezza/
+altezza negativa quando un pannello eccede il contenitore; conversione
+bounds→rect; posizionamento pannello stretch/center; clamp e detection
+di card fuori bounds; drop-zone con/senza ostacoli; validità di un punto
+di drop dentro/fuori dal bounding box della palette e dentro/fuori dai
+bounds; registry↔store (stato iniziale, PANEL_OPENED/CLOSED/TOGGLED/
+RESIZED, azione su id non registrato ignorata).
+
+_Nota: nel package.json del progetto non esisteva alcun test runner
+(`npm test` non era definito). Aggiunto `vitest` come devDependency e
+`vitest.config.ts` (con `vite-tsconfig-paths` + `@vitejs/plugin-react`,
+già presenti come dipendenze) — nessun altro cambiamento alla toolchain
+esistente._
+
+## 3. Consistency check
+
+- Naming: `canvasBounds.ts`, `panelRegistry.ts`, `dropZones.ts`,
+  `canvasStore.tsx`, `useCanvasBounds.ts`, `usePanelState.ts`,
+  `CanvasContainer.tsx` — coerenti con quanto richiesto.
+- Import circolari: **nessuno** (verificato con `npx madge --circular
+  --extensions ts,tsx src/canvas` → "No circular dependency found!").
+- Ogni funzione esportata ha una singola responsabilità:
+  `calculateCanvasBounds` (solo bounds), `computePanelRect` (solo
+  geometria di un pannello), `calculateDropZones`/`isValidDropPoint`
+  (solo validità drop), `canvasReducer`/`toPanelInstances` (solo stato).
+  Nessuna funzione mischia calcolo geometrico e side-effect.
+- Separazione netta rispettata: `layout/` è puro TypeScript senza
+  React; `store/` è l'unico punto con `useReducer`/Context; `hooks/`
+  collega store+DOM (ResizeObserver); `components/` è l'unico punto con
+  markup.
+
+## 4. Functional verification (manuale)
+
+Vedi `src/canvas/FUNCTIONAL_CHECKS.md` per il dettaglio. Riassunto:
+tutti gli scenari eseguibili in questa fase (senza UI collegata) sono
+stati verificati con uno script mirato — bounds che cambiano
+correttamente per 1, 2 e 3 pannelli aperti contemporaneamente, drop
+respinto dentro il bounding box reale della palette, drop accettato
+accanto ad essa (fix del bug 1.2), drop respinto fuori dai bounds
+ridotti dall'Inspector. I check che richiedono un componente reale
+montato in UI sono documentati come protocollo per la fase 2.
+
+## 5. Cosa è stato fatto
+
+Costruita la struttura richiesta sotto `src/canvas/`:
+
+- **`layout/canvasBounds.ts`** — `calculateCanvasBounds()` (pura,
+  ricalcolabile ad ogni cambiamento di container o pannelli),
+  `computePanelRect()`, `clampRectToBounds()`, `isRectOutOfBounds()`,
+  `boundsToRect()`.
+- **`layout/panelRegistry.ts`** — `PANEL_DEFINITIONS`: Tool Palette
+  (top, anchor "center"), Inspector (right, anchor "stretch"), Data
+  Preview (bottom, anchor "stretch"). Unico punto da toccare per
+  registrare un nuovo pannello.
+- **`layout/dropZones.ts`** — `calculateDropZones()` (bounds + lista di
+  ostacoli = bounding box reali dei pannelli "center" aperti),
+  `isValidDropPoint()`.
+- **`store/canvasStore.tsx`** — stato open/closed/size per pannello,
+  come Context + `useReducer` (stesso pattern già in uso in
+  `src/lib/theme.tsx` e `src/lib/solutions-store.tsx`, non Zustand/Redux:
+  vedi motivazione nel file). Reducer puro esportato e testato senza
+  React.
+- **`hooks/useCanvasBounds.ts`** — misura il contenitore con
+  `ResizeObserver`, legge lo store, ricalcola bounds/drop-zone con
+  `useMemo`, si ricalcola automaticamente ad ogni cambio di container O
+  di pannelli.
+- **`hooks/usePanelState.ts`** — stato + azioni (`openPanel`,
+  `closePanel`, `togglePanel`, `setSize`) per UN pannello, per i
+  componenti che possiedono il trigger di apertura.
+- **`components/CanvasContainer.tsx`** — il contenitore reattivo:
+  misura sé stesso, espone bounds/drop-zone ai figli via context
+  (`useCanvasBoundsContext`), e chiama un `onBoundsChange` opzionale
+  quando i bounds cambiano davvero (confronto per valore, non per
+  riferimento) — il punto di aggancio per la fase 2 (riposizionamento
+  card).
+
+Introdotto anche il test runner (`vitest`) mancante dal progetto, con
+`vitest.config.ts` minimale.
+
+## 6. Cosa NON è stato fatto (deliberatamente) — feedback architetturale
+
+Come richiesto dalle note del contesto strategico ("se scopri che devi
+riscrivere parti importanti del canvas oggi, fermati e comunicalo"),
+segnalo questo prima di procedere oltre:
+
+**Il nuovo layer non è ancora collegato a `workflow-canvas.tsx`.**
+Motivo: quel componente (5000+ righe) gestisce oggi la geometria delle
+card in un sistema di coordinate "superficie" scalato da `zoom`
+(`surfaceW`/`surfaceH`), mentre Inspector e Data Preview — renderizzati
+un livello sopra, in `solutions.$solutionId.etl.tsx` — sono posizionati
+in coordinate schermo assolute, indipendenti dallo zoom. `placeNode()` e
+il calcolo di `paletteRect` dentro `workflow-canvas.tsx` già fanno
+correttamente ciò che PARTE 2.3 chiede per la sola Tool Palette (bounding
+box reale, non fascia intera) — ma solo per lei, perché è l'unico
+pannello che vive nello stesso sistema di coordinate delle card.
+
+Estendere `calculateCanvasBounds` al clamp reale delle card per Inspector
+e Data Preview richiede prima una decisione: portare quei due pannelli
+nel sistema di coordinate "superficie" (cambiando come sono renderizzati
+— fuori scope dichiarato per questa fase, "non toccare il rendering
+visivo") oppure convertire i loro bounds in coordinate superficie al
+volo (dividendo per `zoom` — fattibile, ma è logica che oggi vive solo
+dentro `workflow-canvas.tsx`, quindi richiede comunque di toccare quel
+file). Ho scelto di non prendere questa decisione da solo in una fase
+esplicitamente delimitata a "coordinate e geometria, non UI, non drag
+interattivo": la fondazione qui sopra è già corretta e generale per
+qualunque sistema di coordinate la si alimenti, il collegamento è
+lavoro — e una decisione — di fase 2.
+
+## 7. Checklist finale
+
+- [x] Tutti i test passano (32/32)
+- [x] Nessun errore TypeScript
+- [x] Nessun errore linting
+- [x] La palette (nel nuovo layer) blocca solo il proprio bounding box
+      reale, non l'intera fascia — verificato via `dropZones.test.ts` e
+      script manuale
+- [x] `calculateCanvasBounds()` cambia quando i pannelli si aprono/chiudono
+      — verificato via `canvasBounds.test.ts`
+- [ ] Le card si riadattano quando i bounds cambiano — **non verificabile
+      in questa fase**: richiede l'integrazione con `workflow-canvas.tsx`
+      discussa al punto 6. `clampRectToBounds`/`isRectOutOfBounds` sono
+      pronte e testate per quando quel collegamento verrà fatto.
+- [x] Nessun `console.error` o warning non commentato (i 5 warning
+      residui sono lint style, pattern preesistente nella repo)
+- [x] README aggiornato (`src/canvas/README.md`) con come usare
+      `useCanvasBounds`/`usePanelState`/`CanvasContainer`
+
+
+=== FILE: src/canvas/FUNCTIONAL_CHECKS.md ===
+# Functional Checks — Canvas Edge System (Fase 1)
+
+Stato attuale: questo layer (`src/canvas/`) è verificato con 32 unit test
+automatici (geometria pura) più uno script manuale mirato (sotto). Non è
+ancora collegato a `workflow-canvas.tsx` — vedi "Stato dell'integrazione"
+in `src/canvas/README.md` per il perché. Di conseguenza non esiste oggi
+un percorso in UI (click su un bottone reale) per riprodurre questi
+check: quelli elencati in "Dopo l'integrazione" sono pronti da eseguire
+non appena un componente monta `CanvasStoreProvider` + `CanvasContainer`.
+
+## Eseguiti ora (senza UI, sulla logica pura)
+
+Script eseguito con `npx tsx`, valori realistici presi dalle dimensioni
+di palette/inspector/preview osservate in `workflow-canvas.tsx` /
+`inspector.tsx` / `data-preview.tsx`:
+
+| Scenario | Input | Risultato | Atteso |
+|---|---|---|---|
+| Solo Tool Palette aperta (top, center) | container 1440×820, palette 480×52 | bounds invariati (1440×820) | ✅ la palette non deve bloccare la fascia |
+| + Inspector aperto (right, stretch, 320px) | come sopra | `right` passa a 1120, width 1120 | ✅ |
+| + Data Preview aperta (bottom, stretch, 260px) | come sopra | `bottom` passa a 560, height 560 | ✅ tre pannelli si sommano correttamente |
+| Drop nel bounding box reale della palette | punto (720, 20) | rifiutato | ✅ 3.1: non si crea una card sotto la palette |
+| Drop appena a sinistra della palette, stessa fascia orizzontale | punto (400, 20) | accettato | ✅ 2.3: lo spazio accanto alla palette resta usabile |
+| Drop nella striscia riservata all'Inspector (fuori bounds) | punto (1200, 300) | rifiutato | ✅ |
+| Drop in area libera del canvas | punto (200, 300) | accettato | ✅ |
+
+Ripetibile con:
+```bash
+npx tsx -e "$(cat <<'EOF'
+import { calculateCanvasBounds } from './src/canvas/layout/canvasBounds.ts';
+import { calculateDropZones, isValidDropPoint } from './src/canvas/layout/dropZones.ts';
+// ... vedi src/canvas/.reports per lo script completo usato
+EOF
+)"
+```
+(o più semplicemente: `npm test -- src/canvas/layout/__tests__`, che copre
+gli stessi scenari come asserzioni automatiche.)
+
+## Dopo l'integrazione (da eseguire quando un componente reale monta CanvasContainer)
+
+1. **`calculateCanvasBounds()` cambia con l'apertura/chiusura di un pannello.**
+   - Avvia l'app (`npm run dev`), apri la pagina che monta `CanvasContainer`.
+   - Apri l'Inspector (o il pannello "stretch" collegato): verifica via
+     `useCanvasBoundsContext()` (es. loggato temporaneamente, o con
+     React DevTools sul context) che `bounds.right`/`bounds.width`
+     diminuiscano esattamente della larghezza misurata del pannello.
+   - Chiudilo: i bounds devono tornare esattamente ai valori precedenti
+     (nessuna deriva cumulativa).
+
+2. **Drop zones per drag-and-drop dalla palette.**
+   - Trascina una risorsa dalla Tool Palette verso un punto coperto dal
+     suo stesso bounding box: il drop deve essere respinto
+     (`isValidDropPoint` → false).
+   - Trascina verso un punto libero accanto alla palette (stesso lato,
+     ma fuori dal suo rettangolo): il drop deve essere accettato anche
+     se è "nella stessa fascia" — questo è il fix del bug 1.2 (prima
+     l'intera fascia era bloccata).
+
+3. **Anti-sovrapposizione quando i bounds cambiano.**
+   - Posiziona una card vicino al bordo destro del canvas.
+   - Apri l'Inspector (che si aggancia a destra): la card ora cade sotto
+     `bounds.right` → `isRectOutOfBounds` deve restituire `true`.
+   - Il componente che possiede i nodi (fase 2, non ancora collegato)
+     dovrebbe reagire all'`onBoundsChange` di `CanvasContainer` chiamando
+     `clampRectToBounds` sulle card fuori bordo e animando la transizione
+     via CSS, non con uno scatto istantaneo.
+
+## Esito
+
+Tutti i check "Eseguiti ora" sono passati (vedi tabella). I check "Dopo
+l'integrazione" sono documentati come protocollo ma non eseguibili in
+questa fase perché — per scelta architetturale motivata in
+`src/canvas/README.md` — l'integrazione con `workflow-canvas.tsx` è
+rimandata alla fase successiva.
+
+
+=== FILE: src/canvas/README.md ===
+# Canvas Edge System
+
+Fondamenta geometriche del Canvas: calcolo di quanto spazio ha davvero a
+disposizione una volta sottratti i pannelli ausiliari (Tool Palette,
+Inspector, Data Preview) che possono aprirsi/chiudersi ai suoi bordi.
+
+Nessuna di queste funzioni tocca il rendering CSS esistente né il drag
+delle card in `workflow-canvas.tsx` — è un layer nuovo, parallelo, pensato
+per essere adottato in una fase successiva (vedi "Stato dell'integrazione"
+in fondo).
+
+## Struttura
+
+```
+src/canvas/
+├── layout/
+│   ├── canvasBounds.ts     # calculateCanvasBounds(), computePanelRect(), clampRectToBounds()
+│   ├── panelRegistry.ts    # PANEL_DEFINITIONS: l'unico posto dove annunciare un nuovo pannello
+│   ├── dropZones.ts        # calculateDropZones(), isValidDropPoint()
+│   └── __tests__/
+├── store/
+│   └── canvasStore.tsx     # CanvasStoreProvider + useCanvasStore(): stato open/closed/size dei pannelli
+├── hooks/
+│   ├── useCanvasBounds.ts  # ascolta resize del contenitore + store, ricalcola bounds/drop-zone
+│   └── usePanelState.ts    # stato + azioni (open/close/toggle/resize) di UN pannello
+└── components/
+    └── CanvasContainer.tsx # il contenitore reattivo: misura sé stesso, espone bounds via context
+```
+
+## Concetti chiave
+
+- **Pannello "stretch"** (Inspector, Data Preview): occupa l'intera
+  striscia lungo il proprio lato. Da aperto, riduce lo spazio disponibile
+  del canvas su quel lato — `calculateCanvasBounds` lo sottrae dal
+  rettangolo esterno.
+- **Pannello "center"** (Tool Palette): galleggia centrato sul proprio
+  lato. Da aperto NON riduce lo spazio disponibile (le card possono
+  stare sopra/sotto/accanto ad esso) — ma il suo bounding box reale va
+  escluso dalle drop zone, non trattato come una fascia a tutta
+  larghezza/altezza (bug 1.2 del contesto strategico). Questo è il
+  compito di `calculateDropZones`, non di `calculateCanvasBounds`.
+
+## Come usarlo
+
+```tsx
+import { CanvasStoreProvider } from "@/canvas/store/canvasStore";
+import { CanvasContainer, useCanvasBoundsContext } from "@/canvas/components/CanvasContainer";
+import { usePanelState } from "@/canvas/hooks/usePanelState";
+
+function Workspace() {
+  return (
+    <CanvasStoreProvider>
+      <CanvasContainer className="relative flex-1" onBoundsChange={(bounds) => {
+        // punto di aggancio per riposizionare le card che sconfinano (PARTE 2.2)
+      }}>
+        <CanvasSurface />
+      </CanvasContainer>
+    </CanvasStoreProvider>
+  );
+}
+
+function CanvasSurface() {
+  const { bounds, obstacles } = useCanvasBoundsContext();
+  // bounds cambia automaticamente quando un pannello si apre/chiude o
+  // cambia dimensione — nessun ricalcolo manuale necessario qui.
+}
+
+function InspectorToggleButton() {
+  const inspector = usePanelState("inspector");
+  return <button onClick={inspector.togglePanel}>{inspector.open ? "Chiudi" : "Apri"} Inspector</button>;
+}
+```
+
+Un pannello che misura sé stesso (es. la Tool Palette, la cui larghezza
+dipende da quante icone mostra) chiama `usePanelState(id).setSize(...)`
+dentro un `ResizeObserver`, esattamente come fa oggi `workflow-canvas.tsx`
+con `paletteBox` — quella logica di misura non cambia, cambia solo dove
+il risultato viene scritto (il canvasStore condiviso invece di uno state
+locale).
+
+## Aggiungere un nuovo pannello
+
+1. Aggiungi una riga a `PANEL_DEFINITIONS` in `panelRegistry.ts` (id,
+   lato, anchor, closedSize).
+2. Nel componente del pannello, usa `usePanelState(id)` per leggere/settare
+   `open` e `size`.
+3. Non serve toccare `canvasBounds.ts` o `dropZones.ts`: leggono il
+   registry a runtime tramite `toPanelInstances`.
+
+## Stato dell'integrazione con workflow-canvas.tsx
+
+Questa è la fondazione, non ancora collegata al canvas esistente. Motivo:
+`workflow-canvas.tsx` oggi vive in DUE sistemi di coordinate diversi —
+
+- la **superficie zoomata** (`surfaceW`/`surfaceH`, scalata da `zoom`),
+  dove vivono le card e la Tool Palette;
+- lo **spazio schermo** del wrapper esterno (`solutions.$solutionId.etl.tsx`),
+  dove Inspector e Data Preview sono posizionati in `position: absolute`
+  senza passare da alcun `zoom`.
+
+Collegare `calculateCanvasBounds` al clamp reale delle card (oggi
+`placeNode` in `workflow-canvas.tsx`) richiede prima di decidere in quale
+dei due sistemi di coordinate esprimere i bounds di Inspector/Data
+Preview — una scelta architetturale che il contesto strategico chiede
+esplicitamente di segnalare piuttosto che risolvere di nascosto in questa
+fase (vedi VALIDATION_REPORT più recente in `.reports/`). Il layer qui
+sopra è già corretto e testato per il caso generale; l'integrazione è
+lavoro di fase 2.
+
+
+=== FILE: src/canvas/components/CanvasContainer.tsx ===
+import { createContext, useContext, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
+
+import { useCanvasBounds } from "../hooks/useCanvasBounds";
+import type { CanvasBounds } from "../layout/canvasBounds";
+import type { DropZoneMap } from "../layout/dropZones";
+
+type CanvasBoundsContextValue = ReturnType<typeof useCanvasBounds>;
+
+const CanvasBoundsContext = createContext<CanvasBoundsContextValue | null>(null);
+
+/** Legge i bounds correnti senza rimisurare: usarlo nei componenti figli di CanvasContainer. */
+export function useCanvasBoundsContext(): CanvasBoundsContextValue {
+  const ctx = useContext(CanvasBoundsContext);
+
+  if (!ctx) {
+    throw new Error("useCanvasBoundsContext must be used inside CanvasContainer");
+  }
+
+  return ctx;
+}
+
+/**
+ * Il contenitore "che respira" (PARTE 1 del contesto strategico): misura
+ * se stesso con un ResizeObserver, ascolta canvasStore per i pannelli
+ * aperti/chiusi, e ricalcola bounds + drop zone ogni volta che uno dei
+ * due cambia — poi li espone ai figli via context, così nessun
+ * componente sotto deve rimisurare o richiamare calculateCanvasBounds
+ * per conto proprio (PARTE 1.3: "una sorgente di verità per i bordi").
+ *
+ * `onBoundsChange` è il punto di aggancio per PARTE 2.2 (riposizionare
+ * le card che sconfinano quando i bounds cambiano): questo componente
+ * NON possiede né tocca lo stato dei nodi — si limita a notificare un
+ * cambiamento dei bounds. La logica di riposizionamento vive nel
+ * componente che possiede i nodi (workflow-canvas.tsx), da collegare in
+ * una fase successiva.
+ */
+export function CanvasContainer({
+  children,
+  className,
+  onBoundsChange,
+}: {
+  children: ReactNode;
+  className?: string;
+  onBoundsChange?: (bounds: CanvasBounds, dropZones: DropZoneMap) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const boundsState = useCanvasBounds(containerRef);
+  const previousBoundsRef = useRef<CanvasBounds | null>(null);
+
+  useEffect(() => {
+    const previous = previousBoundsRef.current;
+    const current = boundsState.bounds;
+
+    const changed =
+      !previous ||
+      previous.top !== current.top ||
+      previous.left !== current.left ||
+      previous.right !== current.right ||
+      previous.bottom !== current.bottom;
+
+    if (changed) {
+      previousBoundsRef.current = current;
+      onBoundsChange?.(current, boundsState.dropZones);
+    }
+  }, [boundsState, onBoundsChange]);
+
+  return (
+    <div ref={containerRef} className={className} data-canvas-container="">
+      <CanvasBoundsContext.Provider value={boundsState}>{children}</CanvasBoundsContext.Provider>
+    </div>
+  );
+}
+
+
+=== FILE: src/canvas/hooks/useCanvasBounds.ts ===
+import { useEffect, useMemo, useState } from "react";
+import type { RefObject } from "react";
+
+import type { CanvasContainerSize } from "../layout/canvasBounds";
+import { calculateDropZones } from "../layout/dropZones";
+import { toPanelInstances, useCanvasStore } from "../store/canvasStore";
+
+/**
+ * Ascolta i cambiamenti che possono alterare lo spazio disponibile del
+ * canvas — resize del contenitore E apertura/chiusura/resize di un
+ * pannello — e ricalcola bounds + drop zone di conseguenza (PARTE 1.3
+ * del contesto strategico: "una sorgente di verità per i bordi").
+ *
+ * `containerRef` è l'elemento la cui area disponibile stiamo misurando
+ * (tipicamente il wrapper che contiene canvas + pannelli ausiliari).
+ */
+export function useCanvasBounds(containerRef: RefObject<HTMLElement | null>) {
+  const { state } = useCanvasStore();
+
+  const [container, setContainer] = useState<CanvasContainerSize>({
+    width: 0,
+    height: 0,
+  });
+
+  useEffect(() => {
+    const el = containerRef.current;
+
+    if (!el) {
+      return;
+    }
+
+    const measure = () => setContainer({ width: el.clientWidth, height: el.clientHeight });
+
+    measure();
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+
+    return () => observer.disconnect();
+  }, [containerRef]);
+
+  const panels = useMemo(() => toPanelInstances(state), [state]);
+
+  const dropZones = useMemo(() => calculateDropZones(container, panels), [container, panels]);
+
+  return {
+    container,
+    bounds: dropZones.bounds,
+    obstacles: dropZones.obstacles,
+    dropZones,
+  };
+}
+
+
+=== FILE: src/canvas/hooks/usePanelState.ts ===
+import { useCallback, useMemo } from "react";
+
+import type { PanelSize } from "../layout/canvasBounds";
+import { getPanelDefinition } from "../layout/panelRegistry";
+import { useCanvasStore } from "../store/canvasStore";
+
+/* Riferimento stabile: evita di ricreare un oggetto ad ogni render quando il pannello non ha ancora uno stato runtime (rompe altrimenti la memoizzazione di useMemo più sotto). */
+const ZERO_SIZE: PanelSize = { width: 0, height: 0 };
+
+/**
+ * Stato + azioni di un singolo pannello registrato in panelRegistry.ts,
+ * per i componenti che possiedono il trigger di apertura/chiusura
+ * (es. il bottone "Data preview" nella toolbar) e non hanno bisogno di
+ * conoscere l'intero canvasStore.
+ */
+export function usePanelState(panelId: string) {
+  if (!getPanelDefinition(panelId) && process.env["NODE_ENV"] !== "production") {
+    console.warn(
+      `usePanelState("${panelId}"): nessun pannello con questo id in panelRegistry.ts — le azioni non avranno effetto.`,
+    );
+  }
+
+  const { state, dispatch } = useCanvasStore();
+
+  const runtime = state.panels[panelId];
+
+  const open = runtime?.open ?? false;
+  const size = runtime?.size ?? ZERO_SIZE;
+
+  const openPanel = useCallback(
+    () => dispatch({ type: "PANEL_OPENED", id: panelId }),
+    [dispatch, panelId],
+  );
+
+  const closePanel = useCallback(
+    () => dispatch({ type: "PANEL_CLOSED", id: panelId }),
+    [dispatch, panelId],
+  );
+
+  const togglePanel = useCallback(
+    () => dispatch({ type: "PANEL_TOGGLED", id: panelId }),
+    [dispatch, panelId],
+  );
+
+  const setSize = useCallback(
+    (nextSize: PanelSize) => dispatch({ type: "PANEL_RESIZED", id: panelId, size: nextSize }),
+    [dispatch, panelId],
+  );
+
+  return useMemo(
+    () => ({ open, size, openPanel, closePanel, togglePanel, setSize }),
+    [open, size, openPanel, closePanel, togglePanel, setSize],
+  );
+}
+
+
+=== FILE: src/canvas/layout/__tests__/canvasBounds.test.ts ===
+import { describe, expect, it } from "vitest";
+
+import {
+  boundsToRect,
+  calculateCanvasBounds,
+  clampRectToBounds,
+  computePanelRect,
+  isRectOutOfBounds,
+  type PanelInstance,
+} from "../canvasBounds";
+
+const CONTAINER = { width: 1200, height: 800 };
+
+function panel(
+  overrides: Partial<PanelInstance> & Pick<PanelInstance, "id" | "side">,
+): PanelInstance {
+  return {
+    anchor: "stretch",
+    open: false,
+    size: { width: 0, height: 0 },
+    ...overrides,
+  };
+}
+
+describe("calculateCanvasBounds", () => {
+  it("returns the full container when no panels are open", () => {
+    const bounds = calculateCanvasBounds(CONTAINER, []);
+
+    expect(bounds).toEqual({
+      top: 0,
+      left: 0,
+      right: 1200,
+      bottom: 800,
+      width: 1200,
+      height: 800,
+    });
+  });
+
+  it("shrinks the right edge for an open stretch panel docked right", () => {
+    const inspector = panel({
+      id: "inspector",
+      side: "right",
+      open: true,
+      size: { width: 320, height: 0 },
+    });
+
+    const bounds = calculateCanvasBounds(CONTAINER, [inspector]);
+
+    expect(bounds.right).toBe(1200 - 320);
+    expect(bounds.width).toBe(1200 - 320);
+    expect(bounds.height).toBe(800);
+  });
+
+  it("shrinks the bottom edge for an open stretch panel docked bottom", () => {
+    const preview = panel({
+      id: "data-preview",
+      side: "bottom",
+      open: true,
+      size: { width: 0, height: 240 },
+    });
+
+    const bounds = calculateCanvasBounds(CONTAINER, [preview]);
+
+    expect(bounds.bottom).toBe(800 - 240);
+    expect(bounds.height).toBe(800 - 240);
+  });
+
+  it("changes when a panel's open state flips — the whole point of the reactive bounds", () => {
+    const inspectorClosed = panel({
+      id: "inspector",
+      side: "right",
+      open: false,
+      size: { width: 320, height: 0 },
+    });
+
+    const inspectorOpen = { ...inspectorClosed, open: true };
+
+    const closedBounds = calculateCanvasBounds(CONTAINER, [inspectorClosed]);
+    const openBounds = calculateCanvasBounds(CONTAINER, [inspectorOpen]);
+
+    expect(closedBounds).not.toEqual(openBounds);
+    expect(closedBounds.width).toBe(1200);
+    expect(openBounds.width).toBe(1200 - 320);
+  });
+
+  it("ignores 'center' anchored panels — they never shrink the outer bounds", () => {
+    const palette = panel({
+      id: "tool-palette",
+      side: "top",
+      anchor: "center",
+      open: true,
+      size: { width: 400, height: 56 },
+    });
+
+    const bounds = calculateCanvasBounds(CONTAINER, [palette]);
+
+    expect(bounds).toEqual({
+      top: 0,
+      left: 0,
+      right: 1200,
+      bottom: 800,
+      width: 1200,
+      height: 800,
+    });
+  });
+
+  it("stacks multiple open stretch panels on different sides", () => {
+    const inspector = panel({
+      id: "inspector",
+      side: "right",
+      open: true,
+      size: { width: 320, height: 0 },
+    });
+
+    const preview = panel({
+      id: "data-preview",
+      side: "bottom",
+      open: true,
+      size: { width: 0, height: 240 },
+    });
+
+    const bounds = calculateCanvasBounds(CONTAINER, [inspector, preview]);
+
+    expect(bounds).toEqual({
+      top: 0,
+      left: 0,
+      right: 880,
+      bottom: 560,
+      width: 880,
+      height: 560,
+    });
+  });
+
+  it("never produces negative width/height when a panel is larger than the container", () => {
+    const oversized = panel({
+      id: "inspector",
+      side: "right",
+      open: true,
+      size: { width: 5000, height: 0 },
+    });
+
+    const bounds = calculateCanvasBounds(CONTAINER, [oversized]);
+
+    expect(bounds.width).toBe(0);
+    expect(bounds.right).toBe(bounds.left);
+  });
+});
+
+describe("boundsToRect", () => {
+  it("maps top/left/right/bottom into an x/y/width/height rect", () => {
+    const bounds = calculateCanvasBounds(CONTAINER, [
+      panel({ id: "inspector", side: "right", open: true, size: { width: 300, height: 0 } }),
+    ]);
+
+    expect(boundsToRect(bounds)).toEqual({ x: 0, y: 0, width: 900, height: 800 });
+  });
+});
+
+describe("computePanelRect", () => {
+  it("spans the full width for a stretch panel docked bottom", () => {
+    const rect = computePanelRect(CONTAINER, {
+      side: "bottom",
+      anchor: "stretch",
+      size: { width: 0, height: 240 },
+    });
+
+    expect(rect).toEqual({ x: 0, y: 560, width: 1200, height: 240 });
+  });
+
+  it("centers a 'center' anchored panel along its docked side", () => {
+    const rect = computePanelRect(CONTAINER, {
+      side: "top",
+      anchor: "center",
+      size: { width: 400, height: 56 },
+    });
+
+    expect(rect).toEqual({ x: 400, y: 0, width: 400, height: 56 });
+  });
+});
+
+describe("clampRectToBounds / isRectOutOfBounds", () => {
+  const bounds = calculateCanvasBounds(CONTAINER, [
+    panel({ id: "inspector", side: "right", open: true, size: { width: 300, height: 0 } }),
+  ]);
+
+  it("flags a card that now sits under the newly-opened panel as out of bounds", () => {
+    const card = { x: 950, y: 100, width: 128, height: 128 };
+    expect(isRectOutOfBounds(card, bounds)).toBe(true);
+  });
+
+  it("pulls an out-of-bounds card back inside without resizing it", () => {
+    const card = { x: 950, y: 100, width: 128, height: 128 };
+    const clamped = clampRectToBounds(card, bounds);
+
+    expect(clamped.x + card.width).toBeLessThanOrEqual(bounds.right);
+    expect(clamped.x).toBeGreaterThanOrEqual(bounds.left);
+  });
+
+  it("leaves an in-bounds card untouched", () => {
+    const card = { x: 40, y: 40, width: 128, height: 128 };
+    expect(isRectOutOfBounds(card, bounds)).toBe(false);
+    expect(clampRectToBounds(card, bounds)).toEqual({ x: 40, y: 40 });
+  });
+});
+
+
+=== FILE: src/canvas/layout/__tests__/dropZones.test.ts ===
+import { describe, expect, it } from "vitest";
+
+import type { PanelInstance } from "../canvasBounds";
+import { calculateDropZones, isPointInRect, isValidDropPoint } from "../dropZones";
+
+const CONTAINER = { width: 1200, height: 800 };
+
+function panel(
+  overrides: Partial<PanelInstance> & Pick<PanelInstance, "id" | "side">,
+): PanelInstance {
+  return {
+    anchor: "stretch",
+    open: false,
+    size: { width: 0, height: 0 },
+    ...overrides,
+  };
+}
+
+describe("calculateDropZones", () => {
+  it("has no obstacles and full bounds when every panel is closed", () => {
+    const palette = panel({
+      id: "tool-palette",
+      side: "top",
+      anchor: "center",
+      open: false,
+      size: { width: 400, height: 56 },
+    });
+
+    const zones = calculateDropZones(CONTAINER, [palette]);
+
+    expect(zones.obstacles).toHaveLength(0);
+    expect(zones.bounds.width).toBe(1200);
+    expect(zones.bounds.height).toBe(800);
+  });
+
+  it("adds the palette's real bounding box as an obstacle when open, without shrinking bounds", () => {
+    const palette = panel({
+      id: "tool-palette",
+      side: "top",
+      anchor: "center",
+      open: true,
+      size: { width: 400, height: 56 },
+    });
+
+    const zones = calculateDropZones(CONTAINER, [palette]);
+
+    // Bug 1.2: la palette non deve più bloccare l'intera fascia superiore.
+    expect(zones.bounds).toEqual({
+      top: 0,
+      left: 0,
+      right: 1200,
+      bottom: 800,
+      width: 1200,
+      height: 800,
+    });
+    expect(zones.obstacles).toEqual([{ x: 400, y: 0, width: 400, height: 56 }]);
+  });
+
+  it("carves out an obstacle per open 'center' panel, ignoring closed ones", () => {
+    const open = panel({
+      id: "tool-palette",
+      side: "left",
+      anchor: "center",
+      open: true,
+      size: { width: 60, height: 300 },
+    });
+    const closed = panel({
+      id: "other",
+      side: "right",
+      anchor: "center",
+      open: false,
+      size: { width: 60, height: 300 },
+    });
+
+    const zones = calculateDropZones(CONTAINER, [open, closed]);
+
+    expect(zones.obstacles).toHaveLength(1);
+  });
+
+  it("recomputes both bounds and obstacles when the panel configuration changes", () => {
+    const inspector = panel({
+      id: "inspector",
+      side: "right",
+      anchor: "stretch",
+      open: true,
+      size: { width: 320, height: 0 },
+    });
+    const palette = panel({
+      id: "tool-palette",
+      side: "top",
+      anchor: "center",
+      open: true,
+      size: { width: 400, height: 56 },
+    });
+
+    const before = calculateDropZones(CONTAINER, [palette]);
+    const after = calculateDropZones(CONTAINER, [palette, inspector]);
+
+    expect(before.bounds.width).toBe(1200);
+    expect(after.bounds.width).toBe(1200 - 320);
+    // La palette resta un ostacolo identico: l'inspector non la sposta.
+    expect(after.obstacles).toEqual(before.obstacles);
+  });
+});
+
+describe("isPointInRect", () => {
+  it("treats the rect edges as inclusive", () => {
+    const rect = { x: 10, y: 10, width: 100, height: 50 };
+    expect(isPointInRect({ x: 10, y: 10 }, rect)).toBe(true);
+    expect(isPointInRect({ x: 110, y: 60 }, rect)).toBe(true);
+    expect(isPointInRect({ x: 111, y: 60 }, rect)).toBe(false);
+  });
+});
+
+describe("isValidDropPoint", () => {
+  const palette = panel({
+    id: "tool-palette",
+    side: "top",
+    anchor: "center",
+    open: true,
+    size: { width: 400, height: 56 },
+  });
+
+  const inspector = panel({
+    id: "inspector",
+    side: "right",
+    anchor: "stretch",
+    open: true,
+    size: { width: 320, height: 0 },
+  });
+
+  const zones = calculateDropZones(CONTAINER, [palette, inspector]);
+
+  it("rejects a drop inside the open palette's bounding box", () => {
+    expect(isValidDropPoint({ x: 600, y: 20 }, zones)).toBe(false);
+  });
+
+  it("accepts a drop next to the palette, within canvas bounds", () => {
+    expect(isValidDropPoint({ x: 100, y: 20 }, zones)).toBe(true);
+  });
+
+  it("rejects a drop under the reserved inspector strip (outside bounds)", () => {
+    expect(isValidDropPoint({ x: 950, y: 400 }, zones)).toBe(false);
+  });
+
+  it("accepts a drop in open canvas space away from every panel", () => {
+    expect(isValidDropPoint({ x: 100, y: 400 }, zones)).toBe(true);
+  });
+});
+
+
+=== FILE: src/canvas/layout/__tests__/panelRegistry.test.ts ===
+import { describe, expect, it } from "vitest";
+
+import { getPanelDefinition, isRegisteredPanel, PANEL_DEFINITIONS } from "../panelRegistry";
+import { canvasReducer, createInitialCanvasState, toPanelInstances } from "../../store/canvasStore";
+
+describe("PANEL_DEFINITIONS", () => {
+  it("has a unique id for every panel", () => {
+    const ids = PANEL_DEFINITIONS.map((panel) => panel.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("declares the three panels known to the ETL workspace today", () => {
+    expect(PANEL_DEFINITIONS.map((p) => p.id).sort()).toEqual([
+      "data-preview",
+      "inspector",
+      "tool-palette",
+    ]);
+  });
+
+  it("marks the tool palette as 'center' anchored and the others as 'stretch'", () => {
+    expect(getPanelDefinition("tool-palette")?.anchor).toBe("center");
+    expect(getPanelDefinition("inspector")?.anchor).toBe("stretch");
+    expect(getPanelDefinition("data-preview")?.anchor).toBe("stretch");
+  });
+});
+
+describe("getPanelDefinition / isRegisteredPanel", () => {
+  it("finds a registered panel by id", () => {
+    expect(getPanelDefinition("inspector")).toBeDefined();
+    expect(isRegisteredPanel("inspector")).toBe(true);
+  });
+
+  it("returns undefined/false for an unknown id", () => {
+    expect(getPanelDefinition("not-a-panel")).toBeUndefined();
+    expect(isRegisteredPanel("not-a-panel")).toBe(false);
+  });
+});
+
+describe("registry ↔ store: toPanelInstances reflects real state", () => {
+  it("starts every registered panel closed", () => {
+    const initial = createInitialCanvasState();
+    const instances = toPanelInstances(initial);
+
+    expect(instances).toHaveLength(PANEL_DEFINITIONS.length);
+    expect(instances.every((instance) => instance.open === false)).toBe(true);
+  });
+
+  it("reflects a PANEL_OPENED action for exactly the targeted panel", () => {
+    const initial = createInitialCanvasState();
+    const next = canvasReducer(initial, { type: "PANEL_OPENED", id: "inspector" });
+
+    const instances = toPanelInstances(next);
+    const inspector = instances.find((instance) => instance.id === "inspector");
+    const preview = instances.find((instance) => instance.id === "data-preview");
+
+    expect(inspector?.open).toBe(true);
+    expect(preview?.open).toBe(false);
+  });
+
+  it("reflects a PANEL_RESIZED action's measured size", () => {
+    const initial = createInitialCanvasState();
+    const next = canvasReducer(initial, {
+      type: "PANEL_RESIZED",
+      id: "tool-palette",
+      size: { width: 420, height: 60 },
+    });
+
+    const instances = toPanelInstances(next);
+    const palette = instances.find((instance) => instance.id === "tool-palette");
+
+    expect(palette?.size).toEqual({ width: 420, height: 60 });
+  });
+
+  it("ignores an action targeting an id absent from the registry", () => {
+    const initial = createInitialCanvasState();
+    const next = canvasReducer(initial, { type: "PANEL_OPENED", id: "not-a-panel" });
+
+    expect(next).toEqual(initial);
+  });
+
+  it("PANEL_TOGGLED flips only the current open state", () => {
+    const initial = createInitialCanvasState();
+    const opened = canvasReducer(initial, { type: "PANEL_TOGGLED", id: "data-preview" });
+    const closedAgain = canvasReducer(opened, { type: "PANEL_TOGGLED", id: "data-preview" });
+
+    expect(toPanelInstances(opened).find((p) => p.id === "data-preview")?.open).toBe(true);
+    expect(toPanelInstances(closedAgain).find((p) => p.id === "data-preview")?.open).toBe(false);
+  });
+});
+
+
+=== FILE: src/canvas/layout/canvasBounds.ts ===
+/**
+ * Canvas Edge System — geometria pura, nessuna dipendenza da React o dal
+ * resto della repo: calcola quanto spazio il canvas ha davvero a
+ * disposizione una volta sottratti i pannelli ausiliari agganciati ai
+ * suoi lati. Nessuno stato qui dentro: le funzioni sono pure, quindi
+ * facilmente testabili e riutilizzabili sia lato hook (useCanvasBounds)
+ * sia lato test.
+ */
+
+export type Point = {
+  x: number;
+  y: number;
+};
+
+export type Rect = Point & {
+  width: number;
+  height: number;
+};
+
+export type PanelSide = "top" | "right" | "bottom" | "left";
+
+/**
+ * "stretch": il pannello occupa l'intera striscia lungo il proprio lato
+ * (es. Inspector, Data Preview) — quando è aperto, riduce lo spazio
+ * disponibile del canvas su quel lato.
+ *
+ * "center": il pannello galleggia centrato sul proprio lato (es. Tool
+ * Palette) — NON riduce lo spazio disponibile del canvas (le card
+ * possono stare sopra/sotto/accanto ad esso), ma il suo bounding box
+ * reale va comunque escluso dalle drop zone (vedi dropZones.ts).
+ */
+export type PanelAnchor = "stretch" | "center";
+
+export type PanelSize = {
+  width: number;
+  height: number;
+};
+
+/** Stato "live" di un pannello: definizione + stato runtime, così come lo consuma calculateCanvasBounds. */
+export type PanelInstance = {
+  id: string;
+  side: PanelSide;
+  anchor: PanelAnchor;
+  open: boolean;
+  size: PanelSize;
+};
+
+export type CanvasContainerSize = {
+  width: number;
+  height: number;
+};
+
+export type CanvasBounds = {
+  top: number;
+  left: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
+
+/**
+ * Il rettangolo effettivamente disponibile per il canvas, una volta
+ * sottratti tutti i pannelli "stretch" attualmente aperti. I pannelli
+ * "center" (palette) non alterano questo rettangolo: la loro presenza è
+ * gestita come "buco" dalle drop zone (dropZones.ts), non come riduzione
+ * del perimetro — perché lo spazio accanto a un pannello centrato resta
+ * usabile.
+ *
+ * Pura funzione di (container, panels): nessun accesso al DOM. Va
+ * richiamata ogni volta che container o panels cambiano — vedi
+ * useCanvasBounds per il lato reattivo.
+ */
+export function calculateCanvasBounds(
+  container: CanvasContainerSize,
+  panels: readonly PanelInstance[],
+): CanvasBounds {
+  let top = 0;
+  let left = 0;
+  let right = Math.max(0, container.width);
+  let bottom = Math.max(0, container.height);
+
+  for (const panel of panels) {
+    if (!panel.open || panel.anchor !== "stretch") {
+      continue;
+    }
+
+    switch (panel.side) {
+      case "top":
+        top = Math.min(bottom, top + panel.size.height);
+        break;
+
+      case "bottom":
+        bottom = Math.max(top, bottom - panel.size.height);
+        break;
+
+      case "left":
+        left = Math.min(right, left + panel.size.width);
+        break;
+
+      case "right":
+        right = Math.max(left, right - panel.size.width);
+        break;
+    }
+  }
+
+  return {
+    top,
+    left,
+    right,
+    bottom,
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top),
+  };
+}
+
+export function boundsToRect(bounds: CanvasBounds): Rect {
+  return {
+    x: bounds.left,
+    y: bounds.top,
+    width: bounds.width,
+    height: bounds.height,
+  };
+}
+
+/**
+ * Posizione/dimensione reale di un pannello dentro `container`, in base
+ * al proprio lato e ancoraggio. Un pannello "stretch" copre l'intera
+ * striscia del lato; un pannello "center" è centrato sull'asse
+ * trasversale del lato (stessa regola già usata per la Tool Palette in
+ * workflow-canvas.tsx, qui generalizzata a qualunque pannello del
+ * registry).
+ */
+export function computePanelRect(
+  container: CanvasContainerSize,
+  panel: Pick<PanelInstance, "side" | "anchor" | "size">,
+): Rect {
+  const { side, anchor, size } = panel;
+
+  switch (side) {
+    case "top":
+      return anchor === "stretch"
+        ? { x: 0, y: 0, width: container.width, height: size.height }
+        : {
+            x: (container.width - size.width) / 2,
+            y: 0,
+            width: size.width,
+            height: size.height,
+          };
+
+    case "bottom":
+      return anchor === "stretch"
+        ? {
+            x: 0,
+            y: Math.max(0, container.height - size.height),
+            width: container.width,
+            height: size.height,
+          }
+        : {
+            x: (container.width - size.width) / 2,
+            y: Math.max(0, container.height - size.height),
+            width: size.width,
+            height: size.height,
+          };
+
+    case "left":
+      return anchor === "stretch"
+        ? { x: 0, y: 0, width: size.width, height: container.height }
+        : {
+            x: 0,
+            y: (container.height - size.height) / 2,
+            width: size.width,
+            height: size.height,
+          };
+
+    case "right":
+      return anchor === "stretch"
+        ? {
+            x: Math.max(0, container.width - size.width),
+            y: 0,
+            width: size.width,
+            height: container.height,
+          }
+        : {
+            x: Math.max(0, container.width - size.width),
+            y: (container.height - size.height) / 2,
+            width: size.width,
+            height: size.height,
+          };
+  }
+}
+
+/**
+ * Riporta `rect` dentro `bounds`, senza alterarne le dimensioni.
+ * Usata dall'handler di "canvas bounds changed" (PARTE 2.2) per
+ * ricollocare card che sconfinano quando i pannelli cambiano stato —
+ * la transizione fluida è responsabilità del chiamante (CSS transition
+ * sulla posizione), qui c'è solo il calcolo del punto sicuro.
+ */
+export function clampRectToBounds(rect: Rect, bounds: CanvasBounds): Point {
+  const maxX = Math.max(bounds.left, bounds.right - rect.width);
+  const maxY = Math.max(bounds.top, bounds.bottom - rect.height);
+
+  return {
+    x: Math.min(Math.max(rect.x, bounds.left), maxX),
+    y: Math.min(Math.max(rect.y, bounds.top), maxY),
+  };
+}
+
+/** `rect` sconfina rispetto a `bounds`? Usata per decidere se serve riposizionare. */
+export function isRectOutOfBounds(rect: Rect, bounds: CanvasBounds): boolean {
+  return (
+    rect.x < bounds.left ||
+    rect.y < bounds.top ||
+    rect.x + rect.width > bounds.right ||
+    rect.y + rect.height > bounds.bottom
+  );
+}
+
+
+=== FILE: src/canvas/layout/dropZones.ts ===
+import type { CanvasBounds, CanvasContainerSize, PanelInstance, Point, Rect } from "./canvasBounds";
+import { calculateCanvasBounds, computePanelRect } from "./canvasBounds";
+
+/**
+ * Zona di drop valida per il canvas: il rettangolo `bounds` (già al netto
+ * dei pannelli "stretch", vedi canvasBounds.ts) MENO i rettangoli
+ * `obstacles` — il bounding box reale dei pannelli "center" (Tool
+ * Palette) attualmente aperti. Un punto è un drop valido se cade dentro
+ * `bounds` e fuori da ogni obstacle.
+ */
+export type DropZoneMap = {
+  bounds: CanvasBounds;
+  obstacles: Rect[];
+};
+
+export function calculateDropZones(
+  container: CanvasContainerSize,
+  panels: readonly PanelInstance[],
+): DropZoneMap {
+  const bounds = calculateCanvasBounds(container, panels);
+
+  const obstacles = panels
+    .filter((panel) => panel.open && panel.anchor === "center")
+    .map((panel) => computePanelRect(container, panel));
+
+  return { bounds, obstacles };
+}
+
+export function isPointInRect(point: Point, rect: Rect): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height
+  );
+}
+
+function isPointInBounds(point: Point, bounds: CanvasBounds): boolean {
+  return (
+    point.x >= bounds.left &&
+    point.x <= bounds.right &&
+    point.y >= bounds.top &&
+    point.y <= bounds.bottom
+  );
+}
+
+/**
+ * Il punto di drop (3.1 nel contesto strategico) è valido se cade dentro
+ * i bounds reali del canvas e non dentro il bounding box di un pannello
+ * "center" aperto (es. la Tool Palette).
+ */
+export function isValidDropPoint(point: Point, dropZones: DropZoneMap): boolean {
+  if (!isPointInBounds(point, dropZones.bounds)) {
+    return false;
+  }
+
+  return !dropZones.obstacles.some((obstacle) => isPointInRect(point, obstacle));
+}
+
+
+=== FILE: src/canvas/layout/panelRegistry.ts ===
+import type { PanelAnchor, PanelSide, PanelSize } from "./canvasBounds";
+
+/**
+ * Registro dichiarativo dei pannelli ausiliari che possono ridurre lo
+ * spazio del canvas. È l'unico posto in cui un nuovo pannello va
+ * annunciato: aggiungere un pannello significa aggiungere una riga qui,
+ * non toccare la logica di calcolo bounds/drop-zone.
+ *
+ * `closedSize` è quasi sempre zero (il pannello scompare del tutto da
+ * chiuso), ma è esplicito nel tipo per supportare — senza cambiare la
+ * shape — un futuro pannello che resta parzialmente visibile da chiuso
+ * (es. una linguetta).
+ */
+export type PanelDefinition = {
+  id: string;
+  label: string;
+  side: PanelSide;
+  anchor: PanelAnchor;
+  closedSize: PanelSize;
+};
+
+const ZERO_SIZE: PanelSize = { width: 0, height: 0 };
+
+/**
+ * I tre pannelli ausiliari oggi presenti nel workspace ETL (bug 1.1 nel
+ * contesto strategico): Tool Palette, Inspector, Data Preview. Vedi
+ * README.md di questa cartella per la mappatura side/anchor di ciascuno
+ * e per come collegarne uno nuovo.
+ */
+export const PANEL_DEFINITIONS: readonly PanelDefinition[] = [
+  {
+    id: "tool-palette",
+    label: "Tool Palette",
+    side: "top",
+    anchor: "center",
+    closedSize: ZERO_SIZE,
+  },
+  {
+    id: "inspector",
+    label: "Inspector",
+    side: "right",
+    anchor: "stretch",
+    closedSize: ZERO_SIZE,
+  },
+  {
+    id: "data-preview",
+    label: "Data Preview",
+    side: "bottom",
+    anchor: "stretch",
+    closedSize: ZERO_SIZE,
+  },
+];
+
+export function getPanelDefinition(id: string): PanelDefinition | undefined {
+  return PANEL_DEFINITIONS.find((panel) => panel.id === id);
+}
+
+export function isRegisteredPanel(id: string): boolean {
+  return getPanelDefinition(id) !== undefined;
+}
+
+
+=== FILE: src/canvas/store/canvasStore.tsx ===
+import { createContext, useContext, useMemo, useReducer } from "react";
+
+import type { PanelInstance, PanelSize } from "../layout/canvasBounds";
+import { PANEL_DEFINITIONS } from "../layout/panelRegistry";
+
+/**
+ * Stato dei pannelli aperti/chiusi: la sorgente di verità che, insieme
+ * alla dimensione del contenitore canvas, alimenta
+ * calculateCanvasBounds/calculateDropZones (src/canvas/layout).
+ *
+ * Context + useReducer invece di Zustand/Redux: il resto della repo
+ * gestisce già stato condiviso così (src/lib/theme.tsx,
+ * src/lib/solutions-store.tsx) e il caso d'uso — tre pannelli, poche
+ * azioni — non giustifica una libreria di state management in più.
+ */
+export type PanelRuntimeState = {
+  open: boolean;
+  size: PanelSize;
+};
+
+export type CanvasStoreState = {
+  panels: Record<string, PanelRuntimeState>;
+};
+
+export type CanvasAction =
+  | { type: "PANEL_OPENED"; id: string }
+  | { type: "PANEL_CLOSED"; id: string }
+  | { type: "PANEL_TOGGLED"; id: string }
+  | { type: "PANEL_RESIZED"; id: string; size: PanelSize };
+
+export function createInitialCanvasState(): CanvasStoreState {
+  const panels: Record<string, PanelRuntimeState> = {};
+
+  for (const def of PANEL_DEFINITIONS) {
+    panels[def.id] = { open: false, size: { ...def.closedSize } };
+  }
+
+  return { panels };
+}
+
+function patchPanel(
+  state: CanvasStoreState,
+  id: string,
+  patch: Partial<PanelRuntimeState>,
+): CanvasStoreState {
+  const current = state.panels[id];
+
+  if (!current) {
+    // Pannello non registrato in panelRegistry.ts: azione ignorata invece
+    // di introdurre silenziosamente una entry "orfana" nello stato.
+    return state;
+  }
+
+  return {
+    panels: {
+      ...state.panels,
+      [id]: { ...current, ...patch },
+    },
+  };
+}
+
+/** Pura, senza React: testata direttamente in canvasBounds.test.ts / panelRegistry.test.ts. */
+export function canvasReducer(state: CanvasStoreState, action: CanvasAction): CanvasStoreState {
+  switch (action.type) {
+    case "PANEL_OPENED":
+      return patchPanel(state, action.id, { open: true });
+
+    case "PANEL_CLOSED":
+      return patchPanel(state, action.id, { open: false });
+
+    case "PANEL_TOGGLED": {
+      const current = state.panels[action.id];
+      return current ? patchPanel(state, action.id, { open: !current.open }) : state;
+    }
+
+    case "PANEL_RESIZED":
+      return patchPanel(state, action.id, { size: action.size });
+
+    default:
+      return state;
+  }
+}
+
+/** Converte lo stato runtime + il registry statico in ciò che consuma calculateCanvasBounds/calculateDropZones. */
+export function toPanelInstances(state: CanvasStoreState): PanelInstance[] {
+  return PANEL_DEFINITIONS.map((def) => {
+    const runtime = state.panels[def.id];
+
+    return {
+      id: def.id,
+      side: def.side,
+      anchor: def.anchor,
+      open: runtime?.open ?? false,
+      size: runtime?.size ?? def.closedSize,
+    };
+  });
+}
+
+type CanvasStoreContextValue = {
+  state: CanvasStoreState;
+  dispatch: React.Dispatch<CanvasAction>;
+};
+
+const CanvasStoreContext = createContext<CanvasStoreContextValue | null>(null);
+
+export function CanvasStoreProvider({ children }: { children: React.ReactNode }) {
+  const [state, dispatch] = useReducer(canvasReducer, undefined, createInitialCanvasState);
+
+  const value = useMemo(() => ({ state, dispatch }), [state]);
+
+  return <CanvasStoreContext.Provider value={value}>{children}</CanvasStoreContext.Provider>;
+}
+
+export function useCanvasStore(): CanvasStoreContextValue {
+  const ctx = useContext(CanvasStoreContext);
+
+  if (!ctx) {
+    throw new Error("useCanvasStore must be used inside CanvasStoreProvider");
+  }
+
+  return ctx;
+}
 
 
 === FILE: src/components/isa/etl/data-preview.tsx ===
@@ -1804,6 +3279,14 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  PRESS_SCALE,
+  PRESS_TRANSITION,
+  SPRING_CLOSE_DURATION_MS,
+  SPRING_CLOSE_TRANSITION,
+  SPRING_ORIGIN_SCALE,
+  SPRING_OPEN_TRANSITION,
+} from "@/lib/etl-motion";
 
 type MenuSide =
   | "top"
@@ -1834,6 +3317,7 @@ export function IsaMenu({
   placement = "bottom",
   variant = "chip",
   width = MENU_WIDTH,
+  onOpenChange,
 }: {
   label: string;
   children: (
@@ -1849,9 +3333,34 @@ export function IsaMenu({
   variant?: "chip" | "bare";
   /** Larghezza del popover in px (default MENU_WIDTH) — es. per i pannelli impostazioni della fase 4, più larghi di un menu azioni. */
   width?: number | undefined;
+  /**
+   * Notifica il chiamante quando il menu si apre/chiude — usato da chi
+   * ospita il trigger (es. una card nodo) per applicare il proprio
+   * feedback "pressed" all'intero contenitore, non solo al bottone
+   * icona (punto 2.1 del redesign iOS).
+   */
+  onOpenChange?: (
+    open: boolean,
+  ) => void;
 }) {
   const [open, setOpen] =
     useState(false);
+
+  /*
+   * `rendered` tiene il popover nel DOM anche durante la chiusura, per
+   * poter animare il rientro verso il trigger invece di sparire di
+   * scatto; `visible` guida la transizione scale/opacity vera e propria
+   * e viene alzata un frame dopo il mount (serve un primo commit con lo
+   * stato "piccolo/trasparente" prima di animare verso quello finale).
+   */
+  const [rendered, setRendered] =
+    useState(false);
+
+  const [visible, setVisible] =
+    useState(false);
+
+  const [side, setSide] =
+    useState<MenuSide>("bottom");
 
   const [position, setPosition] =
     useState<MenuPosition | null>(
@@ -1867,19 +3376,67 @@ export function IsaMenu({
   const menuRef =
     useRef<HTMLDivElement>(null);
 
+  const closeTimeoutRef =
+    useRef<number | null>(null);
+
   const constrained =
     Boolean(
       boundaryRef &&
         placement === "auto",
     );
 
+  const clearCloseTimeout =
+    useCallback(() => {
+      if (
+        closeTimeoutRef.current !==
+        null
+      ) {
+        window.clearTimeout(
+          closeTimeoutRef.current,
+        );
+        closeTimeoutRef.current =
+          null;
+      }
+    }, []);
+
   const close = useCallback(
     () => {
       setOpen(false);
-      setPosition(null);
+      onOpenChange?.(false);
     },
-    [],
+    [onOpenChange],
   );
+
+  /*
+   * Sequenza di chiusura: appena `open` torna false il popover resta
+   * montato (`rendered`) ma `visible` si abbassa, innescando la
+   * transizione di rientro verso il trigger; solo al termine di quella
+   * transizione lo smontiamo davvero e liberiamo `position`. Se il
+   * trigger viene ripremuto durante il rientro, `clearCloseTimeout` (nel
+   * toggle) annulla lo smontaggio pendente.
+   */
+  useEffect(() => {
+    if (open || !rendered) {
+      return;
+    }
+
+    setVisible(false);
+    clearCloseTimeout();
+
+    closeTimeoutRef.current =
+      window.setTimeout(() => {
+        setRendered(false);
+        setPosition(null);
+        closeTimeoutRef.current =
+          null;
+      }, SPRING_CLOSE_DURATION_MS);
+
+    return clearCloseTimeout;
+  }, [
+    open,
+    rendered,
+    clearCloseTimeout,
+  ]);
 
   const calculatePosition =
     useCallback(() => {
@@ -3087,6 +4644,37 @@ export const EDGE_AUTO_MOVE_TRANSITION = transitionOf([
   "stroke-width",
   "stroke-opacity",
 ]);
+
+/*
+ * Registro "iOS" (Parte 2 del redesign): apertura di un elemento che si
+ * dispiega da un punto d'origine — menu contestuali, box di gruppo — con
+ * una molla che supera leggermente il valore finale prima di assestarsi.
+ * Distinto da AUTO_MOVE_EASING (lineare, per i riposizionamenti indotti
+ * delle card): quello resta invariato, questo si usa solo per le nuove
+ * animazioni "a comparsa" introdotte qui.
+ */
+export const SPRING_EASE = "cubic-bezier(0.34, 1.56, 0.64, 1)";
+
+/** Durata di apertura in stile iOS, in ms. Range indicato: 300-350ms. */
+export const SPRING_OPEN_DURATION_MS = 320;
+
+/** Scala di partenza di un elemento che si dispiega (menu, box di gruppo). */
+export const SPRING_ORIGIN_SCALE = 0.15;
+
+/** Transizione di apertura (scale + opacity) per il registro "iOS". */
+export const SPRING_OPEN_TRANSITION = `transform ${SPRING_OPEN_DURATION_MS}ms ${SPRING_EASE}, opacity ${SPRING_OPEN_DURATION_MS}ms ${SPRING_EASE}`;
+
+/*
+ * Chiusura: nessun overshoot (una molla che "rimbalza" mentre un elemento
+ * si ritira dà una sensazione innaturale) — solo un rientro rapido verso
+ * il punto di origine, più breve dell'apertura.
+ */
+export const SPRING_CLOSE_DURATION_MS = 160;
+export const SPRING_CLOSE_TRANSITION = `transform ${SPRING_CLOSE_DURATION_MS}ms ease-in, opacity ${SPRING_CLOSE_DURATION_MS}ms ease-in`;
+
+/** Scala "pressed" applicata all'elemento che ancora un menu/box mentre è aperto. */
+export const PRESS_SCALE = 0.94;
+export const PRESS_TRANSITION = "transform 150ms ease-out";
 
 
 === FILE: src/lib/etl-node-config.ts ===
