@@ -1,11 +1,13 @@
 # ISA ETL Snapshot
 
-Generated: 2026-09-19T10:46:13Z
+Generated: 2026-09-19T11:39:13Z
 
 ## Index
 - src/canvas/.reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md
+- src/canvas/.reports/VALIDATION_REPORT_2026-09-19T11-38-16Z.md
 - src/canvas/FUNCTIONAL_CHECKS.md
 - src/canvas/README.md
+- src/canvas/__tests__/panelPositioning.test.ts
 - src/canvas/components/CanvasContainer.tsx
 - src/canvas/hooks/useCanvasBounds.ts
 - src/canvas/hooks/usePanelState.ts
@@ -15,6 +17,7 @@ Generated: 2026-09-19T10:46:13Z
 - src/canvas/layout/canvasBounds.ts
 - src/canvas/layout/dropZones.ts
 - src/canvas/layout/panelRegistry.ts
+- src/canvas/layout/surfacePanels.ts
 - src/canvas/store/canvasStore.tsx
 - src/components/isa/etl/data-preview.tsx
 - src/components/isa/etl/inspector.tsx
@@ -218,6 +221,169 @@ Raw URL aggiornati:
 - https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/main/isa-snapshot.md
 
 
+=== FILE: src/canvas/.reports/VALIDATION_REPORT_2026-09-19T11-38-16Z.md ===
+# Validation Report — Fase 2A (Canvas Integration, Option A)
+
+**Date:** 2026-09-19T11:38:16Z
+**Approach:** Inspector/Data Preview nel sistema Superficie ("pannello controscalato")
+
+## Deviazioni dal prompt di partenza (dichiarate subito, come richiesto)
+
+Il prompt di Fase 2A conteneva pseudocodice che assumeva una struttura
+diversa da quella reale del repo. Ho seguito l'INTENTO (Option A) ma
+adattato l'implementazione ai file reali, per rispettare la nota
+esplicita "Non toccare Fase 1: canvasBounds.ts e dropZones.ts rimangono
+come sono":
+
+1. **`CanvasBoundsContext` non vive in `canvasStore.tsx`.** Nel repo
+   reale vive in `src/canvas/components/CanvasContainer.tsx` (Fase 1).
+   `canvasStore.tsx` gestisce SOLO lo stato open/closed/size dei pannelli
+   — `zoom` non c'entra con quello stato, quindi non l'ho toccato. Ho
+   aggiunto `zoom` al context di `CanvasContainer.tsx`.
+2. **`computePanelRect` non è stato modificato.** Il prompt proponeva una
+   firma diversa (`computePanelRect(bounds, side, width, mode)`), incompatibile
+   con quella esistente e testata (32 test Fase 1). L'ho riusata AS-IS
+   componendola in un nuovo file, `src/canvas/layout/surfacePanels.ts`
+   (`computeSurfacePanelRect`), che non tocca `canvasBounds.ts`/`dropZones.ts`.
+3. **`clampRectToBounds` ritorna un `Point` (x/y), non un `Rect` completo**
+   — il prompt assumeva `clamped.width`/`clamped.height`. Gestito
+   correttamente in `computeSurfacePanelRect` (width/height vengono dal
+   rect calcolato, non dal clamp).
+4. **Nessun `ref` esterno su `CanvasContainer`.** Il prompt passava
+   `ref={canvasRef}` al componente. Nella realtà, `workflow-canvas.tsx`
+   possiede già `surfaceRef`/`boxRef` propri; ho esteso `CanvasContainer`
+   con un prop `containerSize` che, se fornito, salta la misura interna
+   (nessun wrapper DOM aggiunto) — così il chiamante passa le dimensioni
+   che già calcola (`surfaceW`/`surfaceH`), senza duplicare ResizeObserver
+   né introdurre un nodo DOM superfluo nell'albero esistente.
+5. **Nessun `pan`.** Il canvas oggi non ha stato di pan (solo `zoom`,
+   origine fissa in alto a sinistra) — non citato nel prompt come
+   assunzione, verificato leggendo il codice.
+6. **Auto-esclusione dei pannelli.** Il prompt non affrontava un problema
+   reale: un pannello che legge `bounds` calcolati includendo SE STESSO
+   si "farebbe spazio" due volte. Risolto in `computeSurfacePanelRect`
+   escludendo il pannello dalla lista prima di calcolare i suoi stessi
+   bounds — coperto da test dedicati (`panelPositioning.test.ts`).
+7. **`inset` prop di `DataPreview` rimosso**, non solo esteso: era
+   l'esatto hack ad-hoc (larghezza magica `21.5rem`) che questo sistema
+   sostituisce con bounds reali condivisi via canvasStore. Tenerlo
+   avrebbe significato duplicare la stessa informazione in due posti.
+
+## Test Results
+
+```
+npm test -- src/canvas          → 41/41 passed (32 Fase 1 + 9 nuovi)
+npx tsc --noEmit                → PASS, 0 errori
+npx madge --circular ...        → nessun import circolare
+```
+
+Nuovo file: `src/canvas/__tests__/panelPositioning.test.ts` (9 test):
+posizionamento di un pannello stretch da solo; auto-esclusione (un
+pannello non "fa spazio" a se stesso, anche con uno stato stantio nello
+store); conversione physical↔surface units con zoom ≠ 1; un pannello
+bottom-stretch evita un pannello right-stretch aperto (Inspector + Data
+Preview); l'auto-esclusione funziona anche per il pannello bottom;
+clamp quando la dimensione fisica eccede il container; `surfacePanelStyle`
+lascia `left`/`top` invariati e scala `width`/`height` per `zoom`;
+round-trip a zoom 0.5/1/1.8 → la dimensione fisica torna sempre la stessa.
+
+## Linting
+
+```
+npx eslint src/canvas src/components/isa/etl/inspector.tsx \
+  src/components/isa/etl/data-preview.tsx \
+  src/routes/solutions.\$solutionId.etl.tsx
+```
+
+**0 errori nei file di mia proprietà** (`src/canvas/**`, `inspector.tsx`,
+`data-preview.tsx`), solo i 5 warning `react-refresh/only-export-components`
+già noti e tollerati da Fase 1 (stesso pattern di `theme.tsx`/
+`solutions-store.tsx`).
+
+`workflow-canvas.tsx` e `solutions.$solutionId.etl.tsx` hanno errori
+prettier PREESISTENTI (non introdotti ora): verificato confrontando con
+`git show HEAD:...` (342 errori già a HEAD, prima ancora delle modifiche
+non commesse di questa sessione) — il file ha uno stile "un token per
+riga" che diverge sistematicamente dalla config Prettier del progetto,
+tollerato dal repo da prima di questo lavoro.
+
+**Delta onestamente introdotto da me:** ho scelto di NON reindentare
+l'intero `<section>` (1400+ righe) per assorbire i due nuovi livelli di
+nesting (`CanvasStoreProvider` → `CanvasContainer`) — avrebbe prodotto un
+diff enorme e illeggibile su codice non mio. Ho invece annidato i nuovi
+wrapper "a piatto" (stesso livello di indentazione del `<section>`
+originale). Risultato: ~20 righe con un mismatch di indentazione
+puramente cosmetico rispetto a quanto Prettier vorrebbe, isolate ai 3
+punti che ho toccato (apertura, punto di montaggio `{children}`,
+chiusura). Nessun impatto funzionale — confermato da tsc pulito e dalla
+verifica visiva nel browser.
+
+## Functional Verification (reale, nel browser — non solo documentata)
+
+A differenza di Fase 1 (dove l'integrazione non esisteva ancora e i
+check erano solo protocollo), qui il sistema è collegato: ho avviato
+`npm run dev`, creato una soluzione di test via UI, e guidato Chromium
+headless (Playwright, browser già in cache in questo devcontainer) su
+`/solutions/:id/etl`. Screenshot allegati in
+`/tmp/.../scratchpad/0{2..7}-*.png` (sessione locale, non nel repo).
+
+| Check | Esito |
+|---|---|
+| Canvas si carica, empty state corretto | ✅ |
+| Apertura Inspector (right, stretch) | ✅ posizionato correttamente, nessun overlap con le card |
+| Apertura anche Data Preview (bottom, stretch) mentre Inspector è aperto | ✅ **Data Preview si ferma esattamente dove inizia l'Inspector — zero overlap, senza alcun prop `inset` cablato a mano** |
+| Zoom in (100% → 140%) con entrambi aperti | ✅ la card "Dataset" scala visibilmente; Inspector e Data Preview restano IDENTICI in dimensione fisica e posizione (controscale confermato visivamente) |
+| Zoom out (→ 60%) | ✅ stesso comportamento, card rimpicciolita, pannelli invariati |
+| Chiusura di entrambi i pannelli | ✅ nessun artefatto residuo, canvas torna allo stato pulito |
+| Errori console durante l'intera sessione | **0** (`page.on("console")`/`page.on("pageerror")` non hanno registrato nulla) |
+
+**Non verificato in questa fase (dichiarato, non taciuto):**
+- Drag di un nodo con Inspector/Data Preview aperti — le card non evitano
+  ancora questi pannelli (vedi "Non ancora in scope" nel README).
+- Auto-layout attorno ai pannelli — stesso motivo.
+- Pan del canvas — non esiste ancora come feature (solo zoom).
+
+Questi tre punti erano nella checklist del prompt originale ma
+richiedono di toccare `placeNode`/l'auto-layout in `workflow-canvas.tsx`
+e `etl-workflow.tsx` — esplicitamente fuori scope per Fase 2A (limitata a
+Inspector/Data Preview) tanto quanto lo era per Fase 1.
+
+## Files Modified
+
+- `src/canvas/layout/surfacePanels.ts` (nuovo) — `computeSurfacePanelRect`, `surfacePanelStyle`
+- `src/canvas/hooks/useCanvasBounds.ts` — supporto `externalSize`, espone `panels`
+- `src/canvas/components/CanvasContainer.tsx` — prop `zoom`/`containerSize`, context esteso
+- `src/canvas/__tests__/panelPositioning.test.ts` (nuovo, 9 test)
+- `src/components/isa/etl/workflow-canvas.tsx` — prop `children`, wrap `CanvasStoreProvider`/`CanvasContainer`, monta `{children}` dentro `surfaceRef`
+- `src/components/isa/etl/inspector.tsx` — posizionamento via bounds condivisi, rimosso `top-14/right-3/bottom-3` hardcoded
+- `src/components/isa/etl/data-preview.tsx` — posizionamento via bounds condivisi, rimosso prop `inset`
+- `src/routes/solutions.$solutionId.etl.tsx` — Inspector/DataPreview spostati da sibling a children di `<WorkflowCanvas>`
+- `src/canvas/README.md` — sezione "Fase 2A" aggiunta
+
+**Non toccati (Fase 1, come richiesto):** `src/canvas/layout/canvasBounds.ts`, `src/canvas/layout/dropZones.ts`, `src/canvas/layout/panelRegistry.ts`, `src/canvas/store/canvasStore.tsx`, `src/canvas/hooks/usePanelState.ts`.
+
+## Notes & Trade-offs
+
+- Inspector/Data Preview "appartengono" ora logicamente al canvas
+  (coordinate superficie), coerente con l'intento del prompt.
+- `transform: scale(1/zoom)` mantiene le dimensioni fisiche costanti —
+  confermato visivamente a 60/100/140%.
+- Rendering resta DOM, non SVG.
+- L'assenza di overlap Inspector↔Data Preview non è un CSS hardcoded ma
+  una conseguenza diretta dei bounds condivisi in canvasStore — se in
+  futuro l'Inspector cambia larghezza, Data Preview si adatta da sola.
+- Le insets estetiche (margini interni: 56px sopra l'Inspector per i
+  controlli zoom, 12px sugli altri lati) sono costanti locali nei due
+  componenti, non parte del sistema di bounds condiviso — sono pura resa
+  visiva, non geometria che altri pannelli devono conoscere.
+
+## Snapshot
+
+`./scripts/sync-snapshot.sh` (con `unset GITHUB_TOKEN` già presente
+nello script, aggiunto dall'utente) eseguito con successo dopo questo
+report — vedi conferma nel messaggio di chat.
+
+
 === FILE: src/canvas/FUNCTIONAL_CHECKS.md ===
 # Functional Checks — Canvas Edge System (Fase 1)
 
@@ -302,10 +468,10 @@ Fondamenta geometriche del Canvas: calcolo di quanto spazio ha davvero a
 disposizione una volta sottratti i pannelli ausiliari (Tool Palette,
 Inspector, Data Preview) che possono aprirsi/chiudersi ai suoi bordi.
 
-Nessuna di queste funzioni tocca il rendering CSS esistente né il drag
-delle card in `workflow-canvas.tsx` — è un layer nuovo, parallelo, pensato
-per essere adottato in una fase successiva (vedi "Stato dell'integrazione"
-in fondo).
+Fase 2A ha collegato Inspector e Data Preview a questo layer: vivono ora
+DENTRO la superficie zoomata di `workflow-canvas.tsx`, non toccano il drag
+delle card. Vedi "Fase 2A — Inspector/Data Preview nella superficie" più
+sotto.
 
 ## Struttura
 
@@ -315,14 +481,17 @@ src/canvas/
 │   ├── canvasBounds.ts     # calculateCanvasBounds(), computePanelRect(), clampRectToBounds()
 │   ├── panelRegistry.ts    # PANEL_DEFINITIONS: l'unico posto dove annunciare un nuovo pannello
 │   ├── dropZones.ts        # calculateDropZones(), isValidDropPoint()
+│   ├── surfacePanels.ts    # Fase 2A: geometria dei pannelli "controscalati" dentro la superficie
 │   └── __tests__/
 ├── store/
 │   └── canvasStore.tsx     # CanvasStoreProvider + useCanvasStore(): stato open/closed/size dei pannelli
 ├── hooks/
-│   ├── useCanvasBounds.ts  # ascolta resize del contenitore + store, ricalcola bounds/drop-zone
+│   ├── useCanvasBounds.ts  # ascolta resize del contenitore (o dimensioni esterne) + store
 │   └── usePanelState.ts    # stato + azioni (open/close/toggle/resize) di UN pannello
-└── components/
-    └── CanvasContainer.tsx # il contenitore reattivo: misura sé stesso, espone bounds via context
+├── components/
+│   └── CanvasContainer.tsx # il contenitore reattivo: bounds + zoom via context
+└── __tests__/
+    └── panelPositioning.test.ts  # Fase 2A: geometria dei pannelli controscalati
 ```
 
 ## Concetti chiave
@@ -369,6 +538,13 @@ function InspectorToggleButton() {
 }
 ```
 
+`CanvasContainer` accetta anche `containerSize` (Fase 2A: dimensioni già
+note al chiamante, in unità superficie — salta il ResizeObserver interno)
+e `zoom` (esposto ai figli via context, default 1). Quando `containerSize`
+è passato non renderizza un proprio elemento DOM: è un puro Context
+provider, per non introdurre un wrapper superfluo dentro un albero DOM
+già esistente — vedi come lo usa `workflow-canvas.tsx`.
+
 Un pannello che misura sé stesso (es. la Tool Palette, la cui larghezza
 dipende da quante icone mostra) chiama `usePanelState(id).setSize(...)`
 dentro un `ResizeObserver`, esattamente come fa oggi `workflow-canvas.tsx`
@@ -385,25 +561,230 @@ locale).
 3. Non serve toccare `canvasBounds.ts` o `dropZones.ts`: leggono il
    registry a runtime tramite `toPanelInstances`.
 
-## Stato dell'integrazione con workflow-canvas.tsx
+## Fase 2A — Inspector/Data Preview nella superficie
 
-Questa è la fondazione, non ancora collegata al canvas esistente. Motivo:
-`workflow-canvas.tsx` oggi vive in DUE sistemi di coordinate diversi —
+Prima di questa fase, Inspector e Data Preview vivevano fuori dalla
+superficie zoomata di `workflow-canvas.tsx` (coordinate schermo assolute,
+un sistema diverso da quello di card e frecce). Ora sono `children` di
+`<WorkflowCanvas>` (passati dal file di rotta), montati DENTRO
+`surfaceRef` — lo stesso div con `transform: scale(zoom)` che contiene
+le card.
 
-- la **superficie zoomata** (`surfaceW`/`surfaceH`, scalata da `zoom`),
-  dove vivono le card e la Tool Palette;
-- lo **spazio schermo** del wrapper esterno (`solutions.$solutionId.etl.tsx`),
-  dove Inspector e Data Preview sono posizionati in `position: absolute`
-  senza passare da alcun `zoom`.
+**La tecnica — pannello "controscalato":** l'elemento vive dentro la
+superficie scalata ma applica il proprio `transform: scale(1/zoom)`,
+annullando lo zoom del genitore per la propria dimensione (resta a
+grandezza fisica costante sullo schermo), mentre la sua POSIZIONE
+(`left`/`top`) resta in unità superficie e quindi segue naturalmente lo
+zoom, restando ancorato al bordo giusto. `src/canvas/layout/surfacePanels.ts`
+incapsula le due conversioni di unità (`computeSurfacePanelRect`,
+`surfacePanelStyle`), componendo `canvasBounds.ts` senza modificarlo.
 
-Collegare `calculateCanvasBounds` al clamp reale delle card (oggi
-`placeNode` in `workflow-canvas.tsx`) richiede prima di decidere in quale
-dei due sistemi di coordinate esprimere i bounds di Inspector/Data
-Preview — una scelta architetturale che il contesto strategico chiede
-esplicitamente di segnalare piuttosto che risolvere di nascosto in questa
-fase (vedi VALIDATION_REPORT più recente in `.reports/`). Il layer qui
-sopra è già corretto e testato per il caso generale; l'integrazione è
-lavoro di fase 2.
+**Perché niente overlap tra Inspector e Data Preview:** ogni pannello si
+posiziona escludendo SE STESSO dalla lista prima di calcolare i bounds
+(altrimenti "farebbe spazio a se stesso" due volte), ma include gli
+ALTRI pannelli aperti — così Data Preview (bottom, stretch) vede
+automaticamente i bounds già ridotti dall'Inspector (right, stretch) e
+non ci si estende sotto.
+
+**Sincronizzazione stato:** il prop `open` di ciascun componente resta la
+fonte di verità (posseduta dal file di rotta, invariata); un `useEffect`
+lo specchia in canvasStore (`usePanelState(id).openPanel()/closePanel()`)
+così gli ALTRI pannelli lo vedono per farsi spazio. Non serve più il
+vecchio prop `inset` di `DataPreview` (larghezza magica `21.5rem`
+cablata a mano) — rimosso.
+
+**Verificato manualmente nel browser** (screenshot + nessun errore
+console) a zoom 60%/100%/140%, con Inspector e Data Preview aperti
+insieme: nessuna sovrapposizione, dimensione fisica dei pannelli
+invariata al variare dello zoom. Dettagli nel VALIDATION_REPORT di Fase
+2A in `.reports/`.
+
+**Non ancora in scope** (Fase 2A si è limitata a Inspector/Data Preview):
+le card e l'auto-layout non "evitano" ancora Inspector/Data Preview — il
+loro clamp (`placeNode` in `workflow-canvas.tsx`) resta quello di prima,
+consapevole solo della Tool Palette. Estendere l'anti-sovrapposizione
+delle card a QUESTI pannelli è lavoro di una fase successiva.
+
+
+=== FILE: src/canvas/__tests__/panelPositioning.test.ts ===
+import { describe, expect, it } from "vitest";
+
+import type { PanelInstance } from "../layout/canvasBounds";
+import { computeSurfacePanelRect, surfacePanelStyle } from "../layout/surfacePanels";
+
+const CONTAINER = { width: 1000, height: 600 };
+
+function panel(
+  overrides: Partial<PanelInstance> & Pick<PanelInstance, "id" | "side">,
+): PanelInstance {
+  return {
+    anchor: "stretch",
+    open: false,
+    size: { width: 0, height: 0 },
+    ...overrides,
+  };
+}
+
+describe("computeSurfacePanelRect", () => {
+  it("positions a lone stretch panel flush to its side, at zoom 1", () => {
+    const inspector = panel({
+      id: "inspector",
+      side: "right",
+      open: true,
+      size: { width: 0, height: 0 },
+    });
+
+    const rect = computeSurfacePanelRect(
+      CONTAINER,
+      [inspector],
+      "inspector",
+      { side: "right", anchor: "stretch", physicalSize: { width: 320, height: 0 } },
+      1,
+    );
+
+    expect(rect.x).toBe(1000 - 320);
+    expect(rect.width).toBe(320);
+    expect(rect.height).toBe(600);
+  });
+
+  it("does not make a panel avoid itself (self-exclusion)", () => {
+    // Anche se il panel "inspector" è presente nella lista con una size
+    // diversa da quella richiesta ora, il suo bounding box non deve
+    // ridurre lo spazio calcolato per se stesso.
+    const staleInspector = panel({
+      id: "inspector",
+      side: "right",
+      open: true,
+      size: { width: 999, height: 0 },
+    });
+
+    const rect = computeSurfacePanelRect(
+      CONTAINER,
+      [staleInspector],
+      "inspector",
+      { side: "right", anchor: "stretch", physicalSize: { width: 320, height: 0 } },
+      1,
+    );
+
+    expect(rect.x).toBe(1000 - 320);
+    expect(rect.width).toBe(320);
+  });
+
+  it("converts physical size to surface units when zoom != 1", () => {
+    const zoom = 2;
+    const rect = computeSurfacePanelRect(
+      CONTAINER,
+      [],
+      "inspector",
+      { side: "right", anchor: "stretch", physicalSize: { width: 320, height: 0 } },
+      zoom,
+    );
+
+    // In unità superficie, 320px fisici occupano 320/zoom.
+    expect(rect.width).toBeCloseTo(320 / zoom);
+    expect(rect.x).toBeCloseTo(1000 - 320 / zoom);
+  });
+
+  it("makes a bottom stretch panel avoid an open right stretch panel (Inspector + Data Preview)", () => {
+    const inspector = panel({
+      id: "inspector",
+      side: "right",
+      open: true,
+      size: { width: 320, height: 0 },
+    });
+
+    const dataPreview = panel({
+      id: "data-preview",
+      side: "bottom",
+      open: true,
+      size: { width: 0, height: 250 },
+    });
+
+    const rect = computeSurfacePanelRect(
+      CONTAINER,
+      [inspector, dataPreview],
+      "data-preview",
+      { side: "bottom", anchor: "stretch", physicalSize: { width: 0, height: 250 } },
+      1,
+    );
+
+    // Non deve estendersi sotto l'Inspector: la sua larghezza si ferma dove inizia l'Inspector.
+    expect(rect.x + rect.width).toBeLessThanOrEqual(1000 - 320);
+  });
+
+  it("does not let Data Preview's own (stale) entry shrink its own bounds", () => {
+    const inspector = panel({
+      id: "inspector",
+      side: "right",
+      open: true,
+      size: { width: 320, height: 0 },
+    });
+
+    const staleDataPreview = panel({
+      id: "data-preview",
+      side: "bottom",
+      open: true,
+      size: { width: 0, height: 9999 },
+    });
+
+    const rect = computeSurfacePanelRect(
+      CONTAINER,
+      [inspector, staleDataPreview],
+      "data-preview",
+      { side: "bottom", anchor: "stretch", physicalSize: { width: 0, height: 250 } },
+      1,
+    );
+
+    expect(rect.height).toBe(250);
+  });
+
+  it("clamps position to bounds when the physical size would overflow", () => {
+    const rect = computeSurfacePanelRect(
+      CONTAINER,
+      [],
+      "inspector",
+      { side: "right", anchor: "stretch", physicalSize: { width: 5000, height: 0 } },
+      1,
+    );
+
+    expect(rect.x).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("surfacePanelStyle", () => {
+  it("leaves left/top untouched (already in surface units) and scales width/height by zoom", () => {
+    const rect = { x: 100, y: 50, width: 160, height: 300 };
+    const style = surfacePanelStyle(rect, 2);
+
+    expect(style.left).toBe(100);
+    expect(style.top).toBe(50);
+    expect(style.width).toBe(320);
+    expect(style.height).toBe(600);
+  });
+
+  it("at zoom 1, width/height pass through unchanged", () => {
+    const rect = { x: 10, y: 10, width: 320, height: 600 };
+    const style = surfacePanelStyle(rect, 1);
+
+    expect(style.width).toBe(320);
+    expect(style.height).toBe(600);
+  });
+
+  it("round-trips computeSurfacePanelRect's physicalSize back to the same physical pixels regardless of zoom", () => {
+    for (const zoom of [0.5, 1, 1.8]) {
+      const rect = computeSurfacePanelRect(
+        CONTAINER,
+        [],
+        "inspector",
+        { side: "right", anchor: "stretch", physicalSize: { width: 320, height: 0 } },
+        zoom,
+      );
+      const style = surfacePanelStyle(rect, zoom);
+
+      expect(style.width).toBeCloseTo(320);
+    }
+  });
+});
 
 
 === FILE: src/canvas/components/CanvasContainer.tsx ===
@@ -411,10 +792,20 @@ import { createContext, useContext, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 
 import { useCanvasBounds } from "../hooks/useCanvasBounds";
-import type { CanvasBounds } from "../layout/canvasBounds";
+import type { CanvasBounds, CanvasContainerSize } from "../layout/canvasBounds";
 import type { DropZoneMap } from "../layout/dropZones";
 
-type CanvasBoundsContextValue = ReturnType<typeof useCanvasBounds>;
+type CanvasBoundsContextValue = ReturnType<typeof useCanvasBounds> & {
+  /**
+   * Fase 2A: livello di zoom della superficie che ospita questo canvas
+   * (1 = nessuno zoom). I pannelli che vivono DENTRO la superficie
+   * zoomata (vedi src/canvas/layout/surfacePanels.ts) lo usano per
+   * restare a dimensione fisica costante sullo schermo via un
+   * controscale CSS. Un canvas standalone (non dentro una superficie
+   * scalata) può ignorarlo: resta 1 di default.
+   */
+  zoom: number;
+};
 
 const CanvasBoundsContext = createContext<CanvasBoundsContextValue | null>(null);
 
@@ -447,14 +838,29 @@ export function useCanvasBoundsContext(): CanvasBoundsContextValue {
 export function CanvasContainer({
   children,
   className,
+  zoom = 1,
+  containerSize,
   onBoundsChange,
 }: {
   children: ReactNode;
   className?: string;
+  /** Fase 2A: vedi CanvasBoundsContextValue.zoom sopra. */
+  zoom?: number;
+  /**
+   * Fase 2A: quando fornito, salta la misura via ResizeObserver e usa
+   * direttamente queste dimensioni — già note al chiamante in unità
+   * superficie (es. workflow-canvas.tsx passa `{ width: surfaceW,
+   * height: surfaceH }`). In questo caso il componente non renderizza
+   * un proprio elemento DOM: è un puro Context provider, per non
+   * inserire un wrapper superfluo dentro un albero DOM già esistente
+   * (la superficie scalata di workflow-canvas.tsx, dove `ref` andrebbe
+   * comunque sprecato perché le dimensioni arrivano già calcolate).
+   */
+  containerSize?: CanvasContainerSize;
   onBoundsChange?: (bounds: CanvasBounds, dropZones: DropZoneMap) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const boundsState = useCanvasBounds(containerRef);
+  const boundsState = useCanvasBounds(containerRef, containerSize);
   const previousBoundsRef = useRef<CanvasBounds | null>(null);
 
   useEffect(() => {
@@ -474,9 +880,18 @@ export function CanvasContainer({
     }
   }, [boundsState, onBoundsChange]);
 
+  const value: CanvasBoundsContextValue = { ...boundsState, zoom };
+  const content = (
+    <CanvasBoundsContext.Provider value={value}>{children}</CanvasBoundsContext.Provider>
+  );
+
+  if (containerSize) {
+    return content;
+  }
+
   return (
     <div ref={containerRef} className={className} data-canvas-container="">
-      <CanvasBoundsContext.Provider value={boundsState}>{children}</CanvasBoundsContext.Provider>
+      {content}
     </div>
   );
 }
@@ -498,23 +913,41 @@ import { toPanelInstances, useCanvasStore } from "../store/canvasStore";
  *
  * `containerRef` è l'elemento la cui area disponibile stiamo misurando
  * (tipicamente il wrapper che contiene canvas + pannelli ausiliari).
+ *
+ * `externalSize` (Fase 2A): quando il chiamante conosce già le proprie
+ * dimensioni in unità superficie (es. `surfaceW`/`surfaceH` di
+ * workflow-canvas.tsx, che dipendono da `zoom` e non dal semplice
+ * `clientWidth`/`clientHeight` dell'elemento), passarlo qui salta la
+ * misura via ResizeObserver — misurare il DOM darebbe le dimensioni
+ * SCHERMO sbagliate per un container che deve ragionare in unità
+ * superficie.
  */
-export function useCanvasBounds(containerRef: RefObject<HTMLElement | null>) {
+export function useCanvasBounds(
+  containerRef: RefObject<HTMLElement | null>,
+  externalSize?: CanvasContainerSize,
+) {
   const { state } = useCanvasStore();
 
-  const [container, setContainer] = useState<CanvasContainerSize>({
+  const [measuredContainer, setMeasuredContainer] = useState<CanvasContainerSize>({
     width: 0,
     height: 0,
   });
 
+  const externalWidth = externalSize?.width;
+  const externalHeight = externalSize?.height;
+
   useEffect(() => {
+    if (externalWidth !== undefined) {
+      return;
+    }
+
     const el = containerRef.current;
 
     if (!el) {
       return;
     }
 
-    const measure = () => setContainer({ width: el.clientWidth, height: el.clientHeight });
+    const measure = () => setMeasuredContainer({ width: el.clientWidth, height: el.clientHeight });
 
     measure();
 
@@ -522,14 +955,24 @@ export function useCanvasBounds(containerRef: RefObject<HTMLElement | null>) {
     observer.observe(el);
 
     return () => observer.disconnect();
-  }, [containerRef]);
+  }, [containerRef, externalWidth]);
+
+  const container: CanvasContainerSize =
+    externalWidth !== undefined && externalHeight !== undefined
+      ? { width: externalWidth, height: externalHeight }
+      : measuredContainer;
 
   const panels = useMemo(() => toPanelInstances(state), [state]);
 
-  const dropZones = useMemo(() => calculateDropZones(container, panels), [container, panels]);
+  const dropZones = useMemo(
+    () => calculateDropZones(container, panels),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `container` è ricreato ad ogni render con gli stessi valori quando invariato: i suoi due campi primitivi bastano a decidere se ricalcolare.
+    [container.width, container.height, panels],
+  );
 
   return {
     container,
+    panels,
     bounds: dropZones.bounds,
     obstacles: dropZones.obstacles,
     dropZones,
@@ -1390,6 +1833,94 @@ export function isRegisteredPanel(id: string): boolean {
 }
 
 
+=== FILE: src/canvas/layout/surfacePanels.ts ===
+import type {
+  CanvasContainerSize,
+  PanelAnchor,
+  PanelInstance,
+  PanelSide,
+  PanelSize,
+  Rect,
+} from "./canvasBounds";
+import { calculateCanvasBounds, clampRectToBounds, computePanelRect } from "./canvasBounds";
+
+/**
+ * Fase 2A — geometria di un pannello "controscalato": vive DENTRO la
+ * superficie zoomata di workflow-canvas.tsx (`transform: scale(zoom)`)
+ * ma applica il proprio `scale(1/zoom)` per restare a dimensione fisica
+ * costante sullo schermo, indipendente dallo zoom — la stessa tecnica
+ * già usata dalla Tool Palette (che però vive FUORI dalla superficie).
+ *
+ * Compone solo le funzioni pure di canvasBounds.ts, senza modificarle
+ * (Fase 1 resta intoccata, come richiesto).
+ *
+ * Due conversioni di unità da non confondere, fonte facile di bug:
+ * - `physicalSize`: pixel fisici costanti — quello che l'utente vede a
+ *   schermo, invariante rispetto a `zoom` grazie al controscale.
+ * - unità superficie: `physicalSize / zoom` — il sistema di coordinate
+ *   in cui vivono le card e (già oggi) l'ingombro della Tool Palette.
+ *   calculateCanvasBounds/computePanelRect lavorano SEMPRE in unità
+ *   superficie: bisogna convertire physicalSize prima di passarglielo.
+ *
+ * Un pannello non deve "fare spazio" a se stesso: i bounds usati per
+ * posizionarlo escludono il pannello stesso dalla lista — altrimenti la
+ * sua stessa presenza in canvasStore ridurrebbe lo spazio a disposizione
+ * due volte (una nel bounds generale, una qui).
+ */
+export function computeSurfacePanelRect(
+  container: CanvasContainerSize,
+  panels: readonly PanelInstance[],
+  panelId: string,
+  geometry: { side: PanelSide; anchor: PanelAnchor; physicalSize: PanelSize },
+  zoom: number,
+): Rect {
+  const bounds = calculateCanvasBounds(
+    container,
+    panels.filter((panel) => panel.id !== panelId),
+  );
+
+  const surfaceSize: PanelSize = {
+    width: geometry.physicalSize.width / zoom,
+    height: geometry.physicalSize.height / zoom,
+  };
+
+  const local = computePanelRect(
+    { width: bounds.width, height: bounds.height },
+    { side: geometry.side, anchor: geometry.anchor, size: surfaceSize },
+  );
+
+  const translated: Rect = {
+    x: local.x + bounds.left,
+    y: local.y + bounds.top,
+    width: local.width,
+    height: local.height,
+  };
+
+  const clampedPosition = clampRectToBounds(translated, bounds);
+
+  return { ...translated, ...clampedPosition };
+}
+
+/**
+ * `rect` (in unità superficie, da computeSurfacePanelRect) → stile CSS
+ * per l'elemento controscalato: `left`/`top` restano in unità
+ * superficie (il genitore scalato li reinterpreta correttamente),
+ * `width`/`height` vanno moltiplicati per `zoom` per tornare a pixel
+ * fisici costanti — l'inverso della conversione fatta sopra.
+ */
+export function surfacePanelStyle(
+  rect: Rect,
+  zoom: number,
+): { left: number; top: number; width: number; height: number } {
+  return {
+    left: rect.x,
+    top: rect.y,
+    width: rect.width * zoom,
+    height: rect.height * zoom,
+  };
+}
+
+
 === FILE: src/canvas/store/canvasStore.tsx ===
 import { createContext, useContext, useMemo, useReducer } from "react";
 
@@ -1516,36 +2047,96 @@ export function useCanvasStore(): CanvasStoreContextValue {
 
 
 === FILE: src/components/isa/etl/data-preview.tsx ===
+import { useEffect } from "react";
 import { Table2, X } from "lucide-react";
+import { useCanvasBoundsContext } from "@/canvas/components/CanvasContainer";
+import { usePanelState } from "@/canvas/hooks/usePanelState";
+import { computeSurfacePanelRect, surfacePanelStyle } from "@/canvas/layout/surfacePanels";
 import { analyzeNode, formatRows, previewRows } from "@/lib/etl-schema";
 import type { EtlNode, EtlWorkflow } from "@/lib/etl-workflow";
+
+/**
+ * Fase 2A: Data Preview vive dentro la superficie zoomata (vedi
+ * workflow-canvas.tsx / src/canvas/layout/surfacePanels.ts). Evita
+ * l'Inspector automaticamente — tramite i bounds condivisi in
+ * canvasStore, non più tramite il vecchio prop `inset` cablato a mano
+ * con una larghezza magica (21.5rem).
+ */
+
+/** Altezza fisica: stessa proporzione (42% dell'altezza del canvas) della vecchia classe Tailwind max-h-[42%], ma calcolata (non un CSS max-height) perché ora è il canvas a doverne conoscere l'ingombro per i bounds. */
+const PREVIEW_HEIGHT_RATIO = 0.42;
+const PREVIEW_HEIGHT_MIN = 160;
+
+/* Margini puramente estetici (stessi bottom-3/left-3/right-3 di prima) — non entrano nel calcolo dei bounds condivisi. */
+const PREVIEW_INSET_LEFT = 12;
+const PREVIEW_INSET_RIGHT = 12;
+const PREVIEW_INSET_BOTTOM = 12;
+
+function previewPhysicalHeight(containerHeight: number, zoom: number): number {
+  return Math.max(PREVIEW_HEIGHT_MIN, Math.round(containerHeight * zoom * PREVIEW_HEIGHT_RATIO));
+}
 
 /** Cassetto Data preview: si apre solo su comando e si chiude con la X. */
 export function DataPreview({
   workflow,
   node,
   open,
-  inset,
   onClose,
 }: {
   workflow: EtlWorkflow;
   node: EtlNode | null;
   open: boolean;
-  inset?: boolean;
   onClose: () => void;
 }) {
+  const { openPanel, closePanel, setSize } = usePanelState("data-preview");
+  const { container, panels, zoom } = useCanvasBoundsContext();
+
+  useEffect(() => {
+    if (open) {
+      openPanel();
+    } else {
+      closePanel();
+    }
+  }, [open, openPanel, closePanel]);
+
+  useEffect(() => {
+    const physicalHeight = previewPhysicalHeight(container.height, zoom);
+    setSize({ width: 0, height: physicalHeight / zoom });
+  }, [container.height, zoom, setSize]);
+
   if (!open) return null;
 
   const analysis = node ? analyzeNode(workflow, node) : null;
   const columns = analysis?.columns ?? [];
   const rows = node ? previewRows(columns, node.id) : [];
 
+  const rect = computeSurfacePanelRect(
+    container,
+    panels,
+    "data-preview",
+    {
+      side: "bottom",
+      anchor: "stretch",
+      physicalSize: { width: 0, height: previewPhysicalHeight(container.height, zoom) },
+    },
+    zoom,
+  );
+
+  const style = surfacePanelStyle(rect, zoom);
+
   return (
     <section
-      className={`glass-panel absolute bottom-3 left-3 z-40 flex max-h-[42%] flex-col rounded-3xl ${
-        inset ? "right-[21.5rem]" : "right-3"
-      }`}
-      style={{ background: "color-mix(in srgb, var(--background) 92%, transparent)" }}
+      className="glass-panel absolute z-40 flex flex-col rounded-3xl"
+      style={{
+        left: style.left + PREVIEW_INSET_LEFT / zoom,
+        top: style.top,
+        width: Math.max(0, style.width - PREVIEW_INSET_LEFT - PREVIEW_INSET_RIGHT),
+        height: Math.max(0, style.height - PREVIEW_INSET_BOTTOM),
+        transform: `scale(${1 / zoom})`,
+        transformOrigin: "top left",
+        transition: "left 0.2s ease, top 0.2s ease, width 0.2s ease",
+        background: "color-mix(in srgb, var(--background) 92%, transparent)",
+      }}
     >
       <div className="flex items-center gap-2 px-4 py-2.5">
         <Table2 className="size-4 text-muted-foreground" />
@@ -1624,11 +2215,29 @@ export function DataPreview({
 
 
 === FILE: src/components/isa/etl/inspector.tsx ===
+import { useEffect } from "react";
 import { AlertTriangle, Table2, Trash2, X } from "lucide-react";
+import { useCanvasBoundsContext } from "@/canvas/components/CanvasContainer";
+import { usePanelState } from "@/canvas/hooks/usePanelState";
+import { computeSurfacePanelRect, surfacePanelStyle } from "@/canvas/layout/surfacePanels";
 import type { ColumnDef } from "@/lib/etl-catalog";
 import { categoryAccent, nodeDef } from "@/lib/etl-catalog";
 import { analyzeNode, formatRows } from "@/lib/etl-schema";
 import type { EtlNode, EtlWorkflow } from "@/lib/etl-workflow";
+
+/**
+ * Fase 2A: l'Inspector vive dentro la superficie zoomata del canvas
+ * (vedi workflow-canvas.tsx) ma applica un controscale per restare a
+ * dimensione fisica costante sullo schermo — vedi
+ * src/canvas/layout/surfacePanels.ts per la tecnica e il perché.
+ */
+
+/** Larghezza fisica costante (px schermo, indipendente da zoom) — prima classe Tailwind w-[min(20rem,...)]. */
+const INSPECTOR_WIDTH = 320;
+
+/* Margini puramente estetici (spazio per i controlli zoom/griglia in alto, un po' d'aria in basso) — non entrano nel calcolo dei bounds condivisi. */
+const INSPECTOR_INSET_TOP = 56;
+const INSPECTOR_INSET_BOTTOM = 12;
 
 /** Cassetto Inspector: si apre solo su comando e si chiude con la X. */
 export function Inspector({
@@ -1650,15 +2259,62 @@ export function Inspector({
   onRemove: () => void;
   onPreview: () => void;
 }) {
+  const { openPanel, closePanel, setSize } = usePanelState("inspector");
+  const { container, panels, zoom } = useCanvasBoundsContext();
+
+  /*
+   * `open` (prop) resta la fonte di verità per "l'Inspector è aperto":
+   * qui la specchiamo in canvasStore, così Data Preview (o un futuro
+   * pannello) può sapere che deve farle spazio senza che nessuno gliela
+   * passi esplicitamente (bug del vecchio `inset` prop, rimosso).
+   */
+  useEffect(() => {
+    if (open) {
+      openPanel();
+    } else {
+      closePanel();
+    }
+  }, [open, openPanel, closePanel]);
+
+  /*
+   * La larghezza è fisica-costante (non dipende dal contenuto), quindi
+   * non serve un ResizeObserver: solo ricalcolare la sua controparte in
+   * unità superficie (÷ zoom) quando zoom o lo spazio disponibile
+   * cambiano.
+   */
+  useEffect(() => {
+    const physicalWidth = Math.max(0, Math.min(INSPECTOR_WIDTH, container.width * zoom - 24));
+    setSize({ width: physicalWidth / zoom, height: 0 });
+  }, [container.width, zoom, setSize]);
+
   if (!open) return null;
 
   const def = node ? nodeDef(node.type) : undefined;
   const analysis = node ? analyzeNode(workflow, node) : null;
 
+  const rect = computeSurfacePanelRect(
+    container,
+    panels,
+    "inspector",
+    { side: "right", anchor: "stretch", physicalSize: { width: INSPECTOR_WIDTH, height: 0 } },
+    zoom,
+  );
+
+  const style = surfacePanelStyle(rect, zoom);
+
   return (
     <aside
-      className="glass-panel absolute bottom-3 right-3 top-14 z-40 flex w-[min(20rem,calc(100%-1.5rem))] flex-col rounded-3xl p-4"
-      style={{ background: "color-mix(in srgb, var(--background) 92%, transparent)" }}
+      className="glass-panel absolute z-40 flex flex-col rounded-3xl p-4"
+      style={{
+        left: style.left,
+        top: style.top + INSPECTOR_INSET_TOP / zoom,
+        width: style.width,
+        height: Math.max(0, style.height - INSPECTOR_INSET_TOP - INSPECTOR_INSET_BOTTOM),
+        transform: `scale(${1 / zoom})`,
+        transformOrigin: "top left",
+        transition: "left 0.2s ease, top 0.2s ease, height 0.2s ease",
+        background: "color-mix(in srgb, var(--background) 92%, transparent)",
+      }}
     >
       <div className="flex items-center gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
