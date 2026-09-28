@@ -27,7 +27,7 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `roadmap.md` — 27 righe (1720 B)
 - `scripts/generate-index.mjs` — 114 righe (3872 B)
 - `scripts/generate-snapshot.mjs` — 532 righe (17568 B)
-- `scripts/sync-snapshot.sh` — 236 righe (6947 B)
+- `scripts/sync-snapshot.sh` — 237 righe (7051 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md` — 181 righe (8919 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-19T11-38-16Z.md` — 161 righe (9268 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-28T18-45-29Z.md` — 156 righe (6996 B)

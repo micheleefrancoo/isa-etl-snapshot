@@ -1015,7 +1015,7 @@ console.log(
 
 ### `scripts/sync-snapshot.sh`
 
-236 righe
+237 righe
 
 ```sh
 #!/usr/bin/env bash
@@ -1251,8 +1251,9 @@ cd "$REPO_ROOT"
 
 echo
 echo "== Done =="
-echo "INDEX.md: https://raw.githubusercontent.com/$SNAPSHOT_REPO/$SNAPSHOT_BRANCH/INDEX.md"
-echo "INDEX.md (pinned to this run): https://raw.githubusercontent.com/$SNAPSHOT_REPO/$FINAL_SHA/INDEX.md"
+echo "INDEX.md (branch $SNAPSHOT_BRANCH, moving target): https://raw.githubusercontent.com/$SNAPSHOT_REPO/$SNAPSHOT_BRANCH/INDEX.md"
+echo "INDEX.md (fissato al commit $FINAL_SHA di questo run) -- ultima riga, sempre stampata:"
+echo "https://raw.githubusercontent.com/$SNAPSHOT_REPO/$FINAL_SHA/INDEX.md"
 ```
 
 ### `tsconfig.json`

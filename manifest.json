@@ -195,7 +195,7 @@
     },
     {
       "name": "files/08-scripts-config.md",
-      "bytes": 38052,
+      "bytes": 38156,
       "files": [
         ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",
