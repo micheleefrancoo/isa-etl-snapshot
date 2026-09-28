@@ -202,7 +202,7 @@
     },
     {
       "name": "files/08-scripts-config.md",
-      "bytes": 37503,
+      "bytes": 37730,
       "files": [
         ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",
@@ -231,6 +231,55 @@
         "AGENTS.md",
         "README.md",
         "roadmap.md"
+      ]
+    },
+    {
+      "name": "files/10-prototype-a.md",
+      "bytes": 49805,
+      "files": [
+        "docs/prototype/isa-fusion-prototype.html"
+      ]
+    },
+    {
+      "name": "files/10-prototype-b.md",
+      "bytes": 49887,
+      "files": [
+        "docs/prototype/isa-fusion-prototype.html"
+      ]
+    },
+    {
+      "name": "files/10-prototype-c.md",
+      "bytes": 49916,
+      "files": [
+        "docs/prototype/isa-fusion-prototype.html"
+      ]
+    },
+    {
+      "name": "files/10-prototype-d.md",
+      "bytes": 49882,
+      "files": [
+        "docs/prototype/isa-fusion-prototype.html"
+      ]
+    },
+    {
+      "name": "files/10-prototype-e.md",
+      "bytes": 49905,
+      "files": [
+        "docs/prototype/isa-fusion-prototype.html"
+      ]
+    },
+    {
+      "name": "files/10-prototype-f.md",
+      "bytes": 11113,
+      "files": [
+        "docs/prototype/isa-fusion-prototype.html"
+      ]
+    },
+    {
+      "name": "files/11-inventory.md",
+      "bytes": 42675,
+      "files": [
+        "docs/inventory/INVENTARIO_2026-09-28T19-29-07Z.md"
       ]
     }
   ],
@@ -461,13 +510,35 @@
       "outFiles": [
         "09-docs.md"
       ]
+    },
+    "10-prototype": {
+      "files": [
+        "docs/prototype/isa-fusion-prototype.html"
+      ],
+      "outFiles": [
+        "10-prototype-a.md",
+        "10-prototype-b.md",
+        "10-prototype-c.md",
+        "10-prototype-d.md",
+        "10-prototype-e.md",
+        "10-prototype-f.md"
+      ]
+    },
+    "11-inventory": {
+      "files": [
+        "docs/inventory/INVENTARIO_2026-09-28T19-29-07Z.md"
+      ],
+      "outFiles": [
+        "11-inventory.md"
+      ]
     }
   },
   "reportFiles": [
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-19T11-38-16Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T18-45-29Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T18-45-29Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T19-33-26Z.md"
   ],
-  "inScopeFileCount": 141,
-  "reportFileCount": 3
+  "inScopeFileCount": 143,
+  "reportFileCount": 4
 }

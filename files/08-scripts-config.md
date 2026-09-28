@@ -463,7 +463,7 @@ console.log(`INDEX.md written to ${outPath}`);
 
 ### `scripts/generate-snapshot.mjs`
 
-446 righe
+449 righe
 
 ```js
 #!/usr/bin/env node
@@ -576,7 +576,7 @@ const EXTRA_CONFIG_FILES = new Set([
 
 function isInScopeTextFile(rel) {
   if (classify(rel) !== "text") return false;
-  if (rel.startsWith("src/") || rel.startsWith("scripts/")) return true;
+  if (rel.startsWith("src/") || rel.startsWith("scripts/") || rel.startsWith("docs/")) return true;
   if (rel.startsWith(".lovable/plan/") && rel.endsWith(".md")) return true;
   if (!rel.includes("/") && ROOT_ALLOWLIST.has(rel)) return true;
   if (EXTRA_CONFIG_FILES.has(rel)) return true;
@@ -644,13 +644,16 @@ function areaFor(rel) {
     return "08-scripts-config";
   }
   if (rel === "README.md" || rel === "AGENTS.md" || rel === "roadmap.md" || rel.startsWith(".lovable/")) return "09-docs";
-  return "10-misc";
+  if (rel.startsWith("docs/prototype/")) return "10-prototype";
+  if (rel.startsWith("docs/inventory/")) return "11-inventory";
+  if (rel.startsWith("docs/")) return "12-docs-other";
+  return "13-misc";
 }
 
 const langForExt = {
   ".ts": "ts", ".tsx": "tsx", ".js": "js", ".jsx": "jsx", ".mjs": "js", ".cjs": "js",
   ".css": "css", ".json": "json", ".sh": "sh", ".md": "md", ".toml": "toml",
-  ".yml": "yaml", ".yaml": "yaml",
+  ".yml": "yaml", ".yaml": "yaml", ".html": "html",
 };
 function langFor(rel) {
   return langForExt[extname(rel)] || "";
