@@ -27,6 +27,7 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `scripts/sync-snapshot.sh` — 236 righe (6947 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md` — 181 righe (8919 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-19T11-38-16Z.md` — 161 righe (9268 B)
+- `src/canvas/.reports/VALIDATION_REPORT_2026-09-28T18-45-29Z.md` — 156 righe (6996 B)
 - `src/canvas/FUNCTIONAL_CHECKS.md` — 75 righe (4054 B)
 - `src/canvas/README.md` — 143 righe (6702 B)
 - `src/canvas/__tests__/panelPositioning.test.ts` — 179 righe (5035 B)

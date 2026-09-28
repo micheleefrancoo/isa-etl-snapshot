@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-09-28T18:42:18Z (UTC)
+Generato: 2026-09-28T18:46:51Z (UTC)
 
 ## Type check
 
@@ -106,11 +106,11 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 
  Test Files  4 passed (4)
       Tests  41 passed (41)
-   Start at  18:42:39
-   Duration  650ms (transform 51%, import 29%, tests 14%, worker 7%)
+   Start at  18:47:12
+   Duration  645ms (transform 51%, import 27%, tests 14%, worker 7%)
 
     Isolate  4 workers spawned · ~99ms startup each (spawn + environment, per file)
-             at least ~298ms faster with isolate: false — reuses workers across files instead of one per file
+             at least ~297ms faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -155,7 +155,7 @@ Ultime 60 righe di output:
 .output/server/_libs/d3-format.mjs                                 10.56 kB │ gzip:   3.02 kB
 .output/server/_libs/tanstack__history.mjs                         12.09 kB │ gzip:   3.48 kB
 .output/server/_ssr/router-D3G03G_w.mjs                            14.19 kB │ gzip:   3.57 kB
-.output/server/index.mjs                                           14.82 kB │ gzip:   4.32 kB
+.output/server/index.mjs                                           14.82 kB │ gzip:   4.31 kB
 .output/server/_libs/fast-equals.mjs                               15.91 kB │ gzip:   4.13 kB
 .output/server/_libs/h3+rou3+srvx.mjs                              17.30 kB │ gzip:   4.98 kB
 .output/server/_libs/react+tanstack__react-query.mjs               18.47 kB │ gzip:   4.82 kB
@@ -174,7 +174,7 @@ Ultime 60 righe di output:
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 974ms
+✓ built in 1.07s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json

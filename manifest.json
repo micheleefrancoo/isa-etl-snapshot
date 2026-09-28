@@ -465,8 +465,9 @@
   },
   "reportFiles": [
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-09-19T11-38-16Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-19T11-38-16Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T18-45-29Z.md"
   ],
   "inScopeFileCount": 141,
-  "reportFileCount": 2
+  "reportFileCount": 3
 }
