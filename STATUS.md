@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-09-28T18:19:34Z (UTC)
+Generato: 2026-09-28T18:41:14Z (UTC)
 
 ## Type check
 
@@ -9,7 +9,7 @@ Nessuno script "typecheck" in package.json: eseguito il comando diretto.
 Comando: `npx tsc --noEmit`
 
 Esito: OK (exit 0)
-Durata: 8s
+Durata: 9s
 
 Ultime 60 righe di output:
 ```
@@ -91,7 +91,7 @@ Ultime 60 righe di output:
 Comando: `npm test`
 
 Esito: OK (exit 0)
-Durata: 2s
+Durata: 1s
 
 Ultime 60 righe di output:
 ```
@@ -106,11 +106,11 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 
  Test Files  4 passed (4)
       Tests  41 passed (41)
-   Start at  18:19:55
-   Duration  700ms (transform 53%, import 27%, tests 12%, worker 8%)
+   Start at  18:41:36
+   Duration  673ms (transform 53%, import 27%, tests 12%, worker 7%)
 
-    Isolate  4 workers spawned · ~104ms startup each (spawn + environment, per file)
-             at least ~313ms faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  4 workers spawned · ~101ms startup each (spawn + environment, per file)
+             at least ~303ms faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -174,7 +174,7 @@ Ultime 60 righe di output:
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.27s
+✓ built in 1.11s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
