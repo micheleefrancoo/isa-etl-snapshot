@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-09-28T20:25:12Z (UTC)
+Generato: 2026-09-28T20:28:54Z (UTC)
 
 ## Type check
 
@@ -9,7 +9,7 @@ Nessuno script "typecheck" in package.json: eseguito il comando diretto.
 Comando: `npx tsc --noEmit`
 
 Esito: OK (exit 0)
-Durata: 11s
+Durata: 12s
 
 Ultime 60 righe di output:
 ```
@@ -20,7 +20,7 @@ Ultime 60 righe di output:
 Comando: `npm run lint`
 
 Esito: OK (exit 0)
-Durata: 8s
+Durata: 7s
 
 Ultime 60 righe di output:
 ```
@@ -89,11 +89,11 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 
  Test Files  4 passed (4)
       Tests  41 passed (41)
-   Start at  20:25:31
-   Duration  789ms (transform 50%, import 27%, tests 16%, worker 7%)
+   Start at  20:29:14
+   Duration  800ms (transform 50%, import 27%, tests 15%, worker 8%)
 
-    Isolate  4 workers spawned · ~120ms startup each (spawn + environment, per file)
-             at least ~361ms faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  4 workers spawned · ~130ms startup each (spawn + environment, per file)
+             at least ~389ms faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -102,7 +102,7 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 Comando: `npm run build`
 
 Esito: OK (exit 0)
-Durata: 9s
+Durata: 8s
 
 Ultime 60 righe di output:
 ```
@@ -138,7 +138,7 @@ Ultime 60 righe di output:
 .output/server/_libs/d3-format.mjs                                 10.56 kB │ gzip:   3.02 kB
 .output/server/_libs/tanstack__history.mjs                         12.09 kB │ gzip:   3.48 kB
 .output/server/_ssr/router-BP7XxGMH.mjs                            14.19 kB │ gzip:   3.57 kB
-.output/server/index.mjs                                           14.82 kB │ gzip:   4.32 kB
+.output/server/index.mjs                                           14.82 kB │ gzip:   4.31 kB
 .output/server/_libs/fast-equals.mjs                               15.91 kB │ gzip:   4.13 kB
 .output/server/_libs/h3+rou3+srvx.mjs                              17.30 kB │ gzip:   4.98 kB
 .output/server/_libs/react+tanstack__react-query.mjs               18.47 kB │ gzip:   4.82 kB
@@ -157,7 +157,7 @@ Ultime 60 righe di output:
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.37s
+✓ built in 1.35s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -171,6 +171,7 @@ Ultime 60 righe di output:
 ## Git log (ultimi 20 commit)
 
 ```
+0098c85 sync-snapshot: stampa sempre come ultima riga il link INDEX.md fissato al commit
 2f7d695 Aggiunge report di validazione: merge fix Safari e allineamento main
 e6e4bfe Formattazione automatica, nessuna modifica funzionale
 9b14d46 Merge remote-tracking branch 'origin/main' into wip/stato-2026-09-28
@@ -190,7 +191,6 @@ a3687c3 Changes
 b3fe2f3 Changes
 89ff865 Changes
 e61af43 Changes
-c6f039f Changes
 ```
 
 ## Branch
