@@ -168,7 +168,7 @@ export function renderErrorPage(): string {
 
 ### `src/lib/etl-bubble.ts`
 
-134 righe
+130 righe
 
 ```ts
 /**
@@ -205,9 +205,7 @@ export type BubbleGeometry = {
 };
 
 /** Bounding box che racchiude tutti i `members`. */
-export function computeBubbleRect(
-  members: readonly BubbleMember[],
-): BubbleRect {
+export function computeBubbleRect(members: readonly BubbleMember[]): BubbleRect {
   const first = members[0];
 
   if (!first) {
@@ -251,9 +249,7 @@ export function computeBubbleRect(
  * orizzontale come default deterministico, per evitare che
  * l'orientamento "sfarfalli" tra i due valori a parità di dimensioni.
  */
-export function resolveBubbleOrientation(
-  rect: BubbleRect,
-): BubbleOrientation {
+export function resolveBubbleOrientation(rect: BubbleRect): BubbleOrientation {
   return rect.width >= rect.height ? "horizontal" : "vertical";
 }
 
@@ -308,7 +304,7 @@ export function computeBubbles(
 
 ### `src/lib/etl-catalog.ts`
 
-428 righe
+556 righe
 
 ```ts
 import {
@@ -348,12 +344,7 @@ export type EtlField = {
   required?: boolean | undefined;
 };
 
-export type EtlCategory =
-  | "sources"
-  | "transform"
-  | "combine"
-  | "aggregate"
-  | "output";
+export type EtlCategory = "sources" | "transform" | "combine" | "aggregate" | "output";
 
 export type EtlNodeDef = {
   type: string;
@@ -375,10 +366,7 @@ export const ETL_CATEGORIES: { key: EtlCategory; label: string }[] = [
 ];
 
 /** Dataset di riferimento del workspace (metadati, nessuna esecuzione). */
-export const SAMPLE_DATASETS: Record<
-  string,
-  { rows: number; columns: ColumnDef[] }
-> = {
+export const SAMPLE_DATASETS: Record<string, { rows: number; columns: ColumnDef[] }> = {
   "sales_2026.parquet": {
     rows: 125_000,
     columns: [
@@ -453,9 +441,27 @@ export const ETL_NODES: EtlNodeDef[] = [
     inputs: [],
     outputs: ["out"],
     fields: [
-      { key: "path", label: "Percorso file", kind: "text", placeholder: "sales_2026.parquet", required: true },
-      { key: "format", label: "Formato", kind: "select", options: ["csv", "parquet"], defaultValue: "parquet" },
-      { key: "delimiter", label: "Delimitatore", kind: "select", options: [",", ";", "|", "tab"], defaultValue: "," },
+      {
+        key: "path",
+        label: "Percorso file",
+        kind: "text",
+        placeholder: "sales_2026.parquet",
+        required: true,
+      },
+      {
+        key: "format",
+        label: "Formato",
+        kind: "select",
+        options: ["csv", "parquet"],
+        defaultValue: "parquet",
+      },
+      {
+        key: "delimiter",
+        label: "Delimitatore",
+        kind: "select",
+        options: [",", ";", "|", "tab"],
+        defaultValue: ",",
+      },
     ],
   },
   {
@@ -467,8 +473,20 @@ export const ETL_NODES: EtlNodeDef[] = [
     inputs: [],
     outputs: ["out"],
     fields: [
-      { key: "connection", label: "Connessione", kind: "text", placeholder: "warehouse_prod", required: true },
-      { key: "query", label: "Query", kind: "textarea", placeholder: "select * from public.orders", required: true },
+      {
+        key: "connection",
+        label: "Connessione",
+        kind: "text",
+        placeholder: "warehouse_prod",
+        required: true,
+      },
+      {
+        key: "query",
+        label: "Query",
+        kind: "textarea",
+        placeholder: "select * from public.orders",
+        required: true,
+      },
     ],
   },
   {
@@ -480,8 +498,20 @@ export const ETL_NODES: EtlNodeDef[] = [
     inputs: [],
     outputs: ["out"],
     fields: [
-      { key: "url", label: "Endpoint", kind: "text", placeholder: "https://api.esempio.it/v1/dati", required: true },
-      { key: "method", label: "Metodo", kind: "select", options: ["GET", "POST"], defaultValue: "GET" },
+      {
+        key: "url",
+        label: "Endpoint",
+        kind: "text",
+        placeholder: "https://api.esempio.it/v1/dati",
+        required: true,
+      },
+      {
+        key: "method",
+        label: "Metodo",
+        kind: "select",
+        options: ["GET", "POST"],
+        defaultValue: "GET",
+      },
       { key: "rootPath", label: "Percorso radice", kind: "text", placeholder: "data.items" },
     ],
   },
@@ -496,7 +526,13 @@ export const ETL_NODES: EtlNodeDef[] = [
     outputs: ["out"],
     fields: [
       { key: "column", label: "Colonna", kind: "text", placeholder: "status", required: true },
-      { key: "operator", label: "Operatore", kind: "select", options: ["=", "!=", ">", ">=", "<", "<=", "contains"], defaultValue: "=" },
+      {
+        key: "operator",
+        label: "Operatore",
+        kind: "select",
+        options: ["=", "!=", ">", ">=", "<", "<=", "contains"],
+        defaultValue: "=",
+      },
       { key: "value", label: "Valore", kind: "text", placeholder: "ACTIVE", required: true },
     ],
   },
@@ -509,7 +545,13 @@ export const ETL_NODES: EtlNodeDef[] = [
     inputs: ["in"],
     outputs: ["out"],
     fields: [
-      { key: "columns", label: "Colonne", kind: "textarea", placeholder: "order_date, product, revenue", required: true },
+      {
+        key: "columns",
+        label: "Colonne",
+        kind: "textarea",
+        placeholder: "order_date, product, revenue",
+        required: true,
+      },
     ],
   },
   {
@@ -534,9 +576,27 @@ export const ETL_NODES: EtlNodeDef[] = [
     inputs: ["in"],
     outputs: ["out"],
     fields: [
-      { key: "column", label: "Nuova colonna", kind: "text", placeholder: "margine", required: true },
-      { key: "expression", label: "Espressione", kind: "textarea", placeholder: "(price - cost) / price", required: true },
-      { key: "type", label: "Tipo", kind: "select", options: COLUMN_TYPES, defaultValue: "decimal" },
+      {
+        key: "column",
+        label: "Nuova colonna",
+        kind: "text",
+        placeholder: "margine",
+        required: true,
+      },
+      {
+        key: "expression",
+        label: "Espressione",
+        kind: "textarea",
+        placeholder: "(price - cost) / price",
+        required: true,
+      },
+      {
+        key: "type",
+        label: "Tipo",
+        kind: "select",
+        options: COLUMN_TYPES,
+        defaultValue: "decimal",
+      },
     ],
   },
   {
@@ -549,7 +609,13 @@ export const ETL_NODES: EtlNodeDef[] = [
     outputs: ["out"],
     fields: [
       { key: "column", label: "Colonna", kind: "text", placeholder: "order_date", required: true },
-      { key: "direction", label: "Direzione", kind: "select", options: ["asc", "desc"], defaultValue: "asc" },
+      {
+        key: "direction",
+        label: "Direzione",
+        kind: "select",
+        options: ["asc", "desc"],
+        defaultValue: "asc",
+      },
     ],
   },
   {
@@ -572,7 +638,13 @@ export const ETL_NODES: EtlNodeDef[] = [
     outputs: ["out"],
     fields: [
       { key: "column", label: "Colonna", kind: "text", placeholder: "cost", required: true },
-      { key: "strategy", label: "Strategia", kind: "select", options: ["valore fisso", "media", "mediana", "ffill"], defaultValue: "valore fisso" },
+      {
+        key: "strategy",
+        label: "Strategia",
+        kind: "select",
+        options: ["valore fisso", "media", "mediana", "ffill"],
+        defaultValue: "valore fisso",
+      },
       { key: "value", label: "Valore", kind: "text", placeholder: "0" },
     ],
   },
@@ -587,7 +659,13 @@ export const ETL_NODES: EtlNodeDef[] = [
     outputs: ["out"],
     fields: [
       { key: "key", label: "Chiave", kind: "text", placeholder: "customer_id", required: true },
-      { key: "how", label: "Tipo", kind: "select", options: ["inner", "left", "right", "outer"], defaultValue: "inner" },
+      {
+        key: "how",
+        label: "Tipo",
+        kind: "select",
+        options: ["inner", "left", "right", "outer"],
+        defaultValue: "inner",
+      },
     ],
   },
   {
@@ -599,7 +677,13 @@ export const ETL_NODES: EtlNodeDef[] = [
     inputs: ["a", "b"],
     outputs: ["out"],
     fields: [
-      { key: "mode", label: "Modalità", kind: "select", options: ["colonne comuni", "tutte le colonne"], defaultValue: "colonne comuni" },
+      {
+        key: "mode",
+        label: "Modalità",
+        kind: "select",
+        options: ["colonne comuni", "tutte le colonne"],
+        defaultValue: "colonne comuni",
+      },
     ],
   },
   {
@@ -612,7 +696,13 @@ export const ETL_NODES: EtlNodeDef[] = [
     outputs: ["out"],
     fields: [
       { key: "key", label: "Chiave", kind: "text", placeholder: "product", required: true },
-      { key: "column", label: "Colonna da aggiungere", kind: "text", placeholder: "category", required: true },
+      {
+        key: "column",
+        label: "Colonna da aggiungere",
+        kind: "text",
+        placeholder: "category",
+        required: true,
+      },
     ],
   },
 
@@ -625,8 +715,20 @@ export const ETL_NODES: EtlNodeDef[] = [
     inputs: ["in"],
     outputs: ["out"],
     fields: [
-      { key: "groupBy", label: "Raggruppa per", kind: "text", placeholder: "product", required: true },
-      { key: "aggregation", label: "Funzione", kind: "select", options: ["SUM", "AVG", "MIN", "MAX", "COUNT"], defaultValue: "SUM" },
+      {
+        key: "groupBy",
+        label: "Raggruppa per",
+        kind: "text",
+        placeholder: "product",
+        required: true,
+      },
+      {
+        key: "aggregation",
+        label: "Funzione",
+        kind: "select",
+        options: ["SUM", "AVG", "MIN", "MAX", "COUNT"],
+        defaultValue: "SUM",
+      },
       { key: "metric", label: "Metrica", kind: "text", placeholder: "revenue", required: true },
     ],
   },
@@ -639,7 +741,13 @@ export const ETL_NODES: EtlNodeDef[] = [
     inputs: ["in"],
     outputs: ["out"],
     fields: [
-      { key: "aggregation", label: "Funzione", kind: "select", options: ["SUM", "AVG", "MIN", "MAX", "COUNT"], defaultValue: "SUM" },
+      {
+        key: "aggregation",
+        label: "Funzione",
+        kind: "select",
+        options: ["SUM", "AVG", "MIN", "MAX", "COUNT"],
+        defaultValue: "SUM",
+      },
       { key: "metric", label: "Metrica", kind: "text", placeholder: "revenue", required: true },
     ],
   },
@@ -667,8 +775,20 @@ export const ETL_NODES: EtlNodeDef[] = [
     inputs: ["in"],
     outputs: [],
     fields: [
-      { key: "name", label: "Nome dataset", kind: "text", placeholder: "dataset_vendite", required: true },
-      { key: "mode", label: "Scrittura", kind: "select", options: ["replace", "append"], defaultValue: "replace" },
+      {
+        key: "name",
+        label: "Nome dataset",
+        kind: "text",
+        placeholder: "dataset_vendite",
+        required: true,
+      },
+      {
+        key: "mode",
+        label: "Scrittura",
+        kind: "select",
+        options: ["replace", "append"],
+        defaultValue: "replace",
+      },
     ],
   },
   {
@@ -705,7 +825,9 @@ export function nodeSummary(type: string, config: Record<string, string>): strin
     case "source.api":
       return v("url") || "nessun endpoint";
     case "transform.filter":
-      return v("column") ? `${v("column")} ${v("operator") || "="} "${v("value")}"` : "condizione mancante";
+      return v("column")
+        ? `${v("column")} ${v("operator") || "="} "${v("value")}"`
+        : "condizione mancante";
     case "transform.select":
       return v("columns") || "nessuna colonna";
     case "transform.rename":
@@ -725,7 +847,9 @@ export function nodeSummary(type: string, config: Record<string, string>): strin
     case "combine.lookup":
       return v("key") ? `${v("column")} on ${v("key")}` : "chiave mancante";
     case "aggregate.groupBy":
-      return v("metric") ? `${v("aggregation")}(${v("metric")}) by ${v("groupBy")}` : "metrica mancante";
+      return v("metric")
+        ? `${v("aggregation")}(${v("metric")}) by ${v("groupBy")}`
+        : "metrica mancante";
     case "aggregate.aggregate":
       return v("metric") ? `${v("aggregation")}(${v("metric")})` : "metrica mancante";
     case "aggregate.pivot":
@@ -742,17 +866,11 @@ export function nodeSummary(type: string, config: Record<string, string>): strin
 
 ### `src/lib/etl-display.ts`
 
-74 righe
+65 righe
 
 ```ts
 import type { LucideIcon } from "lucide-react";
-import {
-  BarChart3,
-  Combine,
-  Database,
-  Save,
-  Sigma,
-} from "lucide-react";
+import { BarChart3, Combine, Database, Save, Sigma } from "lucide-react";
 import type { EtlCategory } from "@/lib/etl-catalog";
 
 /** Impostazioni di visualizzazione delle card nel canvas ETL. */
@@ -807,10 +925,7 @@ export type CardIconLayout = {
  * sono forzate quadrate come le "transform": una % CSS su width e
  * height separatamente distorcerebbe l'icona su una card rettangolare.
  */
-export function getCardIconLayout(
-  width: number,
-  height: number,
-): CardIconLayout {
+export function getCardIconLayout(width: number, height: number): CardIconLayout {
   const side = Math.min(width, height);
   const iconBoxSize = side * 0.4;
   return {
@@ -822,7 +937,7 @@ export function getCardIconLayout(
 
 ### `src/lib/etl-motion.ts`
 
-81 righe
+67 righe
 
 ```ts
 /**
@@ -848,20 +963,10 @@ const transitionOf = (properties: readonly string[]): string =>
   properties.map((property) => `${property} ${timing}`).join(", ");
 
 /** Transizione CSS applicata alla card quando si muove per un motivo diverso dal drag dell'utente. */
-export const CARD_AUTO_MOVE_TRANSITION = transitionOf([
-  "left",
-  "top",
-  "width",
-  "height",
-]);
+export const CARD_AUTO_MOVE_TRANSITION = transitionOf(["left", "top", "width", "height"]);
 
 /** Transizione CSS applicata al contenitore di una bubble (resize/orientamento/membri che entrano o escono). */
-export const BUBBLE_AUTO_MOVE_TRANSITION = transitionOf([
-  "left",
-  "top",
-  "width",
-  "height",
-]);
+export const BUBBLE_AUTO_MOVE_TRANSITION = transitionOf(["left", "top", "width", "height"]);
 
 /**
  * Transizione CSS applicata al path di una freccia quando segue un
@@ -869,11 +974,7 @@ export const BUBBLE_AUTO_MOVE_TRANSITION = transitionOf([
  * durata/easing della card, così i due non si muovono mai a scatti
  * indipendenti l'uno dall'altro.
  */
-export const EDGE_AUTO_MOVE_TRANSITION = transitionOf([
-  "d",
-  "stroke-width",
-  "stroke-opacity",
-]);
+export const EDGE_AUTO_MOVE_TRANSITION = transitionOf(["d", "stroke-width", "stroke-opacity"]);
 
 /*
  * Registro "iOS" (Parte 2 del redesign): apertura di un elemento che si
@@ -909,7 +1010,7 @@ export const PRESS_TRANSITION = "transform 150ms ease-out";
 
 ### `src/lib/etl-node-config.ts`
 
-224 righe
+208 righe
 
 ```ts
 /**
@@ -926,19 +1027,14 @@ import { nodeDef } from "./etl-catalog";
 import { analyzeNode, previewRows } from "./etl-schema";
 import type { EtlNode, EtlWorkflow } from "./etl-workflow";
 
-export type SettingsPanelKind =
-  | "filter"
-  | "combine"
-  | "aggregate";
+export type SettingsPanelKind = "filter" | "combine" | "aggregate";
 
 /**
  * Quale pannello impostazioni dedicato mostrare per un dato tipo di
  * nodo (fase 4) — `null` per i tipi non ancora coperti da un pannello
  * dedicato, che restano sul menu azioni generico esistente.
  */
-export function getSettingsPanelKind(
-  nodeType: string,
-): SettingsPanelKind | null {
+export function getSettingsPanelKind(nodeType: string): SettingsPanelKind | null {
   if (nodeType === "transform.filter") {
     return "filter";
   }
@@ -959,10 +1055,7 @@ export function getSettingsPanelKind(
 /* -------------------------------------------------------------------------- */
 
 /** Colonne disponibili per il filtro: lo schema in INGRESSO al nodo Filter. */
-export function getFilterColumnOptions(
-  workflow: EtlWorkflow,
-  node: EtlNode,
-): ColumnDef[] {
+export function getFilterColumnOptions(workflow: EtlWorkflow, node: EtlNode): ColumnDef[] {
   return analyzeNode(workflow, node).inputColumns;
 }
 
@@ -974,11 +1067,7 @@ export function getFilterColumnOptions(
  * `previewRows` (stesso seed => stessi valori a ogni render) invece di
  * inventare una seconda fonte di dati finti.
  */
-export function getColumnDomainValues(
-  column: ColumnDef,
-  seed: string,
-  sampleSize = 10,
-): string[] {
+export function getColumnDomainValues(column: ColumnDef, seed: string, sampleSize = 10): string[] {
   const rows = previewRows([column], seed, sampleSize);
   const values = rows.map((row) => row[0]).filter((v): v is string => v !== undefined);
   return Array.from(new Set(values));
@@ -1008,9 +1097,7 @@ export function getCombineInputs(
   node: EtlNode,
   memberIds?: readonly string[],
 ): CombineInputSchema[] {
-  const members = new Set(
-    memberIds && memberIds.length > 1 ? memberIds : [node.id],
-  );
+  const members = new Set(memberIds && memberIds.length > 1 ? memberIds : [node.id]);
 
   const seen = new Set<string>();
   const inputs: CombineInputSchema[] = [];
@@ -1026,9 +1113,7 @@ export function getCombineInputs(
 
     seen.add(edge.fromNode);
 
-    const fromNode = workflow.nodes.find(
-      (n) => n.id === edge.fromNode,
-    );
+    const fromNode = workflow.nodes.find((n) => n.id === edge.fromNode);
 
     if (!fromNode) {
       continue;
@@ -1047,9 +1132,12 @@ export function getCombineInputs(
 /** Opzioni del tipo di join, riusando quelle già dichiarate sul campo "how" del catalogo (nessuna lista duplicata). */
 export function getJoinTypeOptions(): string[] {
   return (
-    nodeDef("combine.join")?.fields.find(
-      (field) => field.key === "how",
-    )?.options ?? ["inner", "left", "right", "outer"]
+    nodeDef("combine.join")?.fields.find((field) => field.key === "how")?.options ?? [
+      "inner",
+      "left",
+      "right",
+      "outer",
+    ]
   );
 }
 
@@ -1076,10 +1164,7 @@ export type AggregateFieldSpec = {
 };
 
 /** Selettori dinamici (colonna singola o multipla) per groupBy/aggregate/pivot, dallo schema effettivo in ingresso. */
-export function getAggregateFieldSpecs(
-  workflow: EtlWorkflow,
-  node: EtlNode,
-): AggregateFieldSpec[] {
+export function getAggregateFieldSpecs(workflow: EtlWorkflow, node: EtlNode): AggregateFieldSpec[] {
   const inputColumns = analyzeNode(workflow, node).inputColumns;
 
   switch (node.type) {
@@ -1139,7 +1224,7 @@ export function getAggregateFieldSpecs(
 
 ### `src/lib/etl-node-size.ts`
 
-246 righe
+171 righe
 
 ```ts
 import { nodeDef, nodeSummary } from "./etl-catalog";
@@ -1194,61 +1279,31 @@ function estimateCardHeight(
    * Il titolo può andare a capo: stimiamo le righe in base
    * allo spazio orizzontale realmente disponibile.
    */
-  const headerTextWidth = Math.max(
-    40,
-    width - 36 - 8 - 28 - CARD_PADDING * 2,
-  );
+  const headerTextWidth = Math.max(40, width - 36 - 8 - 28 - CARD_PADDING * 2);
 
   const titleLines = Math.min(
     3,
-    Math.max(
-      1,
-      Math.ceil(
-        (node.title.length * 6.4) /
-          headerTextWidth,
-      ),
-    ),
+    Math.max(1, Math.ceil((node.title.length * 6.4) / headerTextWidth)),
   );
 
-  const HEADER_HEIGHT = Math.max(
-    36,
-    titleLines * 15 + 12,
-  );
+  const HEADER_HEIGHT = Math.max(36, titleLines * 15 + 12);
 
   let bodyHeight = 0;
 
   if (showDetail && detail) {
-    const charsPerLine = Math.max(
-      1,
-      Math.floor(
-        (width -
-          CARD_PADDING * 2 -
-          20) /
-          5.2,
-      ),
-    );
+    const charsPerLine = Math.max(1, Math.floor((width - CARD_PADDING * 2 - 20) / 5.2));
 
-    const lines = Math.min(
-      4,
-      Math.max(
-        1,
-        Math.ceil(
-          detail.length / charsPerLine,
-        ),
-      ),
-    );
+    const lines = Math.min(4, Math.max(1, Math.ceil(detail.length / charsPerLine)));
 
     bodyHeight += 16 + lines * 14;
   }
 
   if (display.metrics) {
-    bodyHeight +=
-      (bodyHeight > 0 ? 8 : 0) + 24;
+    bodyHeight += (bodyHeight > 0 ? 8 : 0) + 24;
   }
 
   if (display.status) {
-    bodyHeight +=
-      (bodyHeight > 0 ? 6 : 0) + 20;
+    bodyHeight += (bodyHeight > 0 ? 6 : 0) + 20;
   }
 
   if (bodyHeight === 0) {
@@ -1260,13 +1315,7 @@ function estimateCardHeight(
     MAX_NODE_SIZE,
     Math.max(
       MIN_NODE_HEIGHT,
-      Math.ceil(
-        (CARD_PADDING * 2 +
-          HEADER_HEIGHT +
-          BODY_GAP +
-          bodyHeight) /
-          8,
-      ) * 8,
+      Math.ceil((CARD_PADDING * 2 + HEADER_HEIGHT + BODY_GAP + bodyHeight) / 8) * 8,
     ),
   );
 }
@@ -1293,22 +1342,13 @@ export function estimateNodeSize(
     };
   }
 
-  const analysis = analyzeNode(
-    workflow,
-    node,
-  );
+  const analysis = analyzeNode(workflow, node);
 
-  const detail = nodeSummary(
-    node.type,
-    node.config,
-  );
+  const detail = nodeSummary(node.type, node.config);
 
-  const isSource =
-    def.category === "sources";
+  const isSource = def.category === "sources";
 
-  const showDetail =
-    (display.source && isSource) ||
-    (display.formula && !isSource);
+  const showDetail = (display.source && isSource) || (display.formula && !isSource);
 
   const metricsText = display.metrics
     ? `${formatRows(analysis.rows)} rows · ${analysis.columns.length} cols`
@@ -1318,34 +1358,16 @@ export function estimateNodeSize(
   /*  LARGHEZZA — guidata dal testo più lungo (header / metriche).      */
   /* ------------------------------------------------------------------ */
 
-  const longestText = Math.max(
-    node.title.length,
-    def.label.length,
-    metricsText.length,
-    8,
-  );
+  const longestText = Math.max(node.title.length, def.label.length, metricsText.length, 8);
 
-  const textWidth = Math.min(
-    210,
-    Math.max(
-      90,
-      longestText * 6.2,
-    ),
-  );
+  const textWidth = Math.min(210, Math.max(90, longestText * 6.2));
 
   /*
    * Header: icona (size-9) + gap + testo + menu (size-7) + padding card.
    */
-  const headerWidth =
-    textWidth + 36 + 8 + 28 + 24;
+  const headerWidth = textWidth + 36 + 8 + 28 + 24;
 
-  const width = Math.min(
-    MAX_NODE_SIZE,
-    Math.max(
-      MIN_NODE_SIZE,
-      Math.ceil(headerWidth / 8) * 8,
-    ),
-  );
+  const width = Math.min(MAX_NODE_SIZE, Math.max(MIN_NODE_SIZE, Math.ceil(headerWidth / 8) * 8));
 
   /* ------------------------------------------------------------------ */
   /*  ALTEZZA — si adatta al contenuto reale, senza spazio in eccesso.  */
@@ -1360,13 +1382,7 @@ export function estimateNodeSize(
      * sources, così i due tipi restano visivamente allineati anche se
      * cambiano i display settings.
      */
-    const side = estimateCardHeight(
-      node,
-      display,
-      width,
-      detail,
-      display.source,
-    );
+    const side = estimateCardHeight(node, display, width, detail, display.source);
 
     return {
       width: side,
@@ -1374,13 +1390,7 @@ export function estimateNodeSize(
     };
   }
 
-  const height = estimateCardHeight(
-    node,
-    display,
-    width,
-    detail,
-    showDetail,
-  );
+  const height = estimateCardHeight(node, display, width, detail, showDetail);
 
   return {
     width,
@@ -1391,7 +1401,7 @@ export function estimateNodeSize(
 
 ### `src/lib/etl-schema.ts`
 
-255 righe
+264 righe
 
 ```ts
 import type { ColumnDef, ColumnType } from "./etl-catalog";
@@ -1424,14 +1434,11 @@ const datasetOf = (node: EtlNode) => {
 };
 
 /** Stima statica di schema e volumi: authoring-time, nessuna esecuzione reale. */
-export function analyzeNode(
-  workflow: EtlWorkflow,
-  node: EtlNode,
-  depth = 0,
-): NodeAnalysis {
+export function analyzeNode(workflow: EtlWorkflow, node: EtlNode, depth = 0): NodeAnalysis {
   const def = nodeDef(node.type);
   const errors: string[] = [];
-  if (!def || depth > 24) return { inputColumns: [], columns: [], inRows: null, rows: null, errors };
+  if (!def || depth > 24)
+    return { inputColumns: [], columns: [], inRows: null, rows: null, errors };
 
   for (const field of def.fields) {
     if (field.required && !(node.config[field.key] ?? "").trim()) {
@@ -1521,7 +1528,10 @@ export function analyzeNode(
     case "transform.formula": {
       const name = (cfg["column"] ?? "").trim();
       columns = name
-        ? [...inputColumns, { name, type: (cfg["type"] as ColumnType) || "decimal", nullable: true }]
+        ? [
+            ...inputColumns,
+            { name, type: (cfg["type"] as ColumnType) || "decimal", nullable: true },
+          ]
         : inputColumns;
       break;
     }
@@ -1575,7 +1585,12 @@ export function analyzeNode(
       const agg = cfg["aggregation"] ?? "SUM";
       columns = [
         ...groups.map(
-          (g) => inputColumns.find((c) => c.name === g) ?? { name: g, type: "string" as ColumnType, nullable: false },
+          (g) =>
+            inputColumns.find((c) => c.name === g) ?? {
+              name: g,
+              type: "string" as ColumnType,
+              nullable: false,
+            },
         ),
         {
           name: `${agg.toLowerCase()}_${metric}`,
@@ -1591,7 +1606,11 @@ export function analyzeNode(
       const metric = (cfg["metric"] ?? "metrica").trim();
       const agg = cfg["aggregation"] ?? "SUM";
       columns = [
-        { name: `${agg.toLowerCase()}_${metric}`, type: agg === "COUNT" ? "integer" : "decimal", nullable: false },
+        {
+          name: `${agg.toLowerCase()}_${metric}`,
+          type: agg === "COUNT" ? "integer" : "decimal",
+          nullable: false,
+        },
       ];
       rows = 1;
       break;

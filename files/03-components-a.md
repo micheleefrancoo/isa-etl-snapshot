@@ -307,7 +307,7 @@ function ViewButton({
 
 ### `src/components/isa/logo.tsx`
 
-68 righe
+58 righe
 
 ```tsx
 export function IsaLogo({
@@ -333,15 +333,7 @@ export function IsaLogo({
             <stop offset="100%" stopColor="var(--brand-glow)" />
           </linearGradient>
         </defs>
-        <rect
-          x="1.5"
-          y="1.5"
-          width="33"
-          height="33"
-          rx="10"
-          fill="url(#isa-grad)"
-          opacity="0.95"
-        />
+        <rect x="1.5" y="1.5" width="33" height="33" rx="10" fill="url(#isa-grad)" opacity="0.95" />
         <rect
           x="1.5"
           y="1.5"
@@ -370,9 +362,7 @@ export function IsaLogo({
         />
       </svg>
       {showWordmark && (
-        <span className="text-2xl font-semibold tracking-tight text-gradient-brand">
-          isa
-        </span>
+        <span className="text-2xl font-semibold tracking-tight text-gradient-brand">isa</span>
       )}
     </span>
   );
@@ -381,7 +371,7 @@ export function IsaLogo({
 
 ### `src/components/isa/mini-chart.tsx`
 
-87 righe
+77 righe
 
 ```tsx
 import type { ChartKind } from "@/lib/solutions-store";
@@ -403,12 +393,7 @@ export function MiniChart({
     const gap = 2.4;
     const bw = (w - gap * (data.length - 1)) / data.length;
     return (
-      <svg
-        viewBox={`0 0 ${w} ${h}`}
-        preserveAspectRatio="none"
-        className={className}
-        aria-hidden
-      >
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className={className} aria-hidden>
         <defs>
           <linearGradient id="isa-bar" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--brand-glow)" />
@@ -441,12 +426,7 @@ export function MiniChart({
   });
 
   return (
-    <svg
-      viewBox={`0 0 ${w} ${h}`}
-      preserveAspectRatio="none"
-      className={className}
-      aria-hidden
-    >
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className={className} aria-hidden>
       <defs>
         <linearGradient id="isa-line" x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="var(--brand)" />
@@ -474,7 +454,7 @@ export function MiniChart({
 
 ### `src/components/isa/module-picker-modal.tsx`
 
-72 righe
+74 righe
 
 ```tsx
 import { Link } from "@tanstack/react-router";
@@ -515,34 +495,36 @@ export function ModulePickerModal({
         </button>
 
         <h2 className="text-lg font-semibold">Accedi a {solution.name}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Seleziona il modulo su cui lavorare
-        </p>
+        <p className="mt-1 text-sm text-muted-foreground">Seleziona il modulo su cui lavorare</p>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          {MODULES.filter((m) => solution.modules[m.key]).map(({ key, label, description, Icon, to }) => (
-            <Link
-              key={key}
-              to={to}
-              params={{ solutionId: solution.id }}
-              onClick={onClose}
-              className="glass-chip group flex flex-col gap-2 rounded-2xl p-4 text-left transition hover:-translate-y-0.5 hover:ring-2 hover:ring-ring"
-            >
-              <span className={`badge-type-${key} flex size-10 items-center justify-center rounded-2xl`}>
-                <Icon className="size-5" />
-              </span>
-              <span className="flex items-center gap-1 text-sm font-semibold">
-                {label}
-                <ArrowUpRight className="size-3.5 opacity-0 transition group-hover:opacity-100" />
-              </span>
-              <span className="text-[11px] leading-snug text-muted-foreground">
-                {description}
-              </span>
-              <span className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {solution.modules[key] === "live" ? "Live" : "Draft"}
-              </span>
-            </Link>
-          ))}
+          {MODULES.filter((m) => solution.modules[m.key]).map(
+            ({ key, label, description, Icon, to }) => (
+              <Link
+                key={key}
+                to={to}
+                params={{ solutionId: solution.id }}
+                onClick={onClose}
+                className="glass-chip group flex flex-col gap-2 rounded-2xl p-4 text-left transition hover:-translate-y-0.5 hover:ring-2 hover:ring-ring"
+              >
+                <span
+                  className={`badge-type-${key} flex size-10 items-center justify-center rounded-2xl`}
+                >
+                  <Icon className="size-5" />
+                </span>
+                <span className="flex items-center gap-1 text-sm font-semibold">
+                  {label}
+                  <ArrowUpRight className="size-3.5 opacity-0 transition group-hover:opacity-100" />
+                </span>
+                <span className="text-[11px] leading-snug text-muted-foreground">
+                  {description}
+                </span>
+                <span className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {solution.modules[key] === "live" ? "Live" : "Draft"}
+                </span>
+              </Link>
+            ),
+          )}
         </div>
       </div>
     </div>
@@ -552,7 +534,7 @@ export function ModulePickerModal({
 
 ### `src/components/isa/new-solution-modal.tsx`
 
-215 righe
+206 righe
 
 ```tsx
 import { Check, X } from "lucide-react";
@@ -588,9 +570,7 @@ export function NewSolutionModal({
 
   const toggleModule = (key: ModuleKey) => {
     setError("");
-    setModules((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-    );
+    setModules((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   };
 
   const submit = (e: React.FormEvent) => {
@@ -628,10 +608,7 @@ export function NewSolutionModal({
         onClick={onClose}
         className="absolute inset-0 bg-background/50 backdrop-blur-md"
       />
-      <form
-        onSubmit={submit}
-        className="glass-panel relative w-full max-w-lg rounded-3xl p-6"
-      >
+      <form onSubmit={submit} className="glass-panel relative w-full max-w-lg rounded-3xl p-6">
         <button
           type="button"
           onClick={onClose}
@@ -697,12 +674,8 @@ export function NewSolutionModal({
                       <Icon className="size-4" />
                     </span>
                     <span className="text-xs font-semibold">{label}</span>
-                    <span className="text-[10px] leading-snug text-muted-foreground">
-                      {desc}
-                    </span>
-                    {active && (
-                      <Check className="absolute right-2 top-2 size-3.5 text-brand" />
-                    )}
+                    <span className="text-[10px] leading-snug text-muted-foreground">{desc}</span>
+                    {active && <Check className="absolute right-2 top-2 size-3.5 text-brand" />}
                   </button>
                 );
               })}
@@ -773,7 +746,7 @@ function SemverSelect({
 
 ### `src/components/isa/share-modal.tsx`
 
-125 righe
+123 righe
 
 ```tsx
 import { Trash2, UserPlus, X } from "lucide-react";
@@ -891,9 +864,7 @@ export function ShareModal({
             </div>
           ))}
           {solution.shares.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              Nessuna condivisione attiva.
-            </p>
+            <p className="text-xs text-muted-foreground">Nessuna condivisione attiva.</p>
           )}
         </div>
       </div>
@@ -904,7 +875,7 @@ export function ShareModal({
 
 ### `src/components/isa/sidebar.tsx`
 
-118 righe
+114 righe
 
 ```tsx
 import { Link } from "@tanstack/react-router";
@@ -955,9 +926,7 @@ export function IsaSidebar() {
           aria-label={collapsed ? "Espandi menu" : "Comprimi menu"}
           className="glass-chip flex size-7 items-center justify-center rounded-full text-muted-foreground transition hover:text-foreground"
         >
-          <ChevronLeft
-            className={`size-4 transition-transform ${collapsed ? "rotate-180" : ""}`}
-          />
+          <ChevronLeft className={`size-4 transition-transform ${collapsed ? "rotate-180" : ""}`} />
         </button>
       </div>
 
@@ -976,9 +945,7 @@ export function IsaSidebar() {
         {!collapsed && (
           <span className="min-w-0">
             <span className="block truncate text-sm font-medium">Michele Franco</span>
-            <span className="block truncate text-xs text-muted-foreground">
-              Workspace admin
-            </span>
+            <span className="block truncate text-xs text-muted-foreground">Workspace admin</span>
           </span>
         )}
       </Link>
@@ -1028,7 +995,7 @@ function NavGroup({
 
 ### `src/components/isa/solution-card.tsx`
 
-222 righe
+215 righe
 
 ```tsx
 import {
@@ -1068,7 +1035,6 @@ export function SolutionCard({
     setEditing(field);
     close();
   };
-
 
   const commitEdit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1115,9 +1081,7 @@ export function SolutionCard({
               {solution.name}
             </span>
           )}
-          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-            {solution.description}
-          </p>
+          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{solution.description}</p>
           <span className="glass-chip mt-2 inline-block rounded-full px-2.5 py-1 text-[11px] text-muted-foreground">
             {solution.version}
           </span>
@@ -1126,9 +1090,7 @@ export function SolutionCard({
         <div className="pointer-events-auto flex shrink-0 items-center gap-1.5" onClick={stop}>
           <button
             type="button"
-            onClick={() =>
-              updateSolution(solution.id, { status: live ? "draft" : "live" })
-            }
+            onClick={() => updateSolution(solution.id, { status: live ? "draft" : "live" })}
             role="switch"
             aria-checked={live}
             aria-label={`Stato: ${live ? "Live" : "Draft"}`}
@@ -1187,7 +1149,6 @@ export function SolutionCard({
               </>
             )}
           </IsaMenu>
-
         </div>
       </div>
 
@@ -1234,7 +1195,6 @@ export function SolutionCard({
   );
 }
 
-
 export function NewSolutionCard({ onClick }: { onClick: () => void }) {
   return (
     <button
@@ -1256,22 +1216,13 @@ export function NewSolutionCard({ onClick }: { onClick: () => void }) {
 
 ### `src/components/isa/solution-row.tsx`
 
-142 righe
+135 righe
 
 ```tsx
-import {
-  CalendarClock,
-  Copy,
-  Pencil,
-  Share2,
-  Tag,
-  ToggleLeft,
-  Trash2,
-} from "lucide-react";
+import { CalendarClock, Copy, Pencil, Share2, Tag, ToggleLeft, Trash2 } from "lucide-react";
 import { IsaMenu, IsaMenuItem } from "@/components/isa/ui/isa-menu";
 import { MODULES } from "@/lib/modules";
 import { type Solution, useSolutions } from "@/lib/solutions-store";
-
 
 export function SolutionRow({
   solution,
@@ -1296,10 +1247,12 @@ export function SolutionRow({
     );
     close();
     if (value && value.trim()) {
-      updateSolution(solution.id, field === "name" ? { name: value.trim() } : { version: value.trim() });
+      updateSolution(
+        solution.id,
+        field === "name" ? { name: value.trim() } : { version: value.trim() },
+      );
     }
   };
-
 
   return (
     <div className="glass-panel relative flex flex-wrap items-center gap-3 rounded-2xl p-3">
@@ -1404,22 +1357,13 @@ export function SolutionRow({
 
 ### `src/components/isa/ui/isa-menu.tsx`
 
-685 righe
+420 righe
 
 ```tsx
 import type { Pencil } from "lucide-react";
-import {
-  Check,
-  MoreHorizontal,
-} from "lucide-react";
+import { Check, MoreHorizontal } from "lucide-react";
 import { createPortal } from "react-dom";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   PRESS_SCALE,
   PRESS_TRANSITION,
@@ -1429,15 +1373,9 @@ import {
   SPRING_OPEN_TRANSITION,
 } from "@/lib/etl-motion";
 
-type MenuSide =
-  | "top"
-  | "bottom"
-  | "left"
-  | "right";
+type MenuSide = "top" | "bottom" | "left" | "right";
 
-type MenuPlacement =
-  | "auto"
-  | MenuSide;
+type MenuPlacement = "auto" | MenuSide;
 
 type MenuPosition = {
   top: number;
@@ -1461,15 +1399,11 @@ export function IsaMenu({
   onOpenChange,
 }: {
   label: string;
-  children: (
-    close: () => void,
-  ) => React.ReactNode;
+  children: (close: () => void) => React.ReactNode;
   align?: "left" | "right";
   Icon?: typeof Pencil;
   triggerClassName?: string;
-  boundaryRef?: React.RefObject<
-    HTMLElement | null
-  >;
+  boundaryRef?: React.RefObject<HTMLElement | null>;
   placement?: MenuPlacement;
   variant?: "chip" | "bare";
   /** Larghezza del popover in px (default MENU_WIDTH) — es. per i pannelli impostazioni della fase 4, più larghi di un menu azioni. */
@@ -1480,12 +1414,9 @@ export function IsaMenu({
    * feedback "pressed" all'intero contenitore, non solo al bottone
    * icona (punto 2.1 del redesign iOS).
    */
-  onOpenChange?: (
-    open: boolean,
-  ) => void;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] =
-    useState(false);
+  const [open, setOpen] = useState(false);
 
   /*
    * `rendered` tiene il popover nel DOM anche durante la chiusura, per
@@ -1494,59 +1425,35 @@ export function IsaMenu({
    * e viene alzata un frame dopo il mount (serve un primo commit con lo
    * stato "piccolo/trasparente" prima di animare verso quello finale).
    */
-  const [rendered, setRendered] =
-    useState(false);
+  const [rendered, setRendered] = useState(false);
 
-  const [visible, setVisible] =
-    useState(false);
+  const [visible, setVisible] = useState(false);
 
-  const [side, setSide] =
-    useState<MenuSide>("bottom");
+  const [side, setSide] = useState<MenuSide>("bottom");
 
-  const [position, setPosition] =
-    useState<MenuPosition | null>(
-      null,
-    );
+  const [position, setPosition] = useState<MenuPosition | null>(null);
 
-  const rootRef =
-    useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
-  const triggerRef =
-    useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
-  const menuRef =
-    useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  const closeTimeoutRef =
-    useRef<number | null>(null);
+  const closeTimeoutRef = useRef<number | null>(null);
 
-  const constrained =
-    Boolean(
-      boundaryRef &&
-        placement === "auto",
-    );
+  const constrained = Boolean(boundaryRef && placement === "auto");
 
-  const clearCloseTimeout =
-    useCallback(() => {
-      if (
-        closeTimeoutRef.current !==
-        null
-      ) {
-        window.clearTimeout(
-          closeTimeoutRef.current,
-        );
-        closeTimeoutRef.current =
-          null;
-      }
-    }, []);
+  const clearCloseTimeout = useCallback(() => {
+    if (closeTimeoutRef.current !== null) {
+      window.clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+  }, []);
 
-  const close = useCallback(
-    () => {
-      setOpen(false);
-      onOpenChange?.(false);
-    },
-    [onOpenChange],
-  );
+  const close = useCallback(() => {
+    setOpen(false);
+    onOpenChange?.(false);
+  }, [onOpenChange]);
 
   /*
    * Sequenza di chiusura: appena `open` torna false il popover resta
@@ -1564,426 +1471,224 @@ export function IsaMenu({
     setVisible(false);
     clearCloseTimeout();
 
-    closeTimeoutRef.current =
-      window.setTimeout(() => {
-        setRendered(false);
-        setPosition(null);
-        closeTimeoutRef.current =
-          null;
-      }, SPRING_CLOSE_DURATION_MS);
+    closeTimeoutRef.current = window.setTimeout(() => {
+      setRendered(false);
+      setPosition(null);
+      closeTimeoutRef.current = null;
+    }, SPRING_CLOSE_DURATION_MS);
 
     return clearCloseTimeout;
-  }, [
-    open,
-    rendered,
-    clearCloseTimeout,
-  ]);
+  }, [open, rendered, clearCloseTimeout]);
 
-  const calculatePosition =
-    useCallback(() => {
-      if (!constrained) {
-        return;
+  const calculatePosition = useCallback(() => {
+    if (!constrained) {
+      return;
+    }
+
+    const trigger = triggerRef.current;
+
+    const menu = menuRef.current;
+
+    const boundary = boundaryRef?.current;
+
+    if (!trigger || !menu || !boundary) {
+      return;
+    }
+
+    const triggerRect = trigger.getBoundingClientRect();
+
+    const menuRect = menu.getBoundingClientRect();
+
+    const boundaryRect = boundary.getBoundingClientRect();
+
+    const menuWidth = menuRect.width || width;
+
+    const menuHeight = menuRect.height;
+
+    const available: Record<MenuSide, number> = {
+      top: triggerRect.top - boundaryRect.top - MENU_GAP - MENU_MARGIN,
+
+      bottom: boundaryRect.bottom - triggerRect.bottom - MENU_GAP - MENU_MARGIN,
+
+      left: triggerRect.left - boundaryRect.left - MENU_GAP - MENU_MARGIN,
+
+      right: boundaryRect.right - triggerRect.right - MENU_GAP - MENU_MARGIN,
+    };
+
+    const fits: Record<MenuSide, boolean> = {
+      top: available.top >= menuHeight,
+
+      bottom: available.bottom >= menuHeight,
+
+      left: available.left >= menuWidth,
+
+      right: available.right >= menuWidth,
+    };
+
+    /*
+     * Ordine preferenziale:
+     * prima sotto, poi sopra, poi lato destro/sinistro.
+     *
+     * Se un lato non ha spazio sufficiente,
+     * viene provato il successivo.
+     */
+    const order: MenuSide[] = ["bottom", "top", "right", "left"];
+
+    let side: MenuSide | null = null;
+
+    for (const candidate of order) {
+      if (fits[candidate]) {
+        side = candidate;
+        break;
       }
+    }
 
-      const trigger =
-        triggerRef.current;
-
-      const menu =
-        menuRef.current;
-
-      const boundary =
-        boundaryRef?.current;
-
-      if (
-        !trigger ||
-        !menu ||
-        !boundary
-      ) {
-        return;
-      }
-
-      const triggerRect =
-        trigger.getBoundingClientRect();
-
-      const menuRect =
-        menu.getBoundingClientRect();
-
-      const boundaryRect =
-        boundary.getBoundingClientRect();
-
-      const menuWidth =
-        menuRect.width ||
-        width;
-
-      const menuHeight =
-        menuRect.height;
-
-      const available: Record<
-        MenuSide,
-        number
-      > = {
-        top:
-          triggerRect.top -
-          boundaryRect.top -
-          MENU_GAP -
-          MENU_MARGIN,
-
-        bottom:
-          boundaryRect.bottom -
-          triggerRect.bottom -
-          MENU_GAP -
-          MENU_MARGIN,
-
-        left:
-          triggerRect.left -
-          boundaryRect.left -
-          MENU_GAP -
-          MENU_MARGIN,
-
-        right:
-          boundaryRect.right -
-          triggerRect.right -
-          MENU_GAP -
-          MENU_MARGIN,
-      };
-
-      const fits: Record<
-        MenuSide,
-        boolean
-      > = {
-        top:
-          available.top >=
-          menuHeight,
-
-        bottom:
-          available.bottom >=
-          menuHeight,
-
-        left:
-          available.left >=
-          menuWidth,
-
-        right:
-          available.right >=
-          menuWidth,
-      };
-
-      /*
-       * Ordine preferenziale:
-       * prima sotto, poi sopra, poi lato destro/sinistro.
-       *
-       * Se un lato non ha spazio sufficiente,
-       * viene provato il successivo.
-       */
-      const order: MenuSide[] = [
-        "bottom",
-        "top",
-        "right",
-        "left",
-      ];
-
-      let side:
-        | MenuSide
-        | null = null;
-
-      for (
-        const candidate of order
-      ) {
-        if (fits[candidate]) {
-          side = candidate;
-          break;
-        }
-      }
-
-      /*
-       * Se il Canvas è troppo piccolo per contenere
-       * il menu interamente su un lato, scegliamo il lato
-       * con più spazio e facciamo un clamp finale.
-       */
-      if (!side) {
-        const fallback =
-          (
-            Object.keys(
-              available,
-            ) as MenuSide[]
-          ).sort(
-            (a, b) =>
-              available[b] -
-              available[a],
-          );
-
-        side =
-          fallback[0] ??
-          "bottom";
-      }
-
-      let left =
-        triggerRect.right -
-        menuWidth;
-
-      let top =
-        triggerRect.bottom +
-        MENU_GAP;
-
-      if (
-        side === "bottom"
-      ) {
-        top =
-          triggerRect.bottom +
-          MENU_GAP;
-
-        left =
-          align === "left"
-            ? triggerRect.left
-            : triggerRect.right -
-              menuWidth;
-      }
-
-      if (
-        side === "top"
-      ) {
-        top =
-          triggerRect.top -
-          menuHeight -
-          MENU_GAP;
-
-        left =
-          align === "left"
-            ? triggerRect.left
-            : triggerRect.right -
-              menuWidth;
-      }
-
-      if (
-        side === "right"
-      ) {
-        left =
-          triggerRect.right +
-          MENU_GAP;
-
-        top =
-          triggerRect.top;
-      }
-
-      if (
-        side === "left"
-      ) {
-        left =
-          triggerRect.left -
-          menuWidth -
-          MENU_GAP;
-
-        top =
-          triggerRect.top;
-      }
-
-      const minLeft =
-        boundaryRect.left +
-        MENU_MARGIN;
-
-      const maxLeft =
-        Math.max(
-          minLeft,
-          boundaryRect.right -
-            menuWidth -
-            MENU_MARGIN,
-        );
-
-      const minTop =
-        boundaryRect.top +
-        MENU_MARGIN;
-
-      const maxTop =
-        Math.max(
-          minTop,
-          boundaryRect.bottom -
-            menuHeight -
-            MENU_MARGIN,
-        );
-
-      left = Math.min(
-        Math.max(left, minLeft),
-        maxLeft,
+    /*
+     * Se il Canvas è troppo piccolo per contenere
+     * il menu interamente su un lato, scegliamo il lato
+     * con più spazio e facciamo un clamp finale.
+     */
+    if (!side) {
+      const fallback = (Object.keys(available) as MenuSide[]).sort(
+        (a, b) => available[b] - available[a],
       );
 
-      top = Math.min(
-        Math.max(top, minTop),
-        maxTop,
-      );
+      side = fallback[0] ?? "bottom";
+    }
 
-      setPosition({
-        left,
-        top,
-      });
-    }, [
-      align,
-      boundaryRef,
-      constrained,
-      width,
-    ]);
+    let left = triggerRect.right - menuWidth;
+
+    let top = triggerRect.bottom + MENU_GAP;
+
+    if (side === "bottom") {
+      top = triggerRect.bottom + MENU_GAP;
+
+      left = align === "left" ? triggerRect.left : triggerRect.right - menuWidth;
+    }
+
+    if (side === "top") {
+      top = triggerRect.top - menuHeight - MENU_GAP;
+
+      left = align === "left" ? triggerRect.left : triggerRect.right - menuWidth;
+    }
+
+    if (side === "right") {
+      left = triggerRect.right + MENU_GAP;
+
+      top = triggerRect.top;
+    }
+
+    if (side === "left") {
+      left = triggerRect.left - menuWidth - MENU_GAP;
+
+      top = triggerRect.top;
+    }
+
+    const minLeft = boundaryRect.left + MENU_MARGIN;
+
+    const maxLeft = Math.max(minLeft, boundaryRect.right - menuWidth - MENU_MARGIN);
+
+    const minTop = boundaryRect.top + MENU_MARGIN;
+
+    const maxTop = Math.max(minTop, boundaryRect.bottom - menuHeight - MENU_MARGIN);
+
+    left = Math.min(Math.max(left, minLeft), maxLeft);
+
+    top = Math.min(Math.max(top, minTop), maxTop);
+
+    setPosition({
+      left,
+      top,
+    });
+  }, [align, boundaryRef, constrained, width]);
 
   useLayoutEffect(() => {
-    if (
-      !open ||
-      !constrained
-    ) {
+    if (!open || !constrained) {
       return;
     }
 
     calculatePosition();
 
-    const frame =
-      requestAnimationFrame(
-        calculatePosition,
-      );
+    const frame = requestAnimationFrame(calculatePosition);
 
-    return () =>
-      cancelAnimationFrame(
-        frame,
-      );
-  }, [
-    open,
-    constrained,
-    calculatePosition,
-  ]);
+    return () => cancelAnimationFrame(frame);
+  }, [open, constrained, calculatePosition]);
 
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    const handlePointerDown =
-      (event: PointerEvent) => {
-        const target =
-          event.target as Node;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
 
-        const insideTrigger =
-          rootRef.current?.contains(
-            target,
-          );
+      const insideTrigger = rootRef.current?.contains(target);
 
-        const insideMenu =
-          menuRef.current?.contains(
-            target,
-          );
+      const insideMenu = menuRef.current?.contains(target);
 
-        if (
-          !insideTrigger &&
-          !insideMenu
-        ) {
-          close();
-        }
-      };
+      if (!insideTrigger && !insideMenu) {
+        close();
+      }
+    };
 
-    const handleKeyDown =
-      (event: KeyboardEvent) => {
-        if (
-          event.key === "Escape"
-        ) {
-          close();
-        }
-      };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        close();
+      }
+    };
 
-    document.addEventListener(
-      "pointerdown",
-      handlePointerDown,
-    );
+    document.addEventListener("pointerdown", handlePointerDown);
 
-    document.addEventListener(
-      "keydown",
-      handleKeyDown,
-    );
+    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.removeEventListener(
-        "pointerdown",
-        handlePointerDown,
-      );
+      document.removeEventListener("pointerdown", handlePointerDown);
 
-      document.removeEventListener(
-        "keydown",
-        handleKeyDown,
-      );
+      document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [
-    open,
-    close,
-  ]);
+  }, [open, close]);
 
   useEffect(() => {
-    if (
-      !open ||
-      !constrained
-    ) {
+    if (!open || !constrained) {
       return;
     }
 
-    const reposition =
-      () => {
-        calculatePosition();
-      };
+    const reposition = () => {
+      calculatePosition();
+    };
 
-    window.addEventListener(
-      "resize",
-      reposition,
-    );
+    window.addEventListener("resize", reposition);
 
-    window.addEventListener(
-      "scroll",
-      reposition,
-      true,
-    );
+    window.addEventListener("scroll", reposition, true);
 
     return () => {
-      window.removeEventListener(
-        "resize",
-        reposition,
-      );
+      window.removeEventListener("resize", reposition);
 
-      window.removeEventListener(
-        "scroll",
-        reposition,
-        true,
-      );
+      window.removeEventListener("scroll", reposition, true);
     };
-  }, [
-    open,
-    constrained,
-    calculatePosition,
-  ]);
+  }, [open, constrained, calculatePosition]);
 
   const menu = open ? (
     <div
       ref={menuRef}
       role="menu"
-      onPointerDown={(event) =>
-        event.stopPropagation()
-      }
+      onPointerDown={(event) => event.stopPropagation()}
       className={
         constrained
           ? "fixed z-[80] overflow-hidden rounded-2xl border border-border bg-background p-1.5 text-sm text-foreground shadow-xl"
           : `absolute ${
-              align === "right"
-                ? "right-0"
-                : "left-0"
+              align === "right" ? "right-0" : "left-0"
             } top-10 z-30 overflow-hidden rounded-2xl border border-border bg-background p-1.5 text-sm text-foreground shadow-xl`
       }
       style={
         constrained
           ? {
               width,
-              left:
-                position?.left ??
-                -10000,
+              left: position?.left ?? -10000,
 
-              top:
-                position?.top ??
-                -10000,
+              top: position?.top ?? -10000,
 
-              visibility:
-                position
-                  ? "visible"
-                  : "hidden",
+              visibility: position ? "visible" : "hidden",
             }
           : { width }
       }
@@ -1993,10 +1698,7 @@ export function IsaMenu({
   ) : null;
 
   return (
-    <div
-      ref={rootRef}
-      className="relative"
-    >
+    <div ref={rootRef} className="relative">
       <button
         ref={triggerRef}
         type="button"
@@ -2018,14 +1720,7 @@ export function IsaMenu({
         <Icon className="size-4" />
       </button>
 
-      {constrained &&
-      typeof document !==
-        "undefined"
-        ? createPortal(
-            menu,
-            document.body,
-          )
-        : menu}
+      {constrained && typeof document !== "undefined" ? createPortal(menu, document.body) : menu}
     </div>
   );
 }
@@ -2046,9 +1741,7 @@ export function IsaMenuItem({
       type="button"
       onClick={onClick}
       className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left transition hover:bg-muted ${
-        danger
-          ? "text-destructive"
-          : "text-foreground"
+        danger ? "text-destructive" : "text-foreground"
       }`}
     >
       <Icon className="size-4" />
@@ -2076,19 +1769,13 @@ export function IsaMenuCheckItem({
     >
       <span
         className={`flex size-4 shrink-0 items-center justify-center rounded-[5px] border ${
-          checked
-            ? "gradient-brand border-transparent text-brand-foreground"
-            : "border-border"
+          checked ? "gradient-brand border-transparent text-brand-foreground" : "border-border"
         }`}
       >
-        {checked && (
-          <Check className="size-3" />
-        )}
+        {checked && <Check className="size-3" />}
       </span>
 
-      <span className="min-w-0 flex-1 truncate text-[13px]">
-        {label}
-      </span>
+      <span className="min-w-0 flex-1 truncate text-[13px]">{label}</span>
     </button>
   );
 }

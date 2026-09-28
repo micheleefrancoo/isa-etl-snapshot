@@ -592,7 +592,7 @@ function RootComponent() {
 
 ### `src/routes/activity.tsx`
 
-78 righe
+76 righe
 
 ```tsx
 import { createFileRoute } from "@tanstack/react-router";
@@ -655,9 +655,7 @@ function ActivityFeed() {
             <li key={j.id} className="glass-chip rounded-2xl p-3">
               <div className="flex items-center justify-between text-sm">
                 <span className="truncate font-medium">{j.solutionName}</span>
-                <span className="text-xs text-muted-foreground">
-                  {Math.round(j.progress)}%
-                </span>
+                <span className="text-xs text-muted-foreground">{Math.round(j.progress)}%</span>
               </div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--glass-strong)]">
                 <div
@@ -706,7 +704,7 @@ export const Route = createFileRoute("/favorites")({
 
 ### `src/routes/index.tsx`
 
-136 righe
+131 righe
 
 ```tsx
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -745,12 +743,7 @@ function SolutionsPage() {
   const [view, setView] = useState<CardView>("grid");
 
   return (
-    <AppShell
-      query={query}
-      onQueryChange={setQuery}
-      view={view}
-      onViewChange={setView}
-    >
+    <AppShell query={query} onQueryChange={setQuery} view={view} onViewChange={setView}>
       <SolutionsGrid query={query} view={view} />
     </AppShell>
   );
@@ -911,7 +904,7 @@ export const Route = createFileRoute("/shared")({
 
 ### `src/routes/solutions.$solutionId.dashboard.tsx`
 
-126 righe
+125 righe
 
 ```tsx
 import { createFileRoute } from "@tanstack/react-router";
@@ -935,8 +928,7 @@ export const Route = createFileRoute("/solutions/$solutionId/dashboard")({
       { title: "Modulo Dashboard — isa" },
       {
         name: "description",
-        content:
-          "Grafici, indicatori e reportistica sui risultati del calcolo della soluzione.",
+        content: "Grafici, indicatori e reportistica sui risultati del calcolo della soluzione.",
       },
       { property: "og:title", content: "Modulo Dashboard — isa" },
       {
@@ -1043,7 +1035,7 @@ function DashboardModule() {
 
 ### `src/routes/solutions.$solutionId.etl.tsx`
 
-265 righe
+270 righe
 
 ```tsx
 import { createFileRoute } from "@tanstack/react-router";
@@ -1129,7 +1121,13 @@ function EtlWorkspace() {
   const duplicate = (id: string) => {
     const node = workflow.nodes.find((n) => n.id === id);
     if (!node) return;
-    const newId = addNode(node.type, node.x + 36, node.y + 36, node.config, `${node.title} (copia)`);
+    const newId = addNode(
+      node.type,
+      node.x + 36,
+      node.y + 36,
+      node.config,
+      `${node.title} (copia)`,
+    );
     if (newId) setSelectedId(newId);
   };
 
@@ -1141,14 +1139,15 @@ function EtlWorkspace() {
     const order = pipelineOrder(workflow);
     setStatuses(Object.fromEntries(order.map((n) => [n.id, "ready" as const])));
     order.forEach((node, i) => {
+      timers.current.push(setTimeout(() => setStatuses({ [node.id]: "running" }), i * 420));
       timers.current.push(
-        setTimeout(() => setStatuses({ [node.id]: "running" }), i * 420),
-      );
-      timers.current.push(
-        setTimeout(() => {
-          setStatuses({ [node.id]: "succeeded" });
-          if (i === order.length - 1) setRunState("succeeded");
-        }, i * 420 + 380),
+        setTimeout(
+          () => {
+            setStatuses({ [node.id]: "succeeded" });
+            if (i === order.length - 1) setRunState("succeeded");
+          },
+          i * 420 + 380,
+        ),
       );
     });
   };
@@ -1266,9 +1265,7 @@ function EtlWorkspace() {
           onUngroupNode={ungroupNode}
           onRemoveEdge={removeEdge}
           onLayoutChange={setLayout}
-          onUpdateNodeConfig={(id, patch) =>
-            updateNode(id, { config: patch })
-          }
+          onUpdateNodeConfig={(id, patch) => updateNode(id, { config: patch })}
           onAddDataset={() => {
             const id = addNode("source.dataset", 80, 120, { dataset: DATASET_NAMES[0] ?? "" });
             if (id) setSelectedId(id);
@@ -1331,7 +1328,7 @@ export const Route = createFileRoute("/solutions/$solutionId/")({
 
 ### `src/routes/solutions.$solutionId.model.tsx`
 
-100 righe
+98 righe
 
 ```tsx
 import { createFileRoute } from "@tanstack/react-router";
@@ -1418,13 +1415,11 @@ function ModelWorkspace() {
           Editor formule
         </span>
         <pre className="glass-panel mt-4 flex-1 overflow-auto rounded-2xl p-5 text-xs leading-6">
-{`risultato(t) = base(t) × ${factor.toFixed(2)}
+          {`risultato(t) = base(t) × ${factor.toFixed(2)}
 fattore      = Π (0.6 + parametro / max)`}
         </pre>
         <div className="mt-4 flex flex-wrap gap-2 text-xs">
-          <span className="glass-chip rounded-full px-3 py-1.5">
-            Fattore {factor.toFixed(2)}x
-          </span>
+          <span className="glass-chip rounded-full px-3 py-1.5">Fattore {factor.toFixed(2)}x</span>
           <span className="glass-chip rounded-full px-3 py-1.5">
             {solution.parameters.length} parametri
           </span>
@@ -1437,7 +1432,7 @@ fattore      = Π (0.6 + parametro / max)`}
 
 ### `src/routes/solutions.$solutionId.tsx`
 
-112 righe
+111 righe
 
 ```tsx
 import { Link, Outlet, createFileRoute } from "@tanstack/react-router";
@@ -1491,7 +1486,6 @@ function SolutionWorkspace() {
         <Link to="/" aria-label="isa — Home" className="hidden sm:block">
           <IsaLogo showWordmark={false} className="scale-75" />
         </Link>
-
 
         <div className="min-w-0">
           <nav

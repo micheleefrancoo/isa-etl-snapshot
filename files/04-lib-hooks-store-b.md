@@ -13,7 +13,7 @@ File in questo blocco:
 
 ### `src/lib/etl-workflow.tsx`
 
-471 righe
+476 righe
 
 ```tsx
 import { useCallback, useSyncExternalStore } from "react";
@@ -86,7 +86,9 @@ function dissolveSingletonGroups(nodes: EtlNode[]): EtlNode[] {
   for (const n of nodes) {
     if (n.groupId) counts.set(n.groupId, (counts.get(n.groupId) ?? 0) + 1);
   }
-  return nodes.map((n) => (n.groupId && (counts.get(n.groupId) ?? 0) < 2 ? { ...n, groupId: undefined } : n));
+  return nodes.map((n) =>
+    n.groupId && (counts.get(n.groupId) ?? 0) < 2 ? { ...n, groupId: undefined } : n,
+  );
 }
 
 /**
@@ -295,7 +297,6 @@ export function useEtlWorkflow(solutionId: string) {
     [solutionId],
   );
 
-
   const updateNode = useCallback(
     (
       id: string,
@@ -378,7 +379,11 @@ export function useEtlWorkflow(solutionId: string) {
       const current = entryOf(solutionId).present;
       if (
         current.edges.some(
-          (e) => e.fromNode === fromNode && e.fromPort === fromPort && e.toNode === toNode && e.toPort === toPort,
+          (e) =>
+            e.fromNode === fromNode &&
+            e.fromPort === fromPort &&
+            e.toNode === toNode &&
+            e.toPort === toPort,
         )
       )
         return;
@@ -556,7 +561,7 @@ export function reportLovableError(error: unknown, context: Record<string, unkno
 
 ### `src/lib/modules.ts`
 
-35 righe
+38 righe
 
 ```ts
 import { ArrowLeftRight, LayoutDashboard, Sigma } from "lucide-react";
@@ -567,7 +572,10 @@ export type ModuleMeta = {
   label: string;
   description: string;
   Icon: typeof ArrowLeftRight;
-  to: "/solutions/$solutionId/etl" | "/solutions/$solutionId/model" | "/solutions/$solutionId/dashboard";
+  to:
+    | "/solutions/$solutionId/etl"
+    | "/solutions/$solutionId/model"
+    | "/solutions/$solutionId/dashboard";
 };
 
 export const MODULES: ModuleMeta[] = [
@@ -597,7 +605,7 @@ export const MODULES: ModuleMeta[] = [
 
 ### `src/lib/solutions-store.tsx`
 
-341 righe
+332 righe
 
 ```tsx
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
@@ -638,7 +646,6 @@ export type SolutionShare = {
   email: string;
   permission: SharePermission;
 };
-
 
 export type BatchJob = {
   id: string;
@@ -702,7 +709,6 @@ const globalStore = globalThis as unknown as {
 const StoreContext =
   globalStore.__isaStoreContext ??
   (globalStore.__isaStoreContext = createContext<Store | null>(null));
-
 
 const slug = (s: string) =>
   s
@@ -838,9 +844,7 @@ export function SolutionsProvider({ children }: { children: React.ReactNode }) {
           ? s
           : {
               ...s,
-              shares: s.shares.map((sh) =>
-                sh.id === shareId ? { ...sh, permission } : sh,
-              ),
+              shares: s.shares.map((sh) => (sh.id === shareId ? { ...sh, permission } : sh)),
             },
       ),
     );
@@ -854,24 +858,20 @@ export function SolutionsProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-
-  const updateParameter: Store["updateParameter"] = useCallback(
-    (solutionId, paramId, value) => {
-      setSolutions((prev) =>
-        prev.map((s) =>
-          s.id !== solutionId
-            ? s
-            : {
-                ...s,
-                parameters: s.parameters.map((param) =>
-                  param.id === paramId ? { ...param, value } : param,
-                ),
-              },
-        ),
-      );
-    },
-    [],
-  );
+  const updateParameter: Store["updateParameter"] = useCallback((solutionId, paramId, value) => {
+    setSolutions((prev) =>
+      prev.map((s) =>
+        s.id !== solutionId
+          ? s
+          : {
+              ...s,
+              parameters: s.parameters.map((param) =>
+                param.id === paramId ? { ...param, value } : param,
+              ),
+            },
+      ),
+    );
+  }, []);
 
   const runJob: Store["runJob"] = useCallback(
     (solutionId) => {
@@ -931,7 +931,6 @@ export function SolutionsProvider({ children }: { children: React.ReactNode }) {
     ],
   );
 
-
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 
@@ -944,7 +943,7 @@ export function useSolutions() {
 
 ### `src/lib/theme.tsx`
 
-35 righe
+30 righe
 
 ```tsx
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
@@ -970,14 +969,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem("isa-theme", theme);
   }, [theme]);
 
-  const toggle = useCallback(
-    () => setTheme((t) => (t === "dark" ? "light" : "dark")),
-    [],
-  );
+  const toggle = useCallback(() => setTheme((t) => (t === "dark" ? "light" : "dark")), []);
 
-  return (
-    <ThemeContext.Provider value={{ theme, toggle }}>{children}</ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={{ theme, toggle }}>{children}</ThemeContext.Provider>;
 }
 
 export const useTheme = () => useContext(ThemeContext);

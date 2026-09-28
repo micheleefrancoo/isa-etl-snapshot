@@ -3,6 +3,7 @@
 File in questo blocco:
 
 - `docs/inventory/INVENTARIO_2026-09-28T19-40-33Z.md`
+- `docs/inventory/lovable-1e72955.diff`
 
 ---
 
@@ -328,5 +329,54 @@ Legenda: **Sì** = implementato e verificato nel codice prodotto; **Parziale** =
 - Il dettaglio esatto di tutte le opzioni di Join/Union/Lookup in `combine-panel.tsx` (321 righe) e la lista completa dei 19 nodi con tutti i loro campi in `etl-catalog.ts` (427 righe) sono stati letti solo in parte in alcune delle ricognizioni — la struttura generale è verificata, non ogni singolo campo.
 - Il rapporto non ha eseguito l'app nel browser (vincolo "solo lettura, nessuna modifica" interpretato anche come "nessuna esecuzione", per non rischiare side-effect su `localStorage`/stato) — tutte le osservazioni sul comportamento a runtime (es. animazione del flusso, drag) sono dedotte dal codice sorgente, non osservate visivamente in questa sessione.
 
+```
+
+### `docs/inventory/lovable-1e72955.diff`
+
+43 righe
+
+```
+diff --git a/src/components/isa/etl/tool-palette.tsx b/src/components/isa/etl/tool-palette.tsx
+index 509cc05..873fb9b 100644
+--- a/src/components/isa/etl/tool-palette.tsx
++++ b/src/components/isa/etl/tool-palette.tsx
+@@ -23,7 +23,12 @@ function NodeChip({ node, onAdd }: { node: EtlNodeDef; onAdd: (type: string) =>
+     <button
+       type="button"
+       draggable
+-      onDragStart={(event) => event.dataTransfer.setData("application/isa-node", type)}
++      onDragStart={(event) => {
++        // Safari richiede un tipo standard oltre a quello custom.
++        event.dataTransfer.effectAllowed = "copy";
++        event.dataTransfer.setData("application/isa-node", type);
++        event.dataTransfer.setData("text/plain", `isa-node:${type}`);
++      }}
+       onClick={() => onAdd(type)}
+       title={description}
+       aria-label={`Aggiungi ${label}`}
+diff --git a/src/components/isa/etl/workflow-canvas.tsx b/src/components/isa/etl/workflow-canvas.tsx
+index 6b587c9..07be47e 100644
+--- a/src/components/isa/etl/workflow-canvas.tsx
++++ b/src/components/isa/etl/workflow-canvas.tsx
+@@ -216,10 +216,17 @@ export function WorkflowCanvas({
+       ref={boxRef}
+       data-palette-workspace
+       className="glass-soft relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-3xl"
+-      onDragOver={(e) => e.preventDefault()}
++      onDragEnter={(e) => e.preventDefault()}
++      onDragOver={(e) => {
++        e.preventDefault();
++        e.dataTransfer.dropEffect = "copy";
++      }}
+       onDrop={(e) => {
+         e.preventDefault();
+-        const type = e.dataTransfer.getData("application/isa-node");
++        const plain = e.dataTransfer.getData("text/plain");
++        const type =
++          e.dataTransfer.getData("application/isa-node") ||
++          (plain.startsWith("isa-node:") ? plain.slice("isa-node:".length) : "");
+         if (!type) return;
+         const p = toLocal(e.clientX, e.clientY);
+         onAddAt(type, clampX(p.x - NODE_W / 2), clampY(p.y - NODE_H / 2));
 ```
 

@@ -466,24 +466,11 @@ function SchemaList({ title, columns }: { title: string; columns: ColumnDef[] })
 
 ### `src/components/isa/etl/isa-context-menu.tsx`
 
-321 righe
+232 righe
 
 ```tsx
-import {
-  Copy,
-  Grid3x3,
-  LayoutGrid,
-  Maximize2,
-  Plus,
-  Trash2,
-  Unlink,
-} from "lucide-react";
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { Copy, Grid3x3, LayoutGrid, Maximize2, Plus, Trash2, Unlink } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 type ContextTarget = {
@@ -526,8 +513,7 @@ export function IsaContextMenu({
   onUnlinkNode,
   onClose,
 }: IsaContextMenuProps) {
-  const menuRef =
-    useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const [position, setPosition] = useState({
     left: x,
@@ -537,118 +523,63 @@ export function IsaContextMenu({
   useLayoutEffect(() => {
     if (!open) return;
 
-    const boundary =
-      boundaryRef.current;
+    const boundary = boundaryRef.current;
 
-    const menu =
-      menuRef.current;
+    const menu = menuRef.current;
 
     if (!boundary || !menu) return;
 
-    const boundaryRect =
-      boundary.getBoundingClientRect();
+    const boundaryRect = boundary.getBoundingClientRect();
 
-    const menuRect =
-      menu.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
 
-    const maxLeft =
-      Math.max(
-        boundaryRect.left + MENU_MARGIN,
-        boundaryRect.right -
-          menuRect.width -
-          MENU_MARGIN,
-      );
+    const maxLeft = Math.max(
+      boundaryRect.left + MENU_MARGIN,
+      boundaryRect.right - menuRect.width - MENU_MARGIN,
+    );
 
-    const maxTop =
-      Math.max(
-        boundaryRect.top + MENU_MARGIN,
-        boundaryRect.bottom -
-          menuRect.height -
-          MENU_MARGIN,
-      );
+    const maxTop = Math.max(
+      boundaryRect.top + MENU_MARGIN,
+      boundaryRect.bottom - menuRect.height - MENU_MARGIN,
+    );
 
     setPosition({
-      left: Math.min(
-        Math.max(
-          x,
-          boundaryRect.left +
-            MENU_MARGIN,
-        ),
-        maxLeft,
-      ),
-      top: Math.min(
-        Math.max(
-          y,
-          boundaryRect.top +
-            MENU_MARGIN,
-        ),
-        maxTop,
-      ),
+      left: Math.min(Math.max(x, boundaryRect.left + MENU_MARGIN), maxLeft),
+      top: Math.min(Math.max(y, boundaryRect.top + MENU_MARGIN), maxTop),
     });
-  }, [
-    open,
-    x,
-    y,
-    boundaryRef,
-    target.nodeId,
-  ]);
+  }, [open, x, y, boundaryRef, target.nodeId]);
 
   useEffect(() => {
     if (!open) return;
 
-    const handlePointerDown = (
-      event: PointerEvent,
-    ) => {
-      if (
-        !menuRef.current?.contains(
-          event.target as Node,
-        )
-      ) {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
         onClose();
       }
     };
 
-    const handleKeyDown = (
-      event: KeyboardEvent,
-    ) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onClose();
       }
     };
 
-    document.addEventListener(
-      "pointerdown",
-      handlePointerDown,
-    );
+    document.addEventListener("pointerdown", handlePointerDown);
 
-    document.addEventListener(
-      "keydown",
-      handleKeyDown,
-    );
+    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.removeEventListener(
-        "pointerdown",
-        handlePointerDown,
-      );
+      document.removeEventListener("pointerdown", handlePointerDown);
 
-      document.removeEventListener(
-        "keydown",
-        handleKeyDown,
-      );
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open, onClose]);
 
-  if (
-    !open ||
-    typeof document ===
-      "undefined"
-  ) {
+  if (!open || typeof document === "undefined") {
     return null;
   }
 
-  const hasNode =
-    Boolean(target.nodeId);
+  const hasNode = Boolean(target.nodeId);
 
   return createPortal(
     <div
@@ -660,12 +591,8 @@ export function IsaContextMenu({
         left: position.left,
         top: position.top,
       }}
-      onPointerDown={(event) =>
-        event.stopPropagation()
-      }
-      onContextMenu={(event) =>
-        event.preventDefault()
-      }
+      onPointerDown={(event) => event.stopPropagation()}
+      onContextMenu={(event) => event.preventDefault()}
     >
       {hasNode ? (
         <>
@@ -674,13 +601,8 @@ export function IsaContextMenu({
             role="menuitem"
             className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left transition hover:bg-muted"
             onClick={() => {
-              if (
-                target.nodeId &&
-                onDuplicateNode
-              ) {
-                onDuplicateNode(
-                  target.nodeId,
-                );
+              if (target.nodeId && onDuplicateNode) {
+                onDuplicateNode(target.nodeId);
               }
               onClose();
             }}
@@ -694,13 +616,8 @@ export function IsaContextMenu({
             role="menuitem"
             className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left transition hover:bg-muted"
             onClick={() => {
-              if (
-                target.nodeId &&
-                onUnlinkNode
-              ) {
-                onUnlinkNode(
-                  target.nodeId,
-                );
+              if (target.nodeId && onUnlinkNode) {
+                onUnlinkNode(target.nodeId);
               }
               onClose();
             }}
@@ -714,13 +631,8 @@ export function IsaContextMenu({
             role="menuitem"
             className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-destructive transition hover:bg-muted"
             onClick={() => {
-              if (
-                target.nodeId &&
-                onRemoveNode
-              ) {
-                onRemoveNode(
-                  target.nodeId,
-                );
+              if (target.nodeId && onRemoveNode) {
+                onRemoveNode(target.nodeId);
               }
               onClose();
             }}
@@ -782,9 +694,7 @@ export function IsaContextMenu({
         }}
       >
         <Grid3x3 className="size-4" />
-        {grid
-          ? "Nascondi griglia"
-          : "Mostra griglia"}
+        {grid ? "Nascondi griglia" : "Mostra griglia"}
       </button>
     </div>,
     document.body,
@@ -794,7 +704,7 @@ export function IsaContextMenu({
 
 ### `src/components/isa/etl/settings-panels/aggregate-panel.tsx`
 
-150 righe
+103 righe
 
 ```tsx
 import { nodeDef } from "@/lib/etl-catalog";
@@ -819,66 +729,38 @@ export function AggregatePanel({
 }: {
   workflow: EtlWorkflow;
   node: EtlNode;
-  onConfigChange: (
-    patch: Record<string, string>,
-  ) => void;
+  onConfigChange: (patch: Record<string, string>) => void;
 }) {
-  const fieldSpecs = getAggregateFieldSpecs(
-    workflow,
-    node,
-  );
+  const fieldSpecs = getAggregateFieldSpecs(workflow, node);
 
   const aggregationOptions =
-    nodeDef(node.type)?.fields.find(
-      (field) =>
-        field.key === "aggregation",
-    )?.options ?? [];
+    nodeDef(node.type)?.fields.find((field) => field.key === "aggregation")?.options ?? [];
 
   return (
     <div className="space-y-3">
       {fieldSpecs.map((spec) => {
         if (spec.kind === "multi") {
-          const selected = (
-            node.config[spec.key] ?? ""
-          )
+          const selected = (node.config[spec.key] ?? "")
             .split(",")
             .map((v) => v.trim())
             .filter(Boolean);
 
-          const values =
-            spec.options.map(
-              (c) => c.name,
-            );
+          const values = spec.options.map((c) => c.name);
 
           return (
             <div key={spec.key}>
-              <PanelLabel>
-                {spec.label}
-              </PanelLabel>
+              <PanelLabel>{spec.label}</PanelLabel>
 
               <PanelChipToggleList
                 values={values}
                 selected={selected}
                 onToggle={(value) => {
-                  const next =
-                    selected.includes(
-                      value,
-                    )
-                      ? selected.filter(
-                          (v) =>
-                            v !==
-                            value,
-                        )
-                      : [
-                          ...selected,
-                          value,
-                        ];
+                  const next = selected.includes(value)
+                    ? selected.filter((v) => v !== value)
+                    : [...selected, value];
 
                   onConfigChange({
-                    [spec.key]:
-                      next.join(
-                        ", ",
-                      ),
+                    [spec.key]: next.join(", "),
                   });
                 }}
               />
@@ -888,16 +770,10 @@ export function AggregatePanel({
 
         return (
           <div key={spec.key}>
-            <PanelLabel>
-              {spec.label}
-            </PanelLabel>
+            <PanelLabel>{spec.label}</PanelLabel>
 
             <PanelSelect
-              value={
-                node.config[
-                  spec.key
-                ] ?? ""
-              }
+              value={node.config[spec.key] ?? ""}
               onChange={(value) =>
                 onConfigChange({
                   [spec.key]: value,
@@ -911,35 +787,22 @@ export function AggregatePanel({
 
       {aggregationOptions.length > 0 && (
         <div>
-          <PanelLabel>
-            Funzione
-          </PanelLabel>
+          <PanelLabel>Funzione</PanelLabel>
 
           <select
-            value={
-              node.config[
-                "aggregation"
-              ] ?? ""
-            }
+            value={node.config["aggregation"] ?? ""}
             onChange={(event) =>
               onConfigChange({
-                aggregation:
-                  event.target
-                    .value,
+                aggregation: event.target.value,
               })
             }
             className="glass-chip mt-1 h-9 w-full rounded-xl px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
           >
-            {aggregationOptions.map(
-              (option) => (
-                <option
-                  key={option}
-                  value={option}
-                >
-                  {option}
-                </option>
-              ),
-            )}
+            {aggregationOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
           </select>
         </div>
       )}
@@ -950,7 +813,7 @@ export function AggregatePanel({
 
 ### `src/components/isa/etl/settings-panels/combine-panel.tsx`
 
-322 righe
+231 righe
 
 ```tsx
 import { nodeDef } from "@/lib/etl-catalog";
@@ -987,9 +850,7 @@ export function CombinePanel({
   node: EtlNode;
   /** Id dei membri della bubble del nodo (fase 2), incluso `node.id`; assente/singolo = nodo non raggruppato. */
   memberIds?: readonly string[] | undefined;
-  onConfigChange: (
-    patch: Record<string, string>,
-  ) => void;
+  onConfigChange: (patch: Record<string, string>) => void;
 }) {
   if (node.type === "combine.join") {
     return (
@@ -1003,21 +864,10 @@ export function CombinePanel({
   }
 
   if (node.type === "combine.lookup") {
-    return (
-      <LookupFields
-        workflow={workflow}
-        node={node}
-        onConfigChange={onConfigChange}
-      />
-    );
+    return <LookupFields workflow={workflow} node={node} onConfigChange={onConfigChange} />;
   }
 
-  return (
-    <UnionFields
-      node={node}
-      onConfigChange={onConfigChange}
-    />
-  );
+  return <UnionFields node={node} onConfigChange={onConfigChange} />;
 }
 
 function JoinFields({
@@ -1029,143 +879,92 @@ function JoinFields({
   workflow: EtlWorkflow;
   node: EtlNode;
   memberIds?: readonly string[] | undefined;
-  onConfigChange: (
-    patch: Record<string, string>,
-  ) => void;
+  onConfigChange: (patch: Record<string, string>) => void;
 }) {
-  const inputs = getCombineInputs(
-    workflow,
-    node,
-    memberIds,
-  );
+  const inputs = getCombineInputs(workflow, node, memberIds);
 
-  const joinTypeOptions =
-    getJoinTypeOptions();
+  const joinTypeOptions = getJoinTypeOptions();
 
-  const joinType =
-    node.config["how"] ||
-    joinTypeOptions[0] ||
-    "inner";
+  const joinType = node.config["how"] || joinTypeOptions[0] || "inner";
 
   if (inputs.length < 2) {
     return (
       <PanelEmptyState>
-        Collega almeno 2 dataset per
-        configurare la join (attualmente{" "}
-        {inputs.length}
+        Collega almeno 2 dataset per configurare la join (attualmente {inputs.length}
         ).
       </PanelEmptyState>
     );
   }
 
-  const pairs = inputs
-    .slice(0, -1)
-    .map((left, index) => ({
-      index,
-      left,
-      right: inputs[index + 1]!,
-    }));
+  const pairs = inputs.slice(0, -1).map((left, index) => ({
+    index,
+    left,
+    right: inputs[index + 1]!,
+  }));
 
   return (
     <div className="space-y-3">
       <div>
-        <PanelLabel>
-          Tipo di join
-        </PanelLabel>
+        <PanelLabel>Tipo di join</PanelLabel>
 
         <select
           value={joinType}
           onChange={(event) =>
             onConfigChange({
-              how: event.target
-                .value,
+              how: event.target.value,
             })
           }
           className="glass-chip mt-1 h-9 w-full rounded-xl px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
         >
-          {joinTypeOptions.map(
-            (option) => (
-              <option
-                key={option}
-                value={option}
-              >
-                {option}
-              </option>
-            ),
-          )}
+          {joinTypeOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
         </select>
       </div>
 
-      {pairs.map(
-        ({ index, left, right }) => {
-          const keys =
-            joinPairConfigKeys(index);
+      {pairs.map(({ index, left, right }) => {
+        const keys = joinPairConfigKeys(index);
 
-          return (
-            <div
-              key={`${left.nodeId}-${right.nodeId}`}
-              className="glass-chip rounded-xl p-2.5"
-            >
-              <span className="block truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {left.title} ⋈{" "}
-                {right.title}
-              </span>
+        return (
+          <div key={`${left.nodeId}-${right.nodeId}`} className="glass-chip rounded-xl p-2.5">
+            <span className="block truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {left.title} ⋈ {right.title}
+            </span>
 
-              <div className="mt-1.5 grid grid-cols-2 gap-2">
-                <div>
-                  <PanelLabel>
-                    {left.title}
-                  </PanelLabel>
+            <div className="mt-1.5 grid grid-cols-2 gap-2">
+              <div>
+                <PanelLabel>{left.title}</PanelLabel>
 
-                  <PanelSelect
-                    value={
-                      node.config[
-                        keys.left
-                      ] ?? ""
-                    }
-                    onChange={(
-                      value,
-                    ) =>
-                      onConfigChange({
-                        [keys.left]:
-                          value,
-                      })
-                    }
-                    options={
-                      left.columns
-                    }
-                  />
-                </div>
+                <PanelSelect
+                  value={node.config[keys.left] ?? ""}
+                  onChange={(value) =>
+                    onConfigChange({
+                      [keys.left]: value,
+                    })
+                  }
+                  options={left.columns}
+                />
+              </div>
 
-                <div>
-                  <PanelLabel>
-                    {right.title}
-                  </PanelLabel>
+              <div>
+                <PanelLabel>{right.title}</PanelLabel>
 
-                  <PanelSelect
-                    value={
-                      node.config[
-                        keys.right
-                      ] ?? ""
-                    }
-                    onChange={(
-                      value,
-                    ) =>
-                      onConfigChange({
-                        [keys.right]:
-                          value,
-                      })
-                    }
-                    options={
-                      right.columns
-                    }
-                  />
-                </div>
+                <PanelSelect
+                  value={node.config[keys.right] ?? ""}
+                  onChange={(value) =>
+                    onConfigChange({
+                      [keys.right]: value,
+                    })
+                  }
+                  options={right.columns}
+                />
               </div>
             </div>
-          );
-        },
-      )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1177,27 +976,17 @@ function LookupFields({
 }: {
   workflow: EtlWorkflow;
   node: EtlNode;
-  onConfigChange: (
-    patch: Record<string, string>,
-  ) => void;
+  onConfigChange: (patch: Record<string, string>) => void;
 }) {
-  const inputColumns =
-    getFilterColumnOptions(
-      workflow,
-      node,
-    );
+  const inputColumns = getFilterColumnOptions(workflow, node);
 
   return (
     <div className="space-y-3">
       <div>
-        <PanelLabel>
-          Chiave di lookup
-        </PanelLabel>
+        <PanelLabel>Chiave di lookup</PanelLabel>
 
         <PanelSelect
-          value={
-            node.config["key"] ?? ""
-          }
+          value={node.config["key"] ?? ""}
           onChange={(value) =>
             onConfigChange({
               key: value,
@@ -1208,20 +997,14 @@ function LookupFields({
       </div>
 
       <div>
-        <PanelLabel>
-          Nuova colonna da aggiungere
-        </PanelLabel>
+        <PanelLabel>Nuova colonna da aggiungere</PanelLabel>
 
         <input
-          value={
-            node.config["column"] ??
-            ""
-          }
+          value={node.config["column"] ?? ""}
           placeholder="category"
           onChange={(event) =>
             onConfigChange({
-              column:
-                event.target.value,
+              column: event.target.value,
             })
           }
           className="glass-chip mt-1 h-9 w-full rounded-xl px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
@@ -1236,25 +1019,17 @@ function UnionFields({
   onConfigChange,
 }: {
   node: EtlNode;
-  onConfigChange: (
-    patch: Record<string, string>,
-  ) => void;
+  onConfigChange: (patch: Record<string, string>) => void;
 }) {
   const modeOptions =
-    nodeDef("combine.union")?.fields.find(
-      (field) => field.key === "mode",
-    )?.options ?? [];
+    nodeDef("combine.union")?.fields.find((field) => field.key === "mode")?.options ?? [];
 
   return (
     <div>
-      <PanelLabel>
-        Modalità
-      </PanelLabel>
+      <PanelLabel>Modalità</PanelLabel>
 
       <select
-        value={
-          node.config["mode"] ?? ""
-        }
+        value={node.config["mode"] ?? ""}
         onChange={(event) =>
           onConfigChange({
             mode: event.target.value,
@@ -1263,10 +1038,7 @@ function UnionFields({
         className="glass-chip mt-1 h-9 w-full rounded-xl px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
       >
         {modeOptions.map((option) => (
-          <option
-            key={option}
-            value={option}
-          >
+          <option key={option} value={option}>
             {option}
           </option>
         ))}
@@ -1278,13 +1050,10 @@ function UnionFields({
 
 ### `src/components/isa/etl/settings-panels/filter-panel.tsx`
 
-168 righe
+128 righe
 
 ```tsx
-import {
-  getColumnDomainValues,
-  getFilterColumnOptions,
-} from "@/lib/etl-node-config";
+import { getColumnDomainValues, getFilterColumnOptions } from "@/lib/etl-node-config";
 import type { EtlNode, EtlWorkflow } from "@/lib/etl-workflow";
 import {
   PanelChipToggleList,
@@ -1310,48 +1079,28 @@ export function FilterPanel({
 }: {
   workflow: EtlWorkflow;
   node: EtlNode;
-  onConfigChange: (
-    patch: Record<string, string>,
-  ) => void;
+  onConfigChange: (patch: Record<string, string>) => void;
 }) {
-  const columns = getFilterColumnOptions(
-    workflow,
-    node,
-  );
+  const columns = getFilterColumnOptions(workflow, node);
 
-  const selectedColumnName =
-    node.config["column"] ?? "";
+  const selectedColumnName = node.config["column"] ?? "";
 
-  const selectedColumn = columns.find(
-    (c) => c.name === selectedColumnName,
-  );
+  const selectedColumn = columns.find((c) => c.name === selectedColumnName);
 
-  const outputMode =
-    node.config["outputMode"] === "column"
-      ? "column"
-      : "dataset";
+  const outputMode = node.config["outputMode"] === "column" ? "column" : "dataset";
 
-  const selectedValues = (
-    node.config["value"] ?? ""
-  )
+  const selectedValues = (node.config["value"] ?? "")
     .split(",")
     .map((v) => v.trim())
     .filter(Boolean);
 
   const domainValues = selectedColumn
-    ? getColumnDomainValues(
-        selectedColumn,
-        `${node.id}:${selectedColumn.name}`,
-      )
+    ? getColumnDomainValues(selectedColumn, `${node.id}:${selectedColumn.name}`)
     : [];
 
   const toggleValue = (value: string) => {
-    const next = selectedValues.includes(
-      value,
-    )
-      ? selectedValues.filter(
-          (v) => v !== value,
-        )
+    const next = selectedValues.includes(value)
+      ? selectedValues.filter((v) => v !== value)
       : [...selectedValues, value];
 
     onConfigChange({
@@ -1362,9 +1111,7 @@ export function FilterPanel({
   return (
     <div className="space-y-3">
       <div>
-        <PanelLabel>
-          Colonna da filtrare
-        </PanelLabel>
+        <PanelLabel>Colonna da filtrare</PanelLabel>
 
         <PanelSelect
           value={selectedColumnName}
@@ -1376,18 +1123,12 @@ export function FilterPanel({
             })
           }
           options={columns}
-          placeholder={
-            columns.length
-              ? "Seleziona colonna…"
-              : "Nessuno schema in ingresso"
-          }
+          placeholder={columns.length ? "Seleziona colonna…" : "Nessuno schema in ingresso"}
         />
       </div>
 
       <div>
-        <PanelLabel>
-          Output
-        </PanelLabel>
+        <PanelLabel>Output</PanelLabel>
 
         <div className="mt-1.5 flex gap-1.5">
           {(
@@ -1405,19 +1146,14 @@ export function FilterPanel({
             <button
               key={option.key}
               type="button"
-              aria-pressed={
-                outputMode ===
-                option.key
-              }
+              aria-pressed={outputMode === option.key}
               onClick={() =>
                 onConfigChange({
-                  outputMode:
-                    option.key,
+                  outputMode: option.key,
                 })
               }
               className={`flex-1 rounded-xl border px-2.5 py-1.5 text-[11px] font-medium transition ${
-                outputMode ===
-                option.key
+                outputMode === option.key
                   ? "border-transparent gradient-brand text-brand-foreground"
                   : "glass-chip border-transparent text-muted-foreground hover:text-foreground"
               }`}
@@ -1429,9 +1165,7 @@ export function FilterPanel({
       </div>
 
       <div>
-        <PanelLabel>
-          Valori da mantenere
-        </PanelLabel>
+        <PanelLabel>Valori da mantenere</PanelLabel>
 
         {selectedColumn ? (
           <PanelChipToggleList
@@ -1440,9 +1174,7 @@ export function FilterPanel({
             onToggle={toggleValue}
           />
         ) : (
-          <p className="mt-1.5 text-[11px] text-muted-foreground">
-            Scegli prima una colonna.
-          </p>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">Scegli prima una colonna.</p>
         )}
       </div>
     </div>
@@ -1452,7 +1184,7 @@ export function FilterPanel({
 
 ### `src/components/isa/etl/settings-panels/panel-controls.tsx`
 
-120 righe
+88 righe
 
 ```tsx
 import { Check } from "lucide-react";
@@ -1465,16 +1197,8 @@ import type { ColumnDef } from "@/lib/etl-catalog";
  * brief chiede selettori guidati dallo schema.
  */
 
-export function PanelLabel({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <span className="block text-[11px] font-medium text-muted-foreground">
-      {children}
-    </span>
-  );
+export function PanelLabel({ children }: { children: React.ReactNode }) {
+  return <span className="block text-[11px] font-medium text-muted-foreground">{children}</span>;
 }
 
 export function PanelSelect({
@@ -1494,19 +1218,12 @@ export function PanelSelect({
     <select
       value={value}
       disabled={disabled}
-      onChange={(event) =>
-        onChange(event.target.value)
-      }
+      onChange={(event) => onChange(event.target.value)}
       className="glass-chip mt-1 h-9 w-full rounded-xl px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
     >
-      <option value="">
-        {placeholder}
-      </option>
+      <option value="">{placeholder}</option>
       {options.map((column) => (
-        <option
-          key={column.name}
-          value={column.name}
-        >
+        <option key={column.name} value={column.name}>
           {column.name} · {column.type}
         </option>
       ))}
@@ -1525,26 +1242,19 @@ export function PanelChipToggleList({
   onToggle: (value: string) => void;
 }) {
   if (values.length === 0) {
-    return (
-      <p className="mt-1.5 text-[11px] text-muted-foreground">
-        Nessun valore disponibile.
-      </p>
-    );
+    return <p className="mt-1.5 text-[11px] text-muted-foreground">Nessun valore disponibile.</p>;
   }
 
   return (
     <div className="mt-1.5 flex flex-wrap gap-1.5">
       {values.map((value) => {
-        const isSelected =
-          selected.includes(value);
+        const isSelected = selected.includes(value);
 
         return (
           <button
             key={value}
             type="button"
-            onClick={() =>
-              onToggle(value)
-            }
+            onClick={() => onToggle(value)}
             aria-pressed={isSelected}
             className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition ${
               isSelected
@@ -1552,9 +1262,7 @@ export function PanelChipToggleList({
                 : "glass-chip border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {isSelected && (
-              <Check className="size-3" />
-            )}
+            {isSelected && <Check className="size-3" />}
             {value}
           </button>
         );
@@ -1563,22 +1271,14 @@ export function PanelChipToggleList({
   );
 }
 
-export function PanelEmptyState({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <p className="px-1 py-2 text-[11px] leading-relaxed text-muted-foreground">
-      {children}
-    </p>
-  );
+export function PanelEmptyState({ children }: { children: React.ReactNode }) {
+  return <p className="px-1 py-2 text-[11px] leading-relaxed text-muted-foreground">{children}</p>;
 }
 ```
 
 ### `src/components/isa/etl/tool-palette.tsx`
 
-357 righe
+384 righe
 
 ```tsx
 import {
@@ -1628,10 +1328,7 @@ function NodeChip({
    * genitore ToolPalette (un solo ghost alla volta, coerente con la
    * palette stessa).
    */
-  onDragStart: (
-    node: EtlNodeDef,
-    event: React.PointerEvent<HTMLButtonElement>,
-  ) => void;
+  onDragStart: (node: EtlNodeDef, event: React.PointerEvent<HTMLButtonElement>) => void;
 }) {
   const { label, description, Icon, category } = node;
 
@@ -1693,8 +1390,7 @@ export function ToolPalette({
   const dragging = ghost !== null;
 
   useEffect(() => {
-    workspaceRef.current =
-      ref.current?.closest<HTMLElement>("[data-palette-workspace]") ?? null;
+    workspaceRef.current = ref.current?.closest<HTMLElement>("[data-palette-workspace]") ?? null;
   }, []);
 
   const startResourceDrag = useCallback(
@@ -1808,7 +1504,9 @@ export function ToolPalette({
             aria-label={category.label}
             aria-pressed={active}
             className={`flex size-8 items-center justify-center rounded-full transition ${
-              active ? `${categoryAccent(category.key)} scale-105` : "text-muted-foreground hover:text-foreground"
+              active
+                ? `${categoryAccent(category.key)} scale-105`
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <Icon className="size-4" />
@@ -1842,50 +1540,79 @@ export function ToolPalette({
       >
         {(close) => (
           <>
-            <IsaMenuItem Icon={AlignStartHorizontal} label="Aggancia in alto" onClick={() => { onDockChange("top"); close(); }} />
-            <IsaMenuItem Icon={AlignEndHorizontal} label="Aggancia in basso" onClick={() => { onDockChange("bottom"); close(); }} />
-            <IsaMenuItem Icon={AlignStartVertical} label="Aggancia a sinistra" onClick={() => { onDockChange("left"); close(); }} />
-            <IsaMenuItem Icon={AlignEndVertical} label="Aggancia a destra" onClick={() => { onDockChange("right"); close(); }} />
+            <IsaMenuItem
+              Icon={AlignStartHorizontal}
+              label="Aggancia in alto"
+              onClick={() => {
+                onDockChange("top");
+                close();
+              }}
+            />
+            <IsaMenuItem
+              Icon={AlignEndHorizontal}
+              label="Aggancia in basso"
+              onClick={() => {
+                onDockChange("bottom");
+                close();
+              }}
+            />
+            <IsaMenuItem
+              Icon={AlignStartVertical}
+              label="Aggancia a sinistra"
+              onClick={() => {
+                onDockChange("left");
+                close();
+              }}
+            />
+            <IsaMenuItem
+              Icon={AlignEndVertical}
+              label="Aggancia a destra"
+              onClick={() => {
+                onDockChange("right");
+                close();
+              }}
+            />
           </>
         )}
       </IsaMenu>
     </div>
   );
 
-  const resources = secondLevel && !dragging ? (
-    <div
-      className={`glass-panel scroll-slim min-h-0 min-w-0 rounded-2xl p-1.5 shadow-lg ${
-        vertical ? "max-h-[26rem] overflow-y-auto" : "max-w-full overflow-x-auto"
-      }`}
-    >
-      <div className={vertical ? "flex flex-col gap-2" : "flex min-w-max items-start gap-3"}>
-        {categories.map((category) => {
-          const CategoryIcon = CATEGORY_ICONS[category.key];
-          const nodes = ETL_NODES.filter((node) => node.category === category.key);
-          return (
-            <div key={category.key} className="min-w-0">
-              {expanded && (
-                <span className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <CategoryIcon className="size-3" />
-                  {category.label}
-                </span>
-              )}
-              <div className={vertical ? "flex flex-col gap-0.5" : "flex items-center gap-0.5"}>
-                {nodes.map((node) => (
-                  <NodeChip
-                    key={node.type}
-                    node={node}
-                    onAdd={onAdd}
-                    onDragStart={startResourceDrag}
-                  />
-                ))}
+  const resources =
+    secondLevel && !dragging ? (
+      <div
+        className={`glass-panel scroll-slim min-h-0 min-w-0 rounded-2xl p-1.5 shadow-lg ${
+          vertical ? "max-h-[26rem] overflow-y-auto" : "max-w-full overflow-x-auto"
+        }`}
+      >
+        <div className={vertical ? "flex flex-col gap-2" : "flex min-w-max items-start gap-3"}>
+          {categories.map((category) => {
+            const CategoryIcon = CATEGORY_ICONS[category.key];
+            const nodes = ETL_NODES.filter((node) => node.category === category.key);
+            return (
+              <div key={category.key} className="min-w-0">
+                {expanded && (
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <CategoryIcon className="size-3" />
+                    {category.label}
+                  </span>
+                )}
+                <div className={vertical ? "flex flex-col gap-0.5" : "flex items-center gap-0.5"}>
+                  {nodes.map((node) => (
+                    <NodeChip
+                      key={node.type}
+                      node={node}
+                      onAdd={onAdd}
+                      onDragStart={startResourceDrag}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-    </div>
-  ) : null;
+    ) : null;
 
   const reverse = dock === "bottom" || dock === "right";
 

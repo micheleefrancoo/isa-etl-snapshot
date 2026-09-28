@@ -22,7 +22,7 @@
     },
     {
       "name": "files/02-isa-etl-a.md",
-      "bytes": 55467,
+      "bytes": 52688,
       "files": [
         "src/components/isa/etl/data-preview.tsx",
         "src/components/isa/etl/inspector.tsx",
@@ -36,28 +36,21 @@
     },
     {
       "name": "files/02-isa-etl-b.md",
-      "bytes": 49916,
+      "bytes": 49917,
       "files": [
         "src/components/isa/etl/workflow-canvas.tsx"
       ]
     },
     {
       "name": "files/02-isa-etl-c.md",
-      "bytes": 49923,
-      "files": [
-        "src/components/isa/etl/workflow-canvas.tsx"
-      ]
-    },
-    {
-      "name": "files/02-isa-etl-d.md",
-      "bytes": 27040,
+      "bytes": 54240,
       "files": [
         "src/components/isa/etl/workflow-canvas.tsx"
       ]
     },
     {
       "name": "files/03-components-a.md",
-      "bytes": 58975,
+      "bytes": 56264,
       "files": [
         "src/components/isa/app-shell.tsx",
         "src/components/isa/back-button.tsx",
@@ -141,7 +134,7 @@
     },
     {
       "name": "files/04-lib-hooks-store-a.md",
-      "bytes": 49191,
+      "bytes": 49817,
       "files": [
         "src/hooks/use-mobile.tsx",
         "src/lib/error-capture.ts",
@@ -157,7 +150,7 @@
     },
     {
       "name": "files/04-lib-hooks-store-b.md",
-      "bytes": 28139,
+      "bytes": 28110,
       "files": [
         "src/lib/etl-workflow.tsx",
         "src/lib/lovable-error-reporting.ts",
@@ -169,7 +162,7 @@
     },
     {
       "name": "files/05-app-pages.md",
-      "bytes": 57241,
+      "bytes": 57184,
       "files": [
         "src/routeTree.gen.ts",
         "src/router.tsx",
@@ -202,7 +195,7 @@
     },
     {
       "name": "files/08-scripts-config.md",
-      "bytes": 37730,
+      "bytes": 38052,
       "files": [
         ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",
@@ -277,9 +270,10 @@
     },
     {
       "name": "files/11-inventory.md",
-      "bytes": 50561,
+      "bytes": 52655,
       "files": [
-        "docs/inventory/INVENTARIO_2026-09-28T19-40-33Z.md"
+        "docs/inventory/INVENTARIO_2026-09-28T19-40-33Z.md",
+        "docs/inventory/lovable-1e72955.diff"
       ]
     }
   ],
@@ -343,8 +337,7 @@
       "outFiles": [
         "02-isa-etl-a.md",
         "02-isa-etl-b.md",
-        "02-isa-etl-c.md",
-        "02-isa-etl-d.md"
+        "02-isa-etl-c.md"
       ]
     },
     "03-components": {
@@ -526,7 +519,8 @@
     },
     "11-inventory": {
       "files": [
-        "docs/inventory/INVENTARIO_2026-09-28T19-40-33Z.md"
+        "docs/inventory/INVENTARIO_2026-09-28T19-40-33Z.md",
+        "docs/inventory/lovable-1e72955.diff"
       ],
       "outFiles": [
         "11-inventory.md"
@@ -537,8 +531,9 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-19T11-38-16Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T18-45-29Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T19-44-43Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T19-44-43Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T20-14-48Z.md"
   ],
-  "inScopeFileCount": 143,
-  "reportFileCount": 4
+  "inScopeFileCount": 144,
+  "reportFileCount": 5
 }

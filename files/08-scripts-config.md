@@ -76,7 +76,7 @@ File in questo blocco:
 
 ### `.gitignore`
 
-33 righe
+34 righe
 
 ```
 # Logs
@@ -111,6 +111,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.pw-tmp/
 ```
 
 ### `.lovable/project.json`
@@ -356,7 +357,7 @@ export default tseslint.config(
 
 ### `scripts/generate-index.mjs`
 
-101 righe
+114 righe
 
 ```js
 #!/usr/bin/env node
@@ -381,12 +382,17 @@ const generatedAt = argVal("generated-at");
 const outPath = argVal("out");
 
 if (!manifestPath || !sha || !repo || !outPath) {
-  console.error("Usage: generate-index.mjs --manifest <path> --sha <sha> --repo <owner/name> --branch <b> --source-sha <sha> --dirty-files <list> --generated-at <ts> --out <path>");
+  console.error(
+    "Usage: generate-index.mjs --manifest <path> --sha <sha> --repo <owner/name> --branch <b> --source-sha <sha> --dirty-files <list> --generated-at <ts> --out <path>",
+  );
   process.exit(1);
 }
 
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-const dirtyFiles = dirtyFilesArg.split("\n").map((l) => l.trim()).filter(Boolean);
+const dirtyFiles = dirtyFilesArg
+  .split("\n")
+  .map((l) => l.trim())
+  .filter(Boolean);
 
 function rawUrl(pathInSnapshot) {
   return `https://raw.githubusercontent.com/${repo}/${sha}/${pathInSnapshot}`;
@@ -396,21 +402,29 @@ const lines = [];
 lines.push("# INDEX.md");
 lines.push("");
 lines.push(`Generato: ${generatedAt} (UTC)`);
-lines.push(`Repository sorgente: isa-glass-platform, branch \`${branch}\`, commit \`${sourceSha}\``);
+lines.push(
+  `Repository sorgente: isa-glass-platform, branch \`${branch}\`, commit \`${sourceSha}\``,
+);
 if (dirtyFiles.length === 0) {
   lines.push("Working tree del repository sorgente: pulito (nessuna modifica non committata).");
 } else {
-  lines.push(`Working tree del repository sorgente: modifiche non committate presenti (${dirtyFiles.length} file):`);
+  lines.push(
+    `Working tree del repository sorgente: modifiche non committate presenti (${dirtyFiles.length} file):`,
+  );
   lines.push("");
   for (const f of dirtyFiles) lines.push(`- \`${f}\``);
 }
 lines.push("");
-lines.push(`Questo indice è fissato al commit \`${sha}\` del repository snapshot (isa-etl-snapshot): tutti gli URL sotto puntano a quel commit e restano validi anche dopo aggiornamenti futuri.`);
+lines.push(
+  `Questo indice è fissato al commit \`${sha}\` del repository snapshot (isa-etl-snapshot): tutti gli URL sotto puntano a quel commit e restano validi anche dopo aggiornamenti futuri.`,
+);
 lines.push("");
 lines.push("## Da leggere per primi");
 lines.push("");
 lines.push(`1. [STATUS.md](${rawUrl("STATUS.md")}) — stato di type check, lint, test, build`);
-lines.push(`2. [ENV.md](${rawUrl("ENV.md")}) — configurazione completa (package.json, tsconfig, vite, eslint, CSS)`);
+lines.push(
+  `2. [ENV.md](${rawUrl("ENV.md")}) — configurazione completa (package.json, tsconfig, vite, eslint, CSS)`,
+);
 lines.push(`3. [TREE.md](${rawUrl("TREE.md")}) — albero completo del repository`);
 lines.push("4. I blocchi in `files/`, in ordine, elencati sotto.");
 lines.push("");
@@ -463,7 +477,7 @@ console.log(`INDEX.md written to ${outPath}`);
 
 ### `scripts/generate-snapshot.mjs`
 
-449 righe
+532 righe
 
 ```js
 #!/usr/bin/env node
@@ -508,12 +522,30 @@ const BLOCK_LIMIT_BYTES = 60000;
 // ---------------------------------------------------------------------------
 
 const EXCLUDE_DIR_NAMES = new Set([
-  "node_modules", ".git", "dist", "build", "coverage",
-  ".output", ".wrangler", ".pw-tmp", ".nitro", ".vinxi",
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  "coverage",
+  ".output",
+  ".wrangler",
+  ".pw-tmp",
+  ".nitro",
+  ".vinxi",
 ]);
 
 const BINARY_EXT = new Set([
-  ".ico", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff", ".woff2", ".ttf", ".eot", ".otf",
+  ".ico",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".eot",
+  ".otf",
 ]);
 
 const LOCKFILE_NAMES = new Set(["package-lock.json", "bun.lock", "yarn.lock", "pnpm-lock.yaml"]);
@@ -562,9 +594,19 @@ function classify(rel) {
 // ---------------------------------------------------------------------------
 
 const ROOT_ALLOWLIST = new Set([
-  "package.json", "tsconfig.json", "vite.config.ts", "vitest.config.ts",
-  "eslint.config.js", "components.json", ".prettierrc", ".prettierignore",
-  "bunfig.toml", ".gitignore", "README.md", "AGENTS.md", "roadmap.md",
+  "package.json",
+  "tsconfig.json",
+  "vite.config.ts",
+  "vitest.config.ts",
+  "eslint.config.js",
+  "components.json",
+  ".prettierrc",
+  ".prettierignore",
+  "bunfig.toml",
+  ".gitignore",
+  "README.md",
+  "AGENTS.md",
+  "roadmap.md",
 ]);
 
 const EXTRA_CONFIG_FILES = new Set([
@@ -600,7 +642,10 @@ const SECRET_PATTERNS = [
   { name: "OpenAI/Anthropic key", re: /\bsk-(ant-)?[A-Za-z0-9_-]{20,}\b/g },
   { name: "AWS access key", re: /\bAKIA[0-9A-Z]{16}\b/g },
   { name: "Slack token", re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g },
-  { name: "PEM private key", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g },
+  {
+    name: "PEM private key",
+    re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+  },
   { name: "credentialed URL", re: /\b[a-z]+:\/\/[^\s\/:@]+:[^\s\/:@]+@[^\s"'>]+/gi },
   {
     name: "secret-like assignment",
@@ -635,15 +680,36 @@ function scanAndRedact(content, rel) {
 function areaFor(rel) {
   if (rel.startsWith("src/canvas/")) return "01-canvas";
   if (rel.startsWith("src/components/isa/etl/")) return "02-isa-etl";
-  if (rel.startsWith("src/components/isa/") || rel.startsWith("src/components/ui/")) return "03-components";
+  if (rel.startsWith("src/components/isa/") || rel.startsWith("src/components/ui/"))
+    return "03-components";
   if (rel.startsWith("src/lib/") || rel.startsWith("src/hooks/")) return "04-lib-hooks-store";
-  if (rel.startsWith("src/routes/") || rel === "src/router.tsx" || rel === "src/server.ts" || rel === "src/start.ts" || rel === "src/routeTree.gen.ts") return "05-app-pages";
+  if (
+    rel.startsWith("src/routes/") ||
+    rel === "src/router.tsx" ||
+    rel === "src/server.ts" ||
+    rel === "src/start.ts" ||
+    rel === "src/routeTree.gen.ts"
+  )
+    return "05-app-pages";
   if (rel === "src/styles.css") return "06-styles";
-  if (rel.startsWith("scripts/") || ROOT_ALLOWLIST.has(basename(rel)) && basename(rel) !== "README.md" && basename(rel) !== "AGENTS.md" && basename(rel) !== "roadmap.md" || EXTRA_CONFIG_FILES.has(rel)) {
+  if (
+    rel.startsWith("scripts/") ||
+    (ROOT_ALLOWLIST.has(basename(rel)) &&
+      basename(rel) !== "README.md" &&
+      basename(rel) !== "AGENTS.md" &&
+      basename(rel) !== "roadmap.md") ||
+    EXTRA_CONFIG_FILES.has(rel)
+  ) {
     if (rel === "README.md" || rel === "AGENTS.md" || rel === "roadmap.md") return "09-docs";
     return "08-scripts-config";
   }
-  if (rel === "README.md" || rel === "AGENTS.md" || rel === "roadmap.md" || rel.startsWith(".lovable/")) return "09-docs";
+  if (
+    rel === "README.md" ||
+    rel === "AGENTS.md" ||
+    rel === "roadmap.md" ||
+    rel.startsWith(".lovable/")
+  )
+    return "09-docs";
   if (rel.startsWith("docs/prototype/")) return "10-prototype";
   if (rel.startsWith("docs/inventory/")) return "11-inventory";
   if (rel.startsWith("docs/")) return "12-docs-other";
@@ -651,9 +717,20 @@ function areaFor(rel) {
 }
 
 const langForExt = {
-  ".ts": "ts", ".tsx": "tsx", ".js": "js", ".jsx": "jsx", ".mjs": "js", ".cjs": "js",
-  ".css": "css", ".json": "json", ".sh": "sh", ".md": "md", ".toml": "toml",
-  ".yml": "yaml", ".yaml": "yaml", ".html": "html",
+  ".ts": "ts",
+  ".tsx": "tsx",
+  ".js": "js",
+  ".jsx": "jsx",
+  ".mjs": "js",
+  ".cjs": "js",
+  ".css": "css",
+  ".json": "json",
+  ".sh": "sh",
+  ".md": "md",
+  ".toml": "toml",
+  ".yml": "yaml",
+  ".yaml": "yaml",
+  ".html": "html",
 };
 function langFor(rel) {
   return langForExt[extname(rel)] || "";
@@ -784,7 +861,8 @@ const areaKeys = [...byArea.keys()].sort();
 for (const area of areaKeys) {
   const files = byArea.get(area);
   const blocks = packArea(area, files);
-  const suffixes = blocks.length > 1 ? "abcdefghijklmnopqrstuvwxyz".slice(0, blocks.length).split("") : [""];
+  const suffixes =
+    blocks.length > 1 ? "abcdefghijklmnopqrstuvwxyz".slice(0, blocks.length).split("") : [""];
   const outNames = [];
   blocks.forEach((block, i) => {
     const suffix = blocks.length > 1 ? `-${suffixes[i]}` : "";
@@ -795,7 +873,9 @@ for (const area of areaKeys) {
     const content = `# ${name}\n\nFile in questo blocco:\n\n${fileList}\n\n---\n\n${block.text}`;
     const contentBytes = Buffer.byteLength(content, "utf8");
     if (contentBytes > BLOCK_LIMIT_BYTES) {
-      throw new Error(`Block ${name} is ${contentBytes} bytes, over the ${BLOCK_LIMIT_BYTES}-byte limit`);
+      throw new Error(
+        `Block ${name} is ${contentBytes} bytes, over the ${BLOCK_LIMIT_BYTES}-byte limit`,
+      );
     }
     writeFileSync(join(OUT_DIR, "files", name), content, "utf8");
     manifest.blocks.push({
@@ -847,7 +927,12 @@ function countLines(full) {
   }
 }
 
-let treeLines = ["# TREE.md", "", "Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di build).", ""];
+let treeLines = [
+  "# TREE.md",
+  "",
+  "Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di build).",
+  "",
+];
 for (const f of allFiles) {
   const full = join(REPO_ROOT, f);
   const cls = classify(f);
@@ -875,8 +960,14 @@ function tryRead(rel) {
 
 const envParts = ["# ENV.md", ""];
 const envFiles = [
-  "package.json", "tsconfig.json", "vite.config.ts", "vitest.config.ts",
-  "eslint.config.js", "components.json", ".prettierrc", ".prettierignore",
+  "package.json",
+  "tsconfig.json",
+  "vite.config.ts",
+  "vitest.config.ts",
+  "eslint.config.js",
+  "components.json",
+  ".prettierrc",
+  ".prettierignore",
   "src/styles.css",
 ];
 for (const rel of envFiles) {
@@ -907,13 +998,19 @@ manifest.inScopeFileCount = inScopeFiles.length;
 manifest.reportFileCount = reportFiles.length;
 writeFileSync(join(OUT_DIR, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
 
-console.log(JSON.stringify({
-  blocks: manifest.blocks.length,
-  inScopeFiles: inScopeFiles.length,
-  reportFiles: reportFiles.length,
-  redactions: redactionLog.length,
-  excluded: manifest.excluded.length,
-}, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      blocks: manifest.blocks.length,
+      inScopeFiles: inScopeFiles.length,
+      reportFiles: reportFiles.length,
+      redactions: redactionLog.length,
+      excluded: manifest.excluded.length,
+    },
+    null,
+    2,
+  ),
+);
 ```
 
 ### `scripts/sync-snapshot.sh`
