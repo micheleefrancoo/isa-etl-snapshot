@@ -16,7 +16,7 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `bun.lock` — lockfile, 140734 B
 - `bunfig.toml` — 8 righe (380 B)
 - `components.json` — 23 righe (443 B)
-- `docs/inventory/INVENTARIO_2026-09-28T19-29-07Z.md` — 286 righe (42493 B)
+- `docs/inventory/INVENTARIO_2026-09-28T19-40-33Z.md` — 310 righe (50261 B)
 - `docs/prototype/isa-fusion-prototype.html` — 5098 righe (259379 B)
 - `eslint.config.js` — 41 righe (1250 B)
 - `package-lock.json` — lockfile, 282464 B
@@ -30,7 +30,7 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md` — 181 righe (8919 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-19T11-38-16Z.md` — 161 righe (9268 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-28T18-45-29Z.md` — 156 righe (6996 B)
-- `src/canvas/.reports/VALIDATION_REPORT_2026-09-28T19-33-26Z.md` — 39 righe (3486 B)
+- `src/canvas/.reports/VALIDATION_REPORT_2026-09-28T19-44-43Z.md` — 52 righe (5697 B)
 - `src/canvas/FUNCTIONAL_CHECKS.md` — 75 righe (4054 B)
 - `src/canvas/README.md` — 143 righe (6702 B)
 - `src/canvas/__tests__/panelPositioning.test.ts` — 179 righe (5035 B)

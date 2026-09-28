@@ -277,9 +277,9 @@
     },
     {
       "name": "files/11-inventory.md",
-      "bytes": 42675,
+      "bytes": 50561,
       "files": [
-        "docs/inventory/INVENTARIO_2026-09-28T19-29-07Z.md"
+        "docs/inventory/INVENTARIO_2026-09-28T19-40-33Z.md"
       ]
     }
   ],
@@ -526,7 +526,7 @@
     },
     "11-inventory": {
       "files": [
-        "docs/inventory/INVENTARIO_2026-09-28T19-29-07Z.md"
+        "docs/inventory/INVENTARIO_2026-09-28T19-40-33Z.md"
       ],
       "outFiles": [
         "11-inventory.md"
@@ -537,7 +537,7 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-19T11-38-16Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T18-45-29Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T19-33-26Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T19-44-43Z.md"
   ],
   "inScopeFileCount": 143,
   "reportFileCount": 4

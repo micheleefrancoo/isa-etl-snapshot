@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-09-28T19:33:55Z (UTC)
+Generato: 2026-09-28T19:45:21Z (UTC)
 
 ## Type check
 
@@ -20,7 +20,7 @@ Ultime 60 righe di output:
 Comando: `npm run lint`
 
 Esito: FALLITO (exit 1)
-Durata: 12s
+Durata: 13s
 
 Ultime 60 righe di output:
 ```
@@ -106,11 +106,11 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 
  Test Files  4 passed (4)
       Tests  41 passed (41)
-   Start at  19:34:18
-   Duration  664ms (transform 55%, import 26%, tests 12%, worker 7%)
+   Start at  19:45:44
+   Duration  667ms (transform 54%, import 24%, tests 13%, worker 8%)
 
-    Isolate  4 workers spawned · ~100ms startup each (spawn + environment, per file)
-             at least ~300ms faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  4 workers spawned · ~104ms startup each (spawn + environment, per file)
+             at least ~313ms faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -174,7 +174,7 @@ Ultime 60 righe di output:
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.17s
+✓ built in 1.36s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
