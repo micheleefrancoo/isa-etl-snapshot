@@ -21,6 +21,46 @@
       ]
     },
     {
+      "name": "files/01b-etl-core-a.md",
+      "bytes": 52438,
+      "files": [
+        "src/etl-core/NOTE_DIVERGENZE.md",
+        "src/etl-core/README.md",
+        "src/etl-core/__tests__/csv.test.ts",
+        "src/etl-core/__tests__/expressions.test.ts",
+        "src/etl-core/__tests__/helpers.ts",
+        "src/etl-core/__tests__/mutations.test.ts",
+        "src/etl-core/__tests__/params.test.ts",
+        "src/etl-core/__tests__/relations.test.ts",
+        "src/etl-core/__tests__/schema.test.ts",
+        "src/etl-core/__tests__/state.test.ts",
+        "src/etl-core/catalog/icons.ts",
+        "src/etl-core/catalog/operations.ts"
+      ]
+    },
+    {
+      "name": "files/01b-etl-core-b.md",
+      "bytes": 59482,
+      "files": [
+        "src/etl-core/catalog/params.ts",
+        "src/etl-core/data/csv.ts",
+        "src/etl-core/index.ts",
+        "src/etl-core/logic/expressions.ts",
+        "src/etl-core/model/graph.ts",
+        "src/etl-core/model/types.ts",
+        "src/etl-core/rules/mutations.ts"
+      ]
+    },
+    {
+      "name": "files/01b-etl-core-c.md",
+      "bytes": 9334,
+      "files": [
+        "src/etl-core/rules/relations.ts",
+        "src/etl-core/rules/state.ts",
+        "src/etl-core/schema/schema.ts"
+      ]
+    },
+    {
       "name": "files/02-isa-etl-a.md",
       "bytes": 52688,
       "files": [
@@ -195,7 +235,7 @@
     },
     {
       "name": "files/08-scripts-config.md",
-      "bytes": 38156,
+      "bytes": 38218,
       "files": [
         ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",
@@ -320,6 +360,37 @@
       ],
       "outFiles": [
         "01-canvas.md"
+      ]
+    },
+    "01b-etl-core": {
+      "files": [
+        "src/etl-core/NOTE_DIVERGENZE.md",
+        "src/etl-core/README.md",
+        "src/etl-core/__tests__/csv.test.ts",
+        "src/etl-core/__tests__/expressions.test.ts",
+        "src/etl-core/__tests__/helpers.ts",
+        "src/etl-core/__tests__/mutations.test.ts",
+        "src/etl-core/__tests__/params.test.ts",
+        "src/etl-core/__tests__/relations.test.ts",
+        "src/etl-core/__tests__/schema.test.ts",
+        "src/etl-core/__tests__/state.test.ts",
+        "src/etl-core/catalog/icons.ts",
+        "src/etl-core/catalog/operations.ts",
+        "src/etl-core/catalog/params.ts",
+        "src/etl-core/data/csv.ts",
+        "src/etl-core/index.ts",
+        "src/etl-core/logic/expressions.ts",
+        "src/etl-core/model/graph.ts",
+        "src/etl-core/model/types.ts",
+        "src/etl-core/rules/mutations.ts",
+        "src/etl-core/rules/relations.ts",
+        "src/etl-core/rules/state.ts",
+        "src/etl-core/schema/schema.ts"
+      ],
+      "outFiles": [
+        "01b-etl-core-a.md",
+        "01b-etl-core-b.md",
+        "01b-etl-core-c.md"
       ]
     },
     "02-isa-etl": {
@@ -532,8 +603,9 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-19T11-38-16Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T18-45-29Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T19-44-43Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T20-14-48Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T20-14-48Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T21-06-48Z.md"
   ],
-  "inScopeFileCount": 144,
-  "reportFileCount": 5
+  "inScopeFileCount": 166,
+  "reportFileCount": 6
 }
