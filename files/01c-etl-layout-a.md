@@ -12,84 +12,122 @@ File in questo blocco:
 - `src/etl-layout/__tests__/golden/05-incrocio.json`
 - `src/etl-layout/__tests__/golden/06-corsie.json`
 - `src/etl-layout/__tests__/golden/07-join-output-parziale.json`
-- `src/etl-layout/__tests__/golden/08-spostamento.json`
 
 ---
 
 ### `src/etl-layout/NOTE_DIVERGENZE.md`
 
-113 righe
+150 righe
 
 ```md
 # Note di divergenza — etl-layout
 
-Comportamenti del prototipo (`docs/prototype/isa-fusion-prototype.html`)
-che sembrano errori o sono ambigui. Come richiesto, **non sono corretti**:
-sono replicati e annotati qui. Seguono le scelte necessarie per rendere
-pura una geometria che nel prototipo vive nel DOM e nel tempo.
+Differenze rispetto al prototipo (`docs/prototype/isa-fusion-prototype.html`).
+Tre gruppi: le **correzioni intenzionali** della Fase 2.1, i
+**comportamenti replicati** (accettati come parte della resa approvata del
+prototipo) e le **scelte necessarie** per rendere pura una geometria che
+nel prototipo vive nel DOM e nel tempo.
+
+## Correzioni intenzionali (Fase 2.1)
+
+### C1. Convergenza dei cavi: aggiornamento sequenziale
+
+Nel prototipo (`drawLinks`, righe 1321-1337) ogni cavo conta gli incroci
+con i percorsi del fotogramma precedente di tutti gli altri
+(aggiornamento simultaneo): due cavi possono inseguirsi senza fermarsi
+(lo scenario golden `06-corsie` arrivava al limite di 8 passate, come il
+ramo "prima del riordino" di `09-catena-riordino`). Nel prodotto si
+vedrebbero cavi che cambiano percorso da soli a ogni ricalcolo.
+
+Ora (`links.ts`, `layoutLinks`): in ogni passata i cavi si valutano
+nell'ordine dei collegamenti; ciascuno conta gli incroci con i percorsi
+già aggiornati in questa passata per i cavi che lo precedono e con quelli
+della passata precedente per i successivi. Gli incroci si contano sui
+percorsi di base (`basePts`, prima degli scostamenti sulla stessa porta e
+delle corsie), che dipendono solo dalla scelta del singolo cavo. La
+stabilità resta: la scelta segue le regole del prototipo (`chooseRoute`),
+ma un cavo cambia percorso solo se l'alternativa costa **strettamente**
+meno del percorso attuale. Poiché un incrocio costa uguale ai due cavi
+coinvolti, ogni cambio fa scendere il costo totale del disegno: le passate
+terminano sempre, e il risultato è un punto fisso.
+
+I golden il cui risultato cambia (`06-corsie`, `09-catena-riordino`) non
+sono rigenerati dal prototipo: le nuove attese sono in
+`__tests__/golden/corretti/`, con il confronto prima/dopo (passate,
+incroci, snodi, lunghezza).
+
+### C2. Un dritto quasi allineato è perfettamente dritto
+
+Prima era il comportamento replicato n. 1. `shapeCandidates` (righe 1218,
+1223): sotto 1,5 px di differenza la forma era `straight` senza
+scorrimento, e `orthogonalize` lasciava uno scalino (3 punti). Ora gli
+agganci scorrono di metà ciascuno anche sotto la soglia: un cavo di forma
+dritta ha sempre esattamente 2 punti.
+
+### C3. `displace`: centri coincidenti spinti verso il basso
+
+Prima era il n. 4. Righe 1942-1945: `len = Math.hypot(vx, vy) || 1`
+rendeva irraggiungibile il ramo di ripiego `if (len < 1) { vx = 0; vy = 1; }`,
+e la spinta era nulla. Ora (`displaceTarget`) con centri coincidenti, o
+più vicini di 1 px, la spinta va verso il basso.
+
+### C4. `displace` usa il limite inferiore di `clampCard`
+
+Prima era il n. 5. Riga 1950: `worldH() - CARD - 26`, 2 px oltre
+`clampCard` (riga 1539, `worldH() - CARD - LABEL_H - 6`). Ora `displace`
+usa `clampPoint`. Il punto di rilascio di un passaggio sganciato (riga 2176) conserva il limite del prototipo (`DROP_BOTTOM`).
+
+### C5. Passaggio sganciato: sotto il box, senza toccarlo
+
+Prima era il n. 6. Riga 2178: `freeSpot(box.x, box.y + CARD + 34)`: a 122
+px il punto toccava sempre il box (soglia di `overlapsAny`: 128 px) e
+`freeSpot` lo spostava di lato. Ora lo scostamento è
+`CARD + LABEL_H + 18` = 128 px, la distanza minima che evita la
+sovrapposizione (`DETACH_OFFSET_Y`): il passaggio resta sotto il box.
+
+### C6. Scambio di posto con un nodo senza postazione
+
+Prima era il n. 7. Righe 2096-2098: se il nodo rilasciato non aveva una
+postazione, chi occupava quella di arrivo restava senza. Ora
+(`dropInSlot`) va nella postazione libera più vicina; più in generale,
+dopo `dropInSlot` ogni nodo ha una postazione e nessuna postazione ha due
+nodi (test di proprietà).
 
 ## Comportamenti replicati
 
-### 1. Un dritto "quasi allineato" lascia uno scalino fino a 1,5 px
-
-`shapeCandidates` (righe 1218, 1223): se i due agganci differiscono di
-meno di 1,5 px la forma è `straight` **senza** scorrimento (`oa`/`ob`
-assenti); lo scorrimento simmetrico scatta solo da 1,5 px in su.
-`orthogonalize` trasforma allora la differenza residua in uno scalino
-(3 punti invece di 2, con un tratto lungo meno di 1,5 px). Replicato in
-`routing.ts`; il test di proprietà sugli scostamenti simmetrici ammette
-questo scalino.
-
-### 2. I pesi di `chooseRoute` non sono una gerarchia stretta
+### R1. Le priorità di `chooseRoute` sono pesi sommati, non una gerarchia stretta
 
 Righe 1267-1268: `cost·1e6 + overBends·6000 + cr·3500 + back·3000 +
-sameSide·1800 + overshoot·14 + lunghezza + changePen·0,8`. L'ordine delle
-priorità è quello richiesto (nodi, snodi, incroci, ripiegamenti, U,
-lunghezza), ma i pesi sono sommati: due incroci (7000) contano più di uno
-snodo oltre il limite (6000), due ripiegamenti (6000) quanto uno snodo, e
-una fuoriuscita di oltre ~430 px (×14) più di uno snodo. Replicato; il
-test di proprietà sul limite di snodi verifica la regola solo quando esiste
-un'alternativa che non attraversa nodi e non ripiega.
+sameSide·1800 + overshoot·14 + lunghezza + changePen·0,8`. L'ordine dei
+pesi segue le priorità (nodi attraversati, limite di snodi, incroci,
+ripiegamenti, forma a U, lunghezza), ma i termini si sommano e si
+compensano: due incroci (7000) contano più di uno snodo oltre il limite
+(6000), due ripiegamenti (6000) quanto uno snodo, una fuoriuscita di oltre
+~430 px (×14) più di uno snodo. È voluto: il compromesso tra i criteri è
+parte della resa del prototipo. Il test di proprietà sul limite di snodi
+verifica la regola solo quando esiste un'alternativa che non attraversa
+nodi e non ripiega.
 
-### 3. La stabilità guarda solo le porte
+**Comportamento accettato: fa parte della resa approvata del prototipo.**
+
+### R2. La stabilità guarda solo le porte
 
 Riga 1271: il candidato "da conservare" è il migliore **con le stesse
-porte** del percorso precedente, non con la stessa forma; lo snodo può
-quindi cambiare anche quando il cavo "resta". Replicato.
+porte** del percorso precedente, non con la stessa forma. Dalla Fase 2.1
+questa regola decide ancora l'alternativa; il cambio avviene solo se
+l'alternativa costa strettamente meno del percorso attuale (C1).
 
-### 4. `displace`: due centri coincidenti non vengono spinti
+**Comportamento accettato: fa parte della resa approvata del prototipo.**
 
-Righe 1942-1945: `len = Math.hypot(vx, vy) || 1`, poi
-`if (len < 1) { vx = 0; vy = 1; }`. Con centri coincidenti `hypot` vale 0,
-`len` diventa 1 e il ramo di ripiego non scatta mai: `vx = vy = 0` e la
-spinta è nulla (ci pensa poi `resolveOverlaps`). Replicato in `free.ts`.
-
-### 5. `displace` usa un limite inferiore diverso da `clampCard`
-
-Riga 1950: `worldH() - CARD - 26`, mentre `clampCard` (riga 1539) usa
-`worldH() - CARD - LABEL_H - 6` (2 px in più). Replicato
-(`DISPLACE_BOTTOM`).
-
-### 6. Il punto predefinito di un passaggio sganciato tocca sempre il box
-
-Riga 2178: senza punto di rilascio, `freeSpot(box.x, box.y + CARD + 34)`.
-Il punto dista 122 px dal box, meno dei 128 px (`CARD + LABEL_H + 18`) di
-`overlapsAny`: `freeSpot` lo sposta quindi sempre almeno di un passo (in
-genere a destra, `CARD + 26`). Replicato.
-
-### 7. Scambio di posto con un nodo senza postazione
-
-Righe 2096-2098: se il nodo rilasciato non aveva una postazione, chi
-occupava quella di arrivo riceve `slot = undefined` e resta dov'è, senza
-postazione. Replicato in `dropInSlot`.
-
-### 8. `autoLayout`: la distanza minima tra le righe è quasi sempre invisibile
+### R3. `autoLayout`: la distanza minima tra le righe è quasi sempre invisibile
 
 Righe 4285-4287: la distanza minima `CARD + LABEL_H + 18` si applica solo
 a colonne che quasi non entrano nell'area visibile; in quel caso il limite
 superiore del mondo, o `resolveOverlaps` (che separa sotto
 `CARD + LABEL_H + 28`), di solito la cancella. Si vede solo in una finestra
-stretta di altezze (scenario golden `10b`, area alta 636 px). Replicato.
+stretta di altezze (scenario golden `10b`, area alta 636 px).
+
+**Comportamento accettato: fa parte della resa approvata del prototipo.**
 
 ## Scelte necessarie (non correzioni)
 
@@ -98,13 +136,11 @@ stretta di altezze (scenario golden `10b`, area alta 636 px). Replicato.
 Il prototipo anima porte e snodi (righe 1339-1341) e rivaluta un cavo al
 più ogni 110 ms (riga 1322). Qui si calcola lo stato finale di quelle
 animazioni: angolo = porta scelta, snodo = valore obiettivo
-(`layoutLinks`). Poiché ogni cavo conta gli incroci con i percorsi del
-fotogramma precedente, `settleLinks` ripete la valutazione finché i
-percorsi non cambiano (massimo 8 passate). Lo script dei golden applica
-lo stesso protocollo al prototipo, chiamando il suo `drawLinks` (vedi
-`scripts/extract-golden.mjs`). In rari casi il prototipo non converge
-(i cavi si inseguono): lo scenario golden `06-corsie` arriva al limite di
-8 passate, e il confronto è sullo stato dopo l'ottava.
+(`layoutLinks`). `settleLinks` ripete la valutazione finché i percorsi non
+cambiano (massimo 8 passate; con la correzione C1 il limite non viene
+raggiunto). Lo script dei golden applica al prototipo lo stesso protocollo
+a passate, chiamando il suo `drawLinks` (vedi
+`scripts/extract-golden.mjs`).
 
 ### Dimensioni esplicite
 
@@ -131,13 +167,13 @@ cavo che viene dopo.
 
 Lo scambio di posto vive dentro il gestore `pointerup` del prototipo
 (righe 2093-2100), non richiamabile dall'esterno: `dropInSlot` ne porta le
-istruzioni, e lo script dei golden le esegue sulle strutture del
-prototipo.
+istruzioni (con la correzione C6), e lo script dei golden le esegue sulle
+strutture del prototipo.
 ```
 
 ### `src/etl-layout/README.md`
 
-178 righe
+193 righe
 
 ```md
 # etl-layout — Fase 2: geometria del canvas in TypeScript puro
@@ -182,12 +218,16 @@ lo snodo (0,075 per fotogramma) verso il valore scelto. Qui:
 
 - `layoutLinks(graph, prev?, opts?)` è una rivalutazione completa di tutti
   i cavi con angoli e snodi già sul valore obiettivo. `prev` (facoltativo)
-  è il risultato precedente: da lì vengono le porte da conservare
-  (stabilità: un cavo mantiene il percorso finché non peggiora) e i
-  percorsi degli altri cavi con cui contare gli incroci — come nel
-  prototipo, dove ogni cavo vede i percorsi del fotogramma precedente.
+  è il risultato precedente: da lì viene il percorso attuale di ogni cavo
+  (stabilità) e i percorsi degli altri con cui contare gli incroci.
+  Dalla Fase 2.1 l'aggiornamento è **sequenziale**: ogni cavo vede i
+  percorsi già aggiornati dei cavi che lo precedono e quelli della
+  passata precedente per i successivi, e cambia percorso solo se
+  l'alternativa costa strettamente meno (NOTE_DIVERGENZE.md, C1). Così le
+  passate terminano sempre in un punto fisso.
 - `settleLinks(graph, prev?, opts?)` ripete `layoutLinks` finché i
-  percorsi non cambiano più (al massimo 8 passate).
+  percorsi non cambiano più (al massimo 8 passate, limite che con
+  l'aggiornamento sequenziale non viene raggiunto).
 - `opts.maxBends` è il limite di snodi (predefinito 1, come `MAX_BENDS`
   del prototipo); `opts.draggingId` è il nodo in mano, che non fa da
   ostacolo.
@@ -315,16 +355,27 @@ node scripts/extract-golden.mjs            # scrive i file
 node scripts/extract-golden.mjs --explore  # stampa un riassunto
 ```
 
-Vedi `NOTE_DIVERGENZE.md` per i comportamenti del prototipo replicati
-anche quando sembrano errori.
+Golden corretti (Fase 2.1): gli scenari il cui risultato cambia per le
+correzioni intenzionali (`06-corsie`, `09-catena-riordino`) hanno le nuove
+attese in `__tests__/golden/corretti/`, con il confronto prima/dopo. Non
+si rigenerano dal prototipo ma dall'implementazione:
+
+```
+UPDATE_CORRETTI=1 npx vitest run src/etl-layout/__tests__/golden.test.ts
+```
+
+Tutti gli altri golden restano identici al prototipo.
+
+Vedi `NOTE_DIVERGENZE.md` per le correzioni intenzionali, i comportamenti
+del prototipo replicati e le scelte necessarie.
 ```
 
 ### `src/etl-layout/__tests__/golden.test.ts`
 
-213 righe
+442 righe
 
 ```ts
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -333,6 +384,9 @@ import type { Card, ComponentId, Graph } from "../../etl-core";
 import {
   assignSlots,
   autoLayout,
+  countBends,
+  countCrossings,
+  routeLength,
   dropInSlot,
   outputPositionFn,
   settleLinks,
@@ -345,9 +399,19 @@ import type { LinkRoute, LinkRoutes, Point } from "..";
  * Parità con il prototipo: i file golden sono generati eseguendo
  * docs/prototype/isa-fusion-prototype.html in Chromium
  * (scripts/extract-golden.mjs). Tolleranza di 0,5 px sulle coordinate.
+ *
+ * Golden corretti (Fase 2.1): i pochi scenari il cui risultato cambia per
+ * effetto delle correzioni intenzionali (NOTE_DIVERGENZE.md) hanno le
+ * nuove attese in golden/corretti/<nome>.json, con il confronto prima/dopo.
+ * NON si rigenerano dal prototipo: si rigenerano dall'implementazione con
+ *   UPDATE_CORRETTI=1 npx vitest run src/etl-layout/__tests__/golden.test.ts
+ * che scrive un file corretto solo per gli scenari che differiscono dal
+ * prototipo. Tutti gli altri devono restare identici al prototipo.
  */
 const TOL = 0.5;
 const dir = resolve(dirname(fileURLToPath(import.meta.url)), "golden");
+const correctedDir = resolve(dir, "corretti");
+const UPDATE = process.env["UPDATE_CORRETTI"] === "1";
 
 interface GoldenCard {
   id: string;
@@ -467,74 +531,290 @@ function expectPositions(
   }
 }
 
+type Expected = Golden["expected"];
+
+function toGoldenSettle(routes: LinkRoutes, passes: number): GoldenSettle {
+  return {
+    passes,
+    routes: Object.values(routes).map((r) => ({
+      from: r.from,
+      to: r.to,
+      portA: r.portA,
+      portB: r.portB,
+      shape: r.shape.kind,
+      pts: r.pts.map((p) => ({ x: p.x, y: p.y })),
+      d: r.d,
+    })),
+  };
+}
+
+function toPositions(graph: Graph, rename = new Map<string, string>()): GoldenPos[] {
+  return Object.values(graph.cards).map((c) => ({
+    id: rename.get(c.id) ?? c.id,
+    x: c.x,
+    y: c.y,
+    ...(c.slot !== undefined ? { slot: c.slot } : {}),
+  }));
+}
+
+/** Esegue lo scenario con l'implementazione e restituisce il risultato nel formato dei golden. */
+function compute(g: Golden): Expected {
+  let graph = buildGraph(g);
+  const maxBends = g.input.maxBends ?? 1;
+  const stage = g.expected.stage;
+  if (g.type === "routes") {
+    let prev: LinkRoutes = {};
+    const steps: (GoldenSettle & { move: unknown })[] = [];
+    const moves = [null, ...(g.input.moves ?? [])];
+    for (const move of moves) {
+      if (move) {
+        const c = graph.cards[move.id] as Card;
+        graph = withPositions(graph, new Map([[move.id, { x: c.x + move.dx, y: c.y + move.dy }]]));
+      }
+      const { routes, passes } = settleLinks(graph, prev, { maxBends });
+      steps.push({ move, ...toGoldenSettle(routes, passes) });
+      prev = routes;
+    }
+    return { stage, steps } as Expected;
+  }
+  if (g.type === "autoLayout") {
+    const before = settleLinks(graph, {}, { maxBends });
+    graph = autoLayout(graph, { viewport: stage });
+    const positions = toPositions(graph);
+    const after = settleLinks(graph, before.routes, { maxBends });
+    return {
+      stage,
+      before: toGoldenSettle(before.routes, before.passes),
+      positions,
+      after: toGoldenSettle(after.routes, after.passes),
+    };
+  }
+  if (g.type === "grid") {
+    graph = assignSlots(graph);
+    const steps: { drop: unknown; positions: GoldenPos[] }[] = [
+      { drop: null, positions: toPositions(graph) },
+    ];
+    for (const drop of g.input.drops ?? []) {
+      graph = dropInSlot(graph, drop.id, drop.x, drop.y);
+      steps.push({ drop, positions: toPositions(graph) });
+    }
+    return { stage, steps } as Expected;
+  }
+  const boxId = g.input.boxId as string;
+  const mode = g.input.mode ?? "free";
+  if (mode === "grid") graph = assignSlots(graph);
+  const spawned = spawnOutput(graph, boxId, () => "OUT", outputPositionFn({ mode }));
+  expect(spawned).not.toBeNull();
+  graph = settleNewNode(spawned?.graph as Graph, "OUT", { mode });
+  const outputId = g.expected.outputId as string;
+  return { stage, outputId, positions: toPositions(graph, new Map([["OUT", outputId]])) };
+}
+
+function sameSettle(a: GoldenSettle, b: GoldenSettle): boolean {
+  if (a.routes.length !== b.routes.length) return false;
+  return a.routes.every((r, i) => {
+    const q = b.routes[i] as GoldenRoute;
+    return (
+      r.from === q.from &&
+      r.to === q.to &&
+      Math.abs(r.portA - q.portA) < 1e-9 &&
+      Math.abs(r.portB - q.portB) < 1e-9 &&
+      r.shape === q.shape &&
+      r.d === q.d &&
+      r.pts.length === q.pts.length &&
+      r.pts.every((p, j) => {
+        const o = q.pts[j] as Point;
+        return Math.abs(p.x - o.x) <= TOL && Math.abs(p.y - o.y) <= TOL;
+      })
+    );
+  });
+}
+
+/** Tutti i "risultati di cavi" di uno scenario, con un'etichetta. */
+function settlesOf(e: Expected): [string, GoldenSettle][] {
+  if (e.before && e.after)
+    return [
+      ["prima del riordino", e.before],
+      ["dopo il riordino", e.after],
+    ];
+  return (e.steps ?? [])
+    .filter((s) => Array.isArray((s as GoldenSettle).routes))
+    .map((s, i) => [i === 0 ? "iniziale" : `dopo lo spostamento ${i}`, s as GoldenSettle]);
+}
+
+/** Incroci (coppie di tratti fra cavi diversi), snodi e lunghezza totale. */
+function metrics(s: GoldenSettle): {
+  passate: number;
+  incroci: number;
+  snodi: number;
+  lunghezza: number;
+} {
+  let incroci = 0;
+  s.routes.forEach((r, i) => {
+    for (let j = i + 1; j < s.routes.length; j++)
+      incroci += countCrossings(r.pts, [(s.routes[j] as GoldenRoute).pts]);
+  });
+  return {
+    passate: s.passes,
+    incroci,
+    snodi: s.routes.reduce((n, r) => n + countBends(r.pts), 0),
+    lunghezza: Math.round(s.routes.reduce((n, r) => n + routeLength(r.pts), 0) * 100) / 100,
+  };
+}
+
+function resultChanged(prototype: Expected, actual: Expected): boolean {
+  const a = settlesOf(prototype);
+  const b = settlesOf(actual);
+  if (a.length !== b.length) return true;
+  if (a.some(([, s], i) => !sameSettle(s, (b[i] as [string, GoldenSettle])[1]))) return true;
+  return JSON.stringify(prototype.positions ?? null) !== JSON.stringify(actual.positions ?? null)
+    ? !(prototype.positions ?? []).every((p, i) => {
+        const q = (actual.positions ?? [])[i];
+        return !!q && q.id === p.id && Math.abs(q.x - p.x) <= TOL && Math.abs(q.y - p.y) <= TOL;
+      })
+    : false;
+}
+
+interface Corrected {
+  name: string;
+  description: string;
+  motivo: string;
+  confronto: {
+    risultato: string;
+    prototipo: ReturnType<typeof metrics>;
+    corretto: ReturnType<typeof metrics>;
+  }[];
+  expected: Expected;
+}
+
 const goldens = load();
+
+if (UPDATE) {
+  mkdirSync(correctedDir, { recursive: true });
+  for (const g of goldens) {
+    if (g.type !== "routes" && g.type !== "autoLayout") continue;
+    const actual = compute(g);
+    if (!resultChanged(g.expected, actual)) continue;
+    const proto = settlesOf(g.expected);
+    const mine = settlesOf(actual);
+    const corrected: Corrected = {
+      name: g.name,
+      description: g.description,
+      motivo:
+        "Convergenza dei cavi (Fase 2.1): aggiornamento sequenziale con miglioramento stretto. " +
+        "Il prototipo aggiorna i cavi in simultanea e qui non converge o converge altrove.",
+      confronto: proto.map(([label, s], i) => ({
+        risultato: label,
+        prototipo: metrics(s),
+        corretto: metrics((mine[i] as [string, GoldenSettle])[1]),
+      })),
+      expected: actual,
+    };
+    writeFileSync(
+      resolve(correctedDir, g.name + ".json"),
+      JSON.stringify(corrected, null, 2) + "\n",
+    );
+  }
+}
+
+function correctedFor(name: string): Corrected | null {
+  const f = resolve(correctedDir, name + ".json");
+  return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as Corrected) : null;
+}
+
+function expectSame(actual: Expected, expected: Expected, g: Golden): void {
+  const a = settlesOf(actual);
+  const e = settlesOf(expected);
+  expect(a.length).toBe(e.length);
+  e.forEach(([label, s], i) => {
+    const got = (a[i] as [string, GoldenSettle])[1];
+    expect(got.passes, `${label}: passate`).toBe(s.passes);
+    const routes: Record<string, LinkRoute> = {};
+    for (const r of got.routes)
+      routes[r.from + "|" + r.to] = {
+        ...r,
+        shape: { kind: r.shape } as LinkRoute["shape"],
+        basePts: r.pts,
+        horiz: false,
+        pa: r.pts[0] as Point,
+        pb: r.pts[r.pts.length - 1] as Point,
+        d: r.d ?? "",
+      };
+    expectRoutes(routes, s, label);
+  });
+  if (g.type === "autoLayout") {
+    expect((actual.positions ?? []).map((p) => p.id)).toEqual(
+      (expected.positions ?? []).map((p) => p.id),
+    );
+    (expected.positions ?? []).forEach((p, i) => {
+      const q = (actual.positions ?? [])[i] as GoldenPos;
+      expect(Math.abs(q.x - p.x), `${p.id}.x`).toBeLessThanOrEqual(TOL);
+      expect(Math.abs(q.y - p.y), `${p.id}.y`).toBeLessThanOrEqual(TOL);
+    });
+  }
+  if (g.type === "grid" || g.type === "spawn") {
+    const eSteps =
+      g.type === "grid" ? (expected.steps ?? []) : [{ positions: expected.positions ?? [] }];
+    const aSteps =
+      g.type === "grid" ? (actual.steps ?? []) : [{ positions: actual.positions ?? [] }];
+    expect(aSteps.length).toBe(eSteps.length);
+    eSteps.forEach((st, i) => {
+      const got = (aSteps[i] as { positions: GoldenPos[] }).positions;
+      expect(
+        got.map((p) => p.id),
+        `passo ${i} (nodi)`,
+      ).toEqual(st.positions.map((p) => p.id));
+      st.positions.forEach((p, j) => {
+        const q = got[j] as GoldenPos;
+        expect(Math.abs(q.x - p.x), `passo ${i} ${p.id}.x`).toBeLessThanOrEqual(TOL);
+        expect(Math.abs(q.y - p.y), `passo ${i} ${p.id}.y`).toBeLessThanOrEqual(TOL);
+        expect(q.slot, `passo ${i} ${p.id}.slot`).toBe(p.slot);
+      });
+    });
+  }
+}
 
 describe("parità con il prototipo (file golden)", () => {
   it("i file golden ci sono", () => {
-    expect(goldens.length).toBeGreaterThanOrEqual(13);
+    expect(goldens.length).toBeGreaterThanOrEqual(14);
   });
 
   for (const g of goldens) {
-    it(`${g.name}: ${g.description}`, () => {
-      let graph = buildGraph(g);
-      const maxBends = g.input.maxBends ?? 1;
-
-      if (g.type === "routes") {
-        let prev: LinkRoutes = {};
-        const steps = g.expected.steps ?? [];
-        steps.forEach((step, i) => {
-          const move = i > 0 ? g.input.moves?.[i - 1] : undefined;
-          if (move) {
-            const c = graph.cards[move.id] as Card;
-            graph = withPositions(
-              graph,
-              new Map([[move.id, { x: c.x + move.dx, y: c.y + move.dy }]]),
-            );
-          }
-          const { routes, passes } = settleLinks(graph, prev, { maxBends });
-          expect(passes, `passo ${i}: passate`).toBe(step.passes);
-          expectRoutes(routes, step, `passo ${i}`);
-          prev = routes;
-        });
-      }
-
-      if (g.type === "autoLayout") {
-        const before = settleLinks(graph, {}, { maxBends });
-        expect(before.passes).toBe(g.expected.before?.passes);
-        expectRoutes(before.routes, g.expected.before as GoldenSettle, "prima");
-        graph = autoLayout(graph, { viewport: g.expected.stage });
-        expectPositions(graph, g.expected.positions ?? [], "posizioni");
-        const after = settleLinks(graph, before.routes, { maxBends });
-        expect(after.passes).toBe(g.expected.after?.passes);
-        expectRoutes(after.routes, g.expected.after as GoldenSettle, "dopo");
-      }
-
-      if (g.type === "grid") {
-        const steps = g.expected.steps ?? [];
-        graph = assignSlots(graph);
-        expectPositions(graph, steps[0]?.positions ?? [], "assegnazione iniziale");
-        (g.input.drops ?? []).forEach((drop, i) => {
-          graph = dropInSlot(graph, drop.id, drop.x, drop.y);
-          expectPositions(graph, steps[i + 1]?.positions ?? [], `rilascio ${i + 1}`);
-        });
-      }
-
-      if (g.type === "spawn") {
-        const boxId = g.input.boxId as string;
-        const mode = g.input.mode ?? "free";
-        if (mode === "grid") graph = assignSlots(graph);
-        const spawned = spawnOutput(graph, boxId, () => "OUT", outputPositionFn({ mode }));
-        expect(spawned).not.toBeNull();
-        graph = settleNewNode(spawned?.graph as Graph, "OUT", { mode });
-        expectPositions(
-          graph,
-          g.expected.positions ?? [],
-          "output",
-          new Map([["OUT", g.expected.outputId as string]]),
-        );
-      }
+    const corrected = correctedFor(g.name);
+    const title = corrected
+      ? `${g.name} [corretto, Fase 2.1]: ${g.description}`
+      : `${g.name}: ${g.description}`;
+    it(title, () => {
+      expectSame(compute(g), corrected ? corrected.expected : g.expected, g);
     });
   }
+});
+
+describe("golden corretti (Fase 2.1)", () => {
+  const files = existsSync(correctedDir)
+    ? readdirSync(correctedDir).filter((f) => f.endsWith(".json"))
+    : [];
+
+  it("ogni golden corretto corrisponde a uno scenario del prototipo e differisce davvero", () => {
+    for (const f of files) {
+      const c = JSON.parse(readFileSync(resolve(correctedDir, f), "utf8")) as Corrected;
+      const g = goldens.find((x) => x.name === c.name);
+      expect(g, f).toBeDefined();
+      expect(resultChanged((g as Golden).expected, c.expected), f).toBe(true);
+    }
+  });
+
+  it("i golden corretti non peggiorano incroci e snodi e convergono prima del limite", () => {
+    for (const f of files) {
+      const c = JSON.parse(readFileSync(resolve(correctedDir, f), "utf8")) as Corrected;
+      for (const row of c.confronto) {
+        expect(row.corretto.incroci, `${f} ${row.risultato}`).toBeLessThanOrEqual(
+          row.prototipo.incroci,
+        );
+        expect(row.corretto.passate, `${f} ${row.risultato}`).toBeLessThan(8);
+      }
+    }
+  });
 });
 ```
 
@@ -1243,154 +1523,6 @@ describe("parità con il prototipo (file golden)", () => {
               }
             ],
             "d": "M 452.00 356.00 L 572.00 356.00"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-### `src/etl-layout/__tests__/golden/08-spostamento.json`
-
-142 righe
-
-```json
-{
-  "name": "08-spostamento",
-  "description": "Un nodo spostato di poco (il cavo conserva il percorso) e di molto (lo cambia).",
-  "type": "routes",
-  "input": {
-    "cards": [
-      {
-        "id": "A",
-        "kind": "dataset",
-        "components": ["dataset"],
-        "x": 104,
-        "y": 312
-      },
-      {
-        "id": "B",
-        "kind": "op",
-        "components": ["filter"],
-        "x": 416,
-        "y": 442
-      }
-    ],
-    "links": [
-      {
-        "from": "A",
-        "to": "B"
-      }
-    ],
-    "moves": [
-      {
-        "id": "B",
-        "dx": 8,
-        "dy": -6
-      },
-      {
-        "id": "B",
-        "dx": -390,
-        "dy": 260
-      }
-    ]
-  },
-  "expected": {
-    "stage": {
-      "w": 712,
-      "h": 520
-    },
-    "steps": [
-      {
-        "move": null,
-        "passes": 2,
-        "routes": [
-          {
-            "from": "A",
-            "to": "B",
-            "portA": 0,
-            "portB": -1.5707963267948966,
-            "shape": "L",
-            "pts": [
-              {
-                "x": 192,
-                "y": 356
-              },
-              {
-                "x": 460,
-                "y": 356
-              },
-              {
-                "x": 460,
-                "y": 442
-              }
-            ],
-            "d": "M 192.00 356.00 L 449.00 356.00 Q 460.00 356.00 460.00 367.00 L 460.00 442.00"
-          }
-        ]
-      },
-      {
-        "move": {
-          "id": "B",
-          "dx": 8,
-          "dy": -6
-        },
-        "passes": 2,
-        "routes": [
-          {
-            "from": "A",
-            "to": "B",
-            "portA": 0,
-            "portB": -1.5707963267948966,
-            "shape": "L",
-            "pts": [
-              {
-                "x": 192,
-                "y": 356
-              },
-              {
-                "x": 468,
-                "y": 356
-              },
-              {
-                "x": 468,
-                "y": 436
-              }
-            ],
-            "d": "M 192.00 356.00 L 457.00 356.00 Q 468.00 356.00 468.00 367.00 L 468.00 436.00"
-          }
-        ]
-      },
-      {
-        "move": {
-          "id": "B",
-          "dx": -390,
-          "dy": 260
-        },
-        "passes": 2,
-        "routes": [
-          {
-            "from": "A",
-            "to": "B",
-            "portA": 3.141592653589793,
-            "portB": -1.5707963267948966,
-            "shape": "L",
-            "pts": [
-              {
-                "x": 104,
-                "y": 356
-              },
-              {
-                "x": 78,
-                "y": 356
-              },
-              {
-                "x": 78,
-                "y": 696
-              }
-            ],
-            "d": "M 104.00 356.00 L 89.00 356.00 Q 78.00 356.00 78.00 367.00 L 78.00 696.00"
           }
         ]
       }

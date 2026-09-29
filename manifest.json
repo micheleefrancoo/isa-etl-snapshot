@@ -64,7 +64,7 @@
     },
     {
       "name": "files/01c-etl-layout-a.md",
-      "bytes": 49018,
+      "bytes": 56668,
       "files": [
         "src/etl-layout/NOTE_DIVERGENZE.md",
         "src/etl-layout/README.md",
@@ -75,36 +75,44 @@
         "src/etl-layout/__tests__/golden/04-ostacolo.json",
         "src/etl-layout/__tests__/golden/05-incrocio.json",
         "src/etl-layout/__tests__/golden/06-corsie.json",
-        "src/etl-layout/__tests__/golden/07-join-output-parziale.json",
-        "src/etl-layout/__tests__/golden/08-spostamento.json"
+        "src/etl-layout/__tests__/golden/07-join-output-parziale.json"
       ]
     },
     {
       "name": "files/01c-etl-layout-b.md",
-      "bytes": 56291,
+      "bytes": 51175,
       "files": [
+        "src/etl-layout/__tests__/golden/08-spostamento.json",
         "src/etl-layout/__tests__/golden/09-catena-riordino.json",
         "src/etl-layout/__tests__/golden/10-riordino-isolati.json",
         "src/etl-layout/__tests__/golden/10b-riordino-colonna-fitta.json",
         "src/etl-layout/__tests__/golden/11-organizzato.json",
         "src/etl-layout/__tests__/golden/12-output-generato.json",
         "src/etl-layout/__tests__/golden/13-output-organizzato.json",
-        "src/etl-layout/__tests__/properties.test.ts",
-        "src/etl-layout/__tests__/unit.test.ts",
-        "src/etl-layout/autoLayout.ts",
-        "src/etl-layout/constants.ts"
+        "src/etl-layout/__tests__/golden/corretti/06-corsie.json",
+        "src/etl-layout/__tests__/golden/corretti/09-catena-riordino.json",
+        "src/etl-layout/__tests__/properties.test.ts"
       ]
     },
     {
       "name": "files/01c-etl-layout-c.md",
-      "bytes": 55696,
+      "bytes": 53939,
       "files": [
+        "src/etl-layout/__tests__/unit.test.ts",
+        "src/etl-layout/autoLayout.ts",
+        "src/etl-layout/constants.ts",
         "src/etl-layout/free.ts",
         "src/etl-layout/hitTest.ts",
         "src/etl-layout/index.ts",
         "src/etl-layout/links.ts",
         "src/etl-layout/nodes.ts",
-        "src/etl-layout/path.ts",
+        "src/etl-layout/path.ts"
+      ]
+    },
+    {
+      "name": "files/01c-etl-layout-d.md",
+      "bytes": 30504,
+      "files": [
         "src/etl-layout/placement.ts",
         "src/etl-layout/routing.ts",
         "src/etl-layout/slots.ts",
@@ -466,6 +474,8 @@
         "src/etl-layout/__tests__/golden/11-organizzato.json",
         "src/etl-layout/__tests__/golden/12-output-generato.json",
         "src/etl-layout/__tests__/golden/13-output-organizzato.json",
+        "src/etl-layout/__tests__/golden/corretti/06-corsie.json",
+        "src/etl-layout/__tests__/golden/corretti/09-catena-riordino.json",
         "src/etl-layout/__tests__/properties.test.ts",
         "src/etl-layout/__tests__/unit.test.ts",
         "src/etl-layout/autoLayout.ts",
@@ -484,7 +494,8 @@
       "outFiles": [
         "01c-etl-layout-a.md",
         "01c-etl-layout-b.md",
-        "01c-etl-layout-c.md"
+        "01c-etl-layout-c.md",
+        "01c-etl-layout-d.md"
       ]
     },
     "02-isa-etl": {
@@ -701,8 +712,9 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T20-14-48Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T21-06-48Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T07-20-03Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T08-33-03Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T08-33-03Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T08-57-43Z.md"
   ],
-  "inScopeFileCount": 200,
-  "reportFileCount": 8
+  "inScopeFileCount": 202,
+  "reportFileCount": 9
 }

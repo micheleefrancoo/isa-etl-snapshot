@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-09-29T08:34:32Z (UTC)
+Generato: 2026-09-29T08:58:40Z (UTC)
 
 ## Type check
 
@@ -9,7 +9,7 @@ Nessuno script "typecheck" in package.json: eseguito il comando diretto.
 Comando: `npx tsc --noEmit`
 
 Esito: OK (exit 0)
-Durata: 10s
+Durata: 11s
 
 Ultime 60 righe di output:
 ```
@@ -74,7 +74,7 @@ Ultime 60 righe di output:
 Comando: `npm test`
 
 Esito: OK (exit 0)
-Durata: 19s
+Durata: 34s
 
 Ultime 60 righe di output:
 ```
@@ -88,12 +88,12 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 
 
  Test Files  16 passed (16)
-      Tests  203 passed (203)
-   Start at  08:34:51
-   Duration  18.45s (tests 95%, transform 3%, import 2%)
+      Tests  210 passed (210)
+   Start at  08:59:00
+   Duration  34.01s (tests 97%, transform 1%, import 1%)
 
-    Isolate  16 workers spawned · ~115ms startup each (spawn + environment, per file)
-             at least ~1.72s faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  16 workers spawned · ~118ms startup each (spawn + environment, per file)
+             at least ~1.77s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -157,7 +157,7 @@ Ultime 60 righe di output:
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.40s
+✓ built in 1.19s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -171,6 +171,8 @@ Ultime 60 righe di output:
 ## Git log (ultimi 20 commit)
 
 ```
+4ac5954 Report Fase 2.1: formattazione
+dca3b87 Fase 2.1: convergenza dei cavi e correzioni puntuali alla geometria
 fad990a Fase 2: geometria del canvas in TypeScript puro (src/etl-layout/)
 b215503 etl-core: normalizeValuesField divide solo sul separatore registrato; esporta splitTokens
 46e0718 Fase 1.1: invariante output su tutte le mutazioni, separatori, test dei requisiti
@@ -189,8 +191,6 @@ c21caaa Changes
 3848fb4 Changes
 e7c251c Changes
 3b8afd2 Changes
-e5bdd1a Changes
-6012a8a Changes
 ```
 
 ## Branch
@@ -198,11 +198,13 @@ e5bdd1a Changes
 ```
   feat/etl-core
   feat/etl-layout
+  feat/etl-layout-fix
 * main
   wip/stato-2026-09-28
   remotes/origin/HEAD -> origin/main
   remotes/origin/feat/etl-core
   remotes/origin/feat/etl-layout
+  remotes/origin/feat/etl-layout-fix
   remotes/origin/main
   remotes/origin/wip/stato-2026-09-28
 ```
@@ -225,6 +227,17 @@ Diff stat rispetto a main:
 Ultimo commit:
 ```
 fad990a Fase 2: geometria del canvas in TypeScript puro (src/etl-layout/)
+```
+
+Diff stat rispetto a main:
+```
+```
+
+### `feat/etl-layout-fix`
+
+Ultimo commit:
+```
+4ac5954 Report Fase 2.1: formattazione
 ```
 
 Diff stat rispetto a main:
