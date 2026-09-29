@@ -37,7 +37,7 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-28T21-06-48Z.md` — 101 righe (3869 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-29T07-20-03Z.md` — 69 righe (8503 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-29T08-33-03Z.md` — 167 righe (9240 B)
-- `src/canvas/.reports/VALIDATION_REPORT_2026-09-29T08-57-43Z.md` — 130 righe (9951 B)
+- `src/canvas/.reports/VALIDATION_REPORT_2026-09-29T08-57-43Z.md` — 131 righe (9988 B)
 - `src/canvas/FUNCTIONAL_CHECKS.md` — 75 righe (4054 B)
 - `src/canvas/README.md` — 143 righe (6702 B)
 - `src/canvas/__tests__/panelPositioning.test.ts` — 179 righe (5035 B)

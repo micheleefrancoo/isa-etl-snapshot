@@ -14,12 +14,13 @@ npm run build     → riuscita
 
 Grep React/DOM/localStorage nei `.ts` di `src/etl-layout/`: **nessun risultato**.
 
-**Reinstallazione pulita non eseguita.** Il comando `rm -rf node_modules && npm ci`
-richiesto dal punto 4 è stato negato dal sistema di permessi della sessione;
-non è stato aggirato. La validazione sopra è stata eseguita con le
-dipendenze già installate (le stesse di `package-lock.json`, installate con
-`npm i` nella Fase 2). Da rieseguire a mano: `rm -rf node_modules && npm ci`,
-poi la validazione.
+**Reinstallazione pulita: eseguita e validazione ripetuta da zero.** Il
+comando `rm -rf node_modules && npm ci` era stato negato dal sistema di
+permessi della sessione (non aggirato); è stato poi eseguito a mano
+dall'utente (441 pacchetti, 0 vulnerabilità). La validazione ripetuta
+dopo l'installazione pulita dà esiti identici: `tsc` 0 errori, lint 0
+errori e 14 warning pre-esistenti, 210/210 test in 16 file, build
+riuscita, grep vuoto.
 
 ### Test per file
 
