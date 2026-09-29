@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-09-29T07:21:20Z (UTC)
+Generato: 2026-09-29T08:34:32Z (UTC)
 
 ## Type check
 
@@ -9,7 +9,7 @@ Nessuno script "typecheck" in package.json: eseguito il comando diretto.
 Comando: `npx tsc --noEmit`
 
 Esito: OK (exit 0)
-Durata: 9s
+Durata: 10s
 
 Ultime 60 righe di output:
 ```
@@ -20,7 +20,7 @@ Ultime 60 righe di output:
 Comando: `npm run lint`
 
 Esito: OK (exit 0)
-Durata: 7s
+Durata: 9s
 
 Ultime 60 righe di output:
 ```
@@ -74,7 +74,7 @@ Ultime 60 righe di output:
 Comando: `npm test`
 
 Esito: OK (exit 0)
-Durata: 3s
+Durata: 19s
 
 Ultime 60 righe di output:
 ```
@@ -87,13 +87,13 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
  RUN  v5.0.1 /workspaces/isa-glass-platform
 
 
- Test Files  13 passed (13)
-      Tests  157 passed (157)
-   Start at  07:21:37
-   Duration  2.35s (transform 38%, import 36%, tests 19%, worker 7%)
+ Test Files  16 passed (16)
+      Tests  203 passed (203)
+   Start at  08:34:51
+   Duration  18.45s (tests 95%, transform 3%, import 2%)
 
-    Isolate  13 workers spawned · ~111ms startup each (spawn + environment, per file)
-             at least ~1.33s faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  16 workers spawned · ~115ms startup each (spawn + environment, per file)
+             at least ~1.72s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -102,7 +102,7 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 Comando: `npm run build`
 
 Esito: OK (exit 0)
-Durata: 6s
+Durata: 7s
 
 Ultime 60 righe di output:
 ```
@@ -157,7 +157,7 @@ Ultime 60 righe di output:
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.14s
+✓ built in 1.40s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -171,6 +171,8 @@ Ultime 60 righe di output:
 ## Git log (ultimi 20 commit)
 
 ```
+fad990a Fase 2: geometria del canvas in TypeScript puro (src/etl-layout/)
+b215503 etl-core: normalizeValuesField divide solo sul separatore registrato; esporta splitTokens
 46e0718 Fase 1.1: invariante output su tutte le mutazioni, separatori, test dei requisiti
 a70acf7 Fase 1.1: correzioni intenzionali al dominio ETL
 1c7a964 Fase 1: dominio ETL puro (src/etl-core/)
@@ -189,18 +191,18 @@ e7c251c Changes
 3b8afd2 Changes
 e5bdd1a Changes
 6012a8a Changes
-60544d5 Corretta griglia canvas chiara
-a3687c3 Changes
 ```
 
 ## Branch
 
 ```
   feat/etl-core
+  feat/etl-layout
 * main
   wip/stato-2026-09-28
   remotes/origin/HEAD -> origin/main
   remotes/origin/feat/etl-core
+  remotes/origin/feat/etl-layout
   remotes/origin/main
   remotes/origin/wip/stato-2026-09-28
 ```
@@ -212,6 +214,17 @@ a3687c3 Changes
 Ultimo commit:
 ```
 46e0718 Fase 1.1: invariante output su tutte le mutazioni, separatori, test dei requisiti
+```
+
+Diff stat rispetto a main:
+```
+```
+
+### `feat/etl-layout`
+
+Ultimo commit:
+```
+fad990a Fase 2: geometria del canvas in TypeScript puro (src/etl-layout/)
 ```
 
 Diff stat rispetto a main:

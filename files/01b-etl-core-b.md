@@ -11,7 +11,6 @@ File in questo blocco:
 - `src/etl-core/catalog/params.ts`
 - `src/etl-core/data/csv.ts`
 - `src/etl-core/index.ts`
-- `src/etl-core/logic/expressions.ts`
 
 ---
 
@@ -655,7 +654,7 @@ export function sectionOf(type: ComponentId): SectionDef | null {
 
 ### `src/etl-core/catalog/params.ts`
 
-828 righe
+846 righe
 
 ```ts
 /**
@@ -778,25 +777,43 @@ export function fieldFilled(
  * Correzione intenzionale rispetto al prototipo (Fase 1.1): migrazione
  * unica per ogni campo a più valori, oggi sparsa dentro `pickerHtml`
  * (prototipo, righe 2840-2848). Se `mode` è `'manual'` e `text` non è
- * vuoto, `text` viene diviso su virgola, punto e virgola, a capo e sul
- * separatore dichiarato `sep` (il prototipo usava solo `sep` qui, ma
- * `splitTokens`, riga 2839, già accettava `,` `;` `|` e a capo), i token
- * non vuoti vengono aggiunti a `values` senza duplicati, poi `text` diventa
- * `''` e `mode` diventa `'list'`. Altrimenti il campo torna inalterato
- * (mai mutato: restituisce sempre un nuovo oggetto solo se c'è qualcosa
- * da migrare).
+ * vuoto, `text` viene diviso SOLO sul separatore registrato `sep` (o `,`
+ * se assente), come la migrazione del prototipo: il testo era stato
+ * scritto con quel separatore esplicito, quindi con `sep` `;` un valore
+ * come "Rossi, Mario" resta intero. I token non vuoti vengono aggiunti a
+ * `values` senza duplicati, poi `text` diventa `''` e `mode` diventa
+ * `'list'`. Altrimenti il campo torna inalterato (mai mutato: restituisce
+ * un nuovo oggetto solo se c'è qualcosa da migrare).
+ *
+ * La divisione su più separatori insieme riguarda solo l'inserimento dal
+ * vivo nel selettore di valori: vedi `splitTokens`.
  */
 export function normalizeValuesField(v: ValuesField): ValuesField {
   if (v.mode === "list" || !v.text || !v.text.trim()) return v;
-  const seps = [",", ";", "\n", ...(v.sep ? [v.sep] : [])];
-  let parts = [v.text];
-  for (const sep of seps) parts = parts.flatMap((p) => p.split(sep));
-  const tokens = parts.map((t) => t.trim()).filter((t) => t.length > 0);
+  const tokens = v.text
+    .split(v.sep || ",")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
   const values = v.values.slice();
   for (const t of tokens) {
     if (!values.includes(t)) values.push(t);
   }
   return { mode: "list", values, text: "", sep: v.sep };
+}
+
+/**
+ * Prototipo, riga 2839 (`splitTokens`): divide un testo incollato o
+ * scritto dal vivo nel selettore di valori su `,` `;` `|` e a capo, con
+ * trim, senza token vuoti e senza duplicati. Solo per l'interfaccia: la
+ * migrazione dei testi salvati usa `normalizeValuesField`, che divide
+ * solo sul separatore registrato.
+ */
+export function splitTokens(text: string | null | undefined): string[] {
+  const tokens = String(text ?? "")
+    .split(/[,;|\n]/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  return Array.from(new Set(tokens));
 }
 
 function strField(row: MultiRow, key: string): string {
@@ -1577,7 +1594,7 @@ export function parseCSV(text: string): ParsedCsv | null {
 
 ### `src/etl-core/index.ts`
 
-100 righe
+101 righe
 
 ```ts
 /**
@@ -1623,6 +1640,7 @@ export {
   newCondition,
   createValuesField,
   normalizeValuesField,
+  splitTokens,
   valuesText,
   fieldFilled,
   ensureMulti,
@@ -1679,183 +1697,5 @@ export type { Groupable, GroupRun } from "./logic/expressions";
 export { schemaOf } from "./schema/schema";
 export { parseCSV } from "./data/csv";
 export type { ParsedCsv } from "./data/csv";
-```
-
-### `src/etl-core/logic/expressions.ts`
-
-172 righe
-
-```ts
-/**
- * Connettori, gruppi e anteprima delle espressioni logiche (condizioni di
- * filtro, chiavi di join). Porting letterale delle righe 3298-3392 di
- * docs/prototype/isa-fusion-prototype.html — MENO `logicPreview`
- * (superseduta da `groupedPreview`, non portata) e MENO l'HTML: qui
- * l'anteprima è una stringa pura.
- */
-import type { LogicOp } from "../model/types";
-
-/** Una voce che partecipa a un'espressione logica: una condizione o una chiave di join. */
-export interface Groupable {
-  readonly conn?: LogicOp;
-  readonly g?: string;
-}
-
-export interface GroupRun {
-  readonly s: number;
-  readonly e: number;
-  readonly g: string | null;
-}
-
-/** Prototipo, righe 3312-3323. */
-export function groupRuns<T extends Groupable>(list: readonly T[]): GroupRun[] {
-  const runs: GroupRun[] = [];
-  let i = 0;
-  while (i < list.length) {
-    const g = list[i]?.g;
-    let j = i;
-    if (g) {
-      while (j + 1 < list.length && list[j + 1]?.g === g) j += 1;
-    }
-    runs.push({ s: i, e: j, g: g ?? null });
-    i = j + 1;
-  }
-  return runs;
-}
-
-/**
- * Prototipo, righe 3325-3328: un gruppo di una sola condizione non ha
- * senso e si scioglie. Restituisce una nuova lista (non muta l'input).
- */
-export function normalizeGroups<T extends Groupable>(list: readonly T[]): T[] {
-  const counts = new Map<string, number>();
-  for (const item of list) {
-    if (item.g) counts.set(item.g, (counts.get(item.g) ?? 0) + 1);
-  }
-  return list.map((item) => {
-    if (item.g && (counts.get(item.g) ?? 0) < 2) {
-      const { g, ...rest } = item;
-      void g;
-      return rest as T;
-    }
-    return item;
-  });
-}
-
-/**
- * Prototipo, righe 3330-3336: raggruppa la condizione a `index-1` con quella
- * a `index`. Se appartenevano a due gruppi diversi, i due gruppi si
- * fondono. Restituisce una nuova lista.
- */
-export function groupPair<T extends Groupable>(
-  list: readonly T[],
-  index: number,
-  newGroupId: () => string,
-): T[] {
-  const a = list[index - 1];
-  const b = list[index];
-  if (!a || !b) return list.slice();
-  const g = a.g ?? b.g ?? newGroupId();
-  const otherGroup = a.g && b.g && a.g !== b.g ? b.g : null;
-  return list.map((item) => {
-    if (item === a || item === b) return { ...item, g } as T;
-    if (otherGroup && item.g === otherGroup) return { ...item, g } as T;
-    return item;
-  });
-}
-
-/**
- * Prototipo, righe 3338-3343: divide il gruppo a partire da `index` in un
- * nuovo gruppo (tutto ciò che segue, appartenente allo stesso gruppo
- * originale, viene rinumerato). Restituisce una nuova lista.
- */
-export function splitAt<T extends Groupable>(
-  list: readonly T[],
-  index: number,
-  newGroupId: () => string,
-): T[] {
-  const g = list[index]?.g;
-  if (!g) return list.slice();
-  const ng = newGroupId();
-  const next = list.slice();
-  for (let k = index; k < next.length && next[k]?.g === g; k += 1) {
-    next[k] = { ...next[k], g: ng } as T;
-  }
-  return next;
-}
-
-/** Prototipo, riga 3614: sciogliere un gruppo dissocia tutte le sue condizioni. */
-export function ungroup<T extends Groupable>(list: readonly T[], groupId: string): T[] {
-  return list.map((item) => {
-    if (item.g !== groupId) return item;
-    const { g, ...rest } = item;
-    void g;
-    return rest as T;
-  });
-}
-
-/**
- * Prototipo, righe 3615-3621: aggiunge una nuova voce subito dopo l'ultima
- * del gruppo indicato. `makeItem` costruisce la voce di base (una
- * `FilterCondition` o una `JoinKey`), a cui viene assegnato `conn:'AND'` e
- * il gruppo. Restituisce la nuova lista e l'indice della voce inserita.
- */
-export function addToGroup<T extends Groupable>(
-  list: readonly T[],
-  groupId: string,
-  makeItem: () => Omit<T, "conn" | "g">,
-): { list: T[]; index: number } {
-  let last = -1;
-  list.forEach((item, i) => {
-    if (item.g === groupId) last = i;
-  });
-  const insertAt = last + 1;
-  const item = { ...makeItem(), conn: "AND" as const, g: groupId } as T;
-  const next = list.slice();
-  next.splice(insertAt, 0, item);
-  return { list: next, index: insertAt };
-}
-
-/**
- * Prototipo, righe 3366-3369 (`leftAssoc`): valutazione da sinistra a
- * destra, con parentesi a partire dal terzo elemento. `conns[i]` è il
- * connettore tra `parts[i-1]` e `parts[i]` (ignorato per `i === 0`).
- */
-export function leftAssoc(
-  parts: readonly string[],
-  conns: readonly (LogicOp | undefined)[],
-): string {
-  let expr = parts[0] ?? "";
-  for (let i = 1; i < parts.length; i += 1) {
-    const left = i > 1 ? `(${expr})` : expr;
-    expr = `${left} ${conns[i] ?? "AND"} ${parts[i] ?? ""}`;
-  }
-  return expr;
-}
-
-/**
- * Prototipo, righe 3371-3383 (`groupedPreview`), SENZA involucro HTML: solo
- * la stringa dell'espressione. Restituisce `''` se la lista ha meno di 2
- * voci (non c'è nulla da combinare).
- */
-export function groupedPreview<T extends Groupable>(
-  list: readonly T[],
-  summarize: (item: T) => string,
-): string {
-  if (list.length < 2) return "";
-  const runs = groupRuns(list);
-  const parts = runs.map((r) => {
-    if (!r.g) return summarize(list[r.s] as T);
-    const inner: string[] = [];
-    const innerConns: (LogicOp | undefined)[] = [];
-    for (let k = r.s; k <= r.e; k += 1) {
-      inner.push(summarize(list[k] as T));
-      innerConns.push(k === r.s ? undefined : list[k]?.conn);
-    }
-    return `(${leftAssoc(inner, innerConns)})`;
-  });
-  const topConns = runs.map((r) => list[r.s]?.conn);
-  return leftAssoc(parts, topConns);
-}
 ```
 

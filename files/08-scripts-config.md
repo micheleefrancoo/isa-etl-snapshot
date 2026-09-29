@@ -13,6 +13,7 @@ File in questo blocco:
 - `components.json`
 - `eslint.config.js`
 - `package.json`
+- `scripts/extract-golden.mjs`
 - `scripts/generate-index.mjs`
 - `scripts/generate-snapshot.mjs`
 - `scripts/sync-snapshot.sh`
@@ -258,7 +259,7 @@ export default tseslint.config(
 
 ### `package.json`
 
-93 righe
+94 righe
 
 ```json
 {
@@ -346,12 +347,405 @@ export default tseslint.config(
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",
     "nitro": "3.0.260603-beta",
+    "playwright": "^1.63.0",
     "prettier": "^3.7.3",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
     "vite": "8.1.5",
     "vitest": "^5.0.1"
   }
+}
+```
+
+### `scripts/extract-golden.mjs`
+
+386 righe
+
+```js
+#!/usr/bin/env node
+/**
+ * Genera i file golden di src/etl-layout/__tests__/golden/*.json eseguendo
+ * il PROTOTIPO (docs/prototype/isa-fusion-prototype.html) in Chromium
+ * senza interfaccia, tramite Playwright.
+ *
+ * Ogni scenario viene costruito con le variabili e le funzioni globali del
+ * prototipo (`cards`, `linksArr`, `linkState`, `MAX_BENDS`, `drawLinks`,
+ * `autoLayout`, `setMode`, `spawnOutput`, ...), dentro un'unica chiamata
+ * sincrona: nessun fotogramma di animazione può intervenire nel mezzo.
+ *
+ * Cavi "a regime": `drawLinks` anima l'angolo di aggancio e lo snodo
+ * verso il valore scelto (righe 1339-1341). Una "passata" qui è:
+ * rivaluta tutti i cavi (`nextEval = 0`, poi `drawLinks()`), porta
+ * angoli e snodo sul valore obiettivo, ridisegna (`drawLinks()` con la
+ * rivalutazione disattivata). Le passate si ripetono finché i percorsi non
+ * cambiano più (al massimo 8), esattamente come `settleLinks` di
+ * etl-layout.
+ *
+ * Uso:  node scripts/extract-golden.mjs            (scrive i file golden)
+ *       node scripts/extract-golden.mjs --explore  (stampa un riassunto, non scrive)
+ */
+import { chromium } from "playwright";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const prototype = resolve(root, "docs/prototype/isa-fusion-prototype.html");
+const outDir = resolve(root, "src/etl-layout/__tests__/golden");
+const explore = process.argv.includes("--explore");
+const VIEWPORT = { width: 1440, height: 900 };
+const MAX_PASSES = 8;
+
+const ds = (id, x, y, extra = {}) => ({
+  id,
+  kind: "dataset",
+  components: ["dataset"],
+  x,
+  y,
+  ...extra,
+});
+const op = (id, components, x, y, extra = {}) => ({ id, kind: "op", components, x, y, ...extra });
+const L = (from, to) => ({ from, to });
+
+/** Scenari. `type` decide cosa viene eseguito e registrato. */
+const SCENARIOS = [
+  {
+    name: "01-dritto-allineati",
+    description: "Due nodi allineati orizzontalmente: cavo dritto.",
+    type: "routes",
+    cards: [ds("A", 104, 312), op("B", ["filter"], 416, 312)],
+    links: [L("A", "B")],
+  },
+  {
+    name: "02-dritto-scorrimento",
+    description: "Disallineati di 20 px, entro lo scorrimento delle porte: ancora dritto.",
+    type: "routes",
+    cards: [ds("A", 104, 312), op("B", ["filter"], 416, 332)],
+    links: [L("A", "B")],
+  },
+  {
+    name: "03-oltre-scorrimento",
+    description: "Disallineati di 130 px, oltre lo scorrimento: forma a L o a Z.",
+    type: "routes",
+    cards: [ds("A", 104, 312), op("B", ["filter"], 416, 442)],
+    links: [L("A", "B")],
+  },
+  {
+    name: "04-ostacolo",
+    description: "Un nodo ostruisce il percorso diretto: il cavo lo aggira.",
+    type: "routes",
+    cards: [ds("A", 104, 312), op("X", ["sort"], 286, 312), op("B", ["filter"], 520, 312)],
+    links: [L("A", "B")],
+  },
+  {
+    name: "05-incrocio",
+    description: "Due cavi che si incrocerebbero con il percorso più corto.",
+    type: "routes",
+    cards: [
+      ds("A1", 104, 208),
+      ds("A2", 104, 468),
+      op("B1", ["filter"], 520, 468),
+      op("B2", ["sort"], 520, 208),
+    ],
+    links: [L("A1", "B1"), L("A2", "B2")],
+  },
+  {
+    name: "06-corsie",
+    description: "Più cavi nello stesso corridoio (snodi ammessi: 2, perché nascano forme a Z).",
+    type: "routes",
+    maxBends: 2,
+    cards: [
+      ds("A1", 104, 104),
+      ds("A2", 104, 234),
+      ds("A3", 104, 364),
+      op("B1", ["filter"], 546, 494),
+      op("B2", ["sort"], 546, 624),
+      op("B3", ["aggregate"], 546, 754),
+    ],
+    links: [L("A1", "B1"), L("A2", "B2"), L("A3", "B3")],
+  },
+  {
+    name: "07-join-output-parziale",
+    description: "Un box con due ingressi da un join e il suo output parziale.",
+    type: "routes",
+    cards: [
+      ds("A", 104, 208),
+      ds("B", 104, 442),
+      op("J", ["join"], 364, 312),
+      ds("O", 572, 312, { isOutput: true, capacity: 2, filled: 1 }),
+    ],
+    links: [L("A", "J"), L("B", "J"), L("J", "O")],
+  },
+  {
+    name: "08-spostamento",
+    description: "Un nodo spostato di poco (il cavo conserva il percorso) e di molto (lo cambia).",
+    type: "routes",
+    cards: [ds("A", 104, 312), op("B", ["filter"], 416, 442)],
+    links: [L("A", "B")],
+    moves: [
+      { id: "B", dx: 8, dy: -6 },
+      { id: "B", dx: -390, dy: 260 },
+    ],
+  },
+  {
+    name: "09-catena-riordino",
+    description:
+      "Catena dataset → filtro → join → ordina → esporta con un secondo dataset sul join, prima e dopo il riordino automatico.",
+    type: "autoLayout",
+    cards: [
+      ds("D1", 520, 600),
+      op("F", ["filter"], 130, 130),
+      ds("OF", 780, 390, { isOutput: true, capacity: 1, filled: 1 }),
+      ds("D2", 60, 700),
+      op("J", ["join"], 910, 130),
+      ds("OJ", 300, 450, { isOutput: true, capacity: 2, filled: 2 }),
+      op("S", ["sort"], 1100, 600),
+      ds("OS", 650, 100, { isOutput: true, capacity: 1, filled: 1 }),
+      op("E", ["exportOp"], 400, 260),
+    ],
+    links: [
+      L("D1", "F"),
+      L("F", "OF"),
+      L("OF", "J"),
+      L("D2", "J"),
+      L("J", "OJ"),
+      L("OJ", "S"),
+      L("S", "OS"),
+      L("OS", "E"),
+    ],
+  },
+  {
+    name: "10-riordino-isolati",
+    description: "Riordino con nodi isolati: colonna di parcheggio a destra del flusso.",
+    type: "autoLayout",
+    cards: [
+      op("I1", ["sort"], 700, 80),
+      ds("D", 300, 500),
+      ds("I2", 90, 90),
+      op("F", ["filter"], 90, 400),
+      ds("O", 900, 600, { isOutput: true, capacity: 1, filled: 1 }),
+      op("I3", ["aggregate"], 500, 300),
+      ds("I4", 620, 520),
+      op("I5", ["rename"], 250, 250),
+    ],
+    links: [L("D", "F"), L("F", "O")],
+  },
+  {
+    name: "10b-riordino-colonna-fitta",
+    description:
+      "Riordino con cinque nodi nella stessa colonna in uno stage alto 636 px: la distanza tra le righe scende al minimo (CARD + LABEL_H + 18).",
+    type: "autoLayout",
+    stageH: 636,
+    cards: [
+      ds("D", 300, 500),
+      op("F", ["filter"], 90, 400),
+      op("I1", ["sort"], 700, 80),
+      ds("I2", 90, 90),
+      op("I3", ["aggregate"], 500, 300),
+      ds("I4", 620, 520),
+      op("I5", ["rename"], 250, 250),
+    ],
+    links: [L("D", "F")],
+  },
+  {
+    name: "11-organizzato",
+    description: "Modalità Organizzato: assegnazione iniziale delle postazioni e scambio di posto.",
+    type: "grid",
+    cards: [
+      ds("A", 40, 30),
+      op("B", ["filter"], 170, 40),
+      op("C", ["sort"], 150, 170),
+      ds("D", 30, 180),
+      op("E", ["aggregate"], 420, 300),
+    ],
+    links: [L("A", "B")],
+    drops: [
+      { id: "E", x: 150, y: 20 },
+      { id: "A", x: 700, y: 700 },
+    ],
+  },
+  {
+    name: "12-output-generato",
+    description:
+      "Posizione dell'output generato in modalità Libero, con un nodo già nel posto ideale.",
+    type: "spawn",
+    cards: [ds("A", 104, 312), op("B", ["filter"], 312, 312), op("X", ["sort"], 520, 312)],
+    links: [L("A", "B")],
+    boxId: "B",
+  },
+  {
+    name: "13-output-organizzato",
+    description:
+      "Posizione dell'output generato in modalità Organizzato: postazione a destra del box.",
+    type: "spawn",
+    mode: "grid",
+    cards: [ds("A", 40, 300), op("B", ["filter"], 300, 300), op("X", ["sort"], 430, 300)],
+    links: [L("A", "B")],
+    boxId: "B",
+  },
+];
+
+/** Funzione eseguita nella pagina del prototipo. Solo globali del prototipo. */
+function runScenario(sc, maxPasses) {
+  /* global cards:writable, linksArr:writable, linkState, MAX_BENDS:writable, drawLinks, autoLayout,
+     setMode, spawnOutput, createCardEl, defaultParams, nearestSlot, placeInSlots, layoutMode:writable,
+     draggingUid:writable, stage, workspace */
+  const clone = (v) => JSON.parse(JSON.stringify(v));
+  // altezza dello stage (CSS `--stage-h`, riga 18; 520 px nel prototipo)
+  // (la transizione di `.workspace`, riga 213, farebbe leggere l'altezza vecchia)
+  workspace.style.transition = "none";
+  document.documentElement.style.setProperty("--stage-h", (sc.stageH ?? 520) + "px");
+  document.querySelectorAll("#stage .card").forEach((c) => c.remove());
+  Object.keys(linkState).forEach((k) => delete linkState[k]);
+  layoutMode = "free";
+  draggingUid = null;
+  MAX_BENDS = sc.maxBends ?? 1;
+  cards = {};
+  for (const c of sc.cards) {
+    const { id, ...rest } = c;
+    cards[id] = {
+      ...clone(rest),
+      params: rest.components.map((t) => defaultParams(t)),
+      name: id,
+    };
+  }
+  linksArr = sc.links.map((l) => ({ from: l.from, to: l.to }));
+
+  const signature = () =>
+    JSON.stringify(
+      linksArr.map((l) => {
+        const st = linkState[l.from + "|" + l.to];
+        return st && st.pts ? [st.portA, st.portB, st.pts.map((p) => [p.x, p.y])] : null;
+      }),
+    );
+  const settle = () => {
+    let cur = signature();
+    let passes = 0;
+    while (passes < maxPasses) {
+      Object.values(linkState).forEach((st) => (st.nextEval = 0));
+      drawLinks();
+      Object.values(linkState).forEach((st) => {
+        st.a = st.portA;
+        st.b = st.portB;
+        if (st.knobTarget !== null) st.knob = st.knobTarget;
+        st.nextEval = Infinity;
+      });
+      drawLinks();
+      passes++;
+      const next = signature();
+      const stable = next === cur;
+      cur = next;
+      if (stable) break;
+    }
+    const d = {};
+    document.querySelectorAll("#linkPaths path[id^='lp-']").forEach((p) => {
+      d[p.id.slice(3)] = p.getAttribute("d");
+    });
+    const routes = [];
+    linksArr.forEach((l, i) => {
+      const st = linkState[l.from + "|" + l.to];
+      if (!st || !st.pts) return;
+      routes.push({
+        from: l.from,
+        to: l.to,
+        portA: st.portA,
+        portB: st.portB,
+        shape: st.shape.kind,
+        pts: st.pts.map((p) => ({ x: p.x, y: p.y })),
+        d: d[String(i)] ?? null,
+      });
+    });
+    return { passes, routes };
+  };
+  const positions = () =>
+    Object.keys(cards).map((id) => {
+      const c = cards[id];
+      const out = { id, x: c.x, y: c.y };
+      if (c.slot !== undefined) out.slot = c.slot;
+      return out;
+    });
+
+  const stageSize = { w: stage.clientWidth, h: stage.clientHeight };
+
+  if (sc.type === "routes") {
+    const steps = [{ move: null, ...settle() }];
+    for (const m of sc.moves ?? []) {
+      cards[m.id].x += m.dx;
+      cards[m.id].y += m.dy;
+      steps.push({ move: m, ...settle() });
+    }
+    return { stage: stageSize, steps };
+  }
+  if (sc.type === "autoLayout") {
+    const before = settle();
+    Object.keys(cards).forEach((id) => createCardEl(id));
+    autoLayout();
+    const after = settle();
+    return { stage: stageSize, before, positions: positions(), after };
+  }
+  if (sc.type === "grid") {
+    Object.keys(cards).forEach((id) => createCardEl(id));
+    setMode("grid");
+    const steps = [{ drop: null, positions: positions() }];
+    for (const dr of sc.drops ?? []) {
+      // gestore di rilascio in Organizzato (righe 2093-2100), che nel prototipo vive
+      // dentro un listener di pointerup non richiamabile: stesse istruzioni
+      const uid = dr.id;
+      cards[uid].x = dr.x;
+      cards[uid].y = dr.y;
+      const idx = nearestSlot(cards[uid].x, cards[uid].y, uid, false);
+      if (idx >= 0) {
+        const occupant = Object.keys(cards).find((id) => id !== uid && cards[id].slot === idx);
+        if (occupant) cards[occupant].slot = cards[uid].slot;
+        cards[uid].slot = idx;
+      }
+      placeInSlots(false);
+      steps.push({ drop: dr, positions: positions() });
+    }
+    return { stage: stageSize, steps };
+  }
+  if (sc.type === "spawn") {
+    Object.keys(cards).forEach((id) => createCardEl(id));
+    if (sc.mode === "grid") setMode("grid");
+    const before = new Set(Object.keys(cards));
+    spawnOutput(sc.boxId);
+    const outputId = Object.keys(cards).find((id) => !before.has(id)) ?? null;
+    return { stage: stageSize, outputId, positions: positions() };
+  }
+  throw new Error("tipo di scenario sconosciuto: " + sc.type);
+}
+
+const browser = await chromium.launch();
+try {
+  const page = await browser.newPage({ viewport: VIEWPORT });
+  // il prototipo carica solo un font da Google Fonts: non serve alla geometria
+  await page.route(/^https?:/, (r) => r.abort());
+  await page.goto(pathToFileURL(prototype).href);
+  await page.waitForFunction(() => typeof drawLinks === "function");
+  await page.addScriptTag({ content: "window.runScenarioInPage = " + runScenario.toString() });
+  if (!explore) mkdirSync(outDir, { recursive: true });
+  for (const sc of SCENARIOS) {
+    const expected = await page.evaluate(
+      ([s, m]) => window.runScenarioInPage(s, m),
+      [sc, MAX_PASSES],
+    );
+    const { name, description, type, ...input } = sc;
+    const golden = { name, description, type, input, expected };
+    if (explore) {
+      const summary = (r) =>
+        r.routes.map((x) => `${x.from}->${x.to}:${x.shape}/${x.pts.length}pt`).join(" ");
+      if (expected.steps && expected.steps[0].routes)
+        console.log(name, expected.steps.map((s) => `[p${s.passes}] ` + summary(s)).join(" | "));
+      else if (expected.before)
+        console.log(name, summary(expected.before), "=>", summary(expected.after));
+      else console.log(name, JSON.stringify(expected).slice(0, 400));
+      continue;
+    }
+    writeFileSync(resolve(outDir, name + ".json"), JSON.stringify(golden, null, 2) + "\n");
+    console.log("scritto", name + ".json");
+  }
+} finally {
+  await browser.close();
 }
 ```
 
@@ -477,7 +871,7 @@ console.log(`INDEX.md written to ${outPath}`);
 
 ### `scripts/generate-snapshot.mjs`
 
-533 righe
+534 righe
 
 ```js
 #!/usr/bin/env node
@@ -680,6 +1074,7 @@ function scanAndRedact(content, rel) {
 function areaFor(rel) {
   if (rel.startsWith("src/canvas/")) return "01-canvas";
   if (rel.startsWith("src/etl-core/")) return "01b-etl-core";
+  if (rel.startsWith("src/etl-layout/")) return "01c-etl-layout";
   if (rel.startsWith("src/components/isa/etl/")) return "02-isa-etl";
   if (rel.startsWith("src/components/isa/") || rel.startsWith("src/components/ui/"))
     return "03-components";

@@ -15,7 +15,7 @@ File in questo blocco:
 
 ### `src/etl-core/NOTE_DIVERGENZE.md`
 
-85 righe
+89 righe
 
 ```md
 # Note di divergenza
@@ -54,10 +54,14 @@ e 2534-2537). Ora:
 - `normalizeValuesField` (`catalog/params.ts`) è la migrazione unica
   testo → valori, che nel prototipo era sparsa dentro `pickerHtml`
   (righe 2840-2848). Viene applicata da `ensureMulti`, `ensureKeys`
-  (`rlist`) e `migrateFilterLogic`. Il testo viene diviso su virgola,
-  punto e virgola, a capo e sul `sep` dichiarato (la migrazione del
-  prototipo usava solo `sep`, ma `splitTokens`, riga 2839, già accettava
-  questi separatori), senza duplicati.
+  (`rlist`) e `migrateFilterLogic`. Il testo viene diviso **solo** sul
+  separatore registrato `sep` (o `,` se assente), come nella migrazione
+  del prototipo, senza duplicati: il testo era stato scritto con quel
+  separatore esplicito, quindi con `sep` `;` un valore come
+  "Rossi, Mario" resta intero.
+- `splitTokens` (prototipo, riga 2839) divide su `,` `;` `|` e a capo
+  insieme. È esportata per l'interfaccia (inserimento dal vivo nel
+  selettore di valori) e **non** è usata dalla migrazione.
 - `fieldFilled` e `stepMissing('filter', ...)` contano solo `values` per
   gli operatori in `MULTI_OPS`; gli altri operatori richiedono `text`.
 - `summarizeCond` usa sempre `values` per `MULTI_OPS` e non riceve più il
@@ -456,7 +460,7 @@ describe("gruppi: groupPair, splitAt, ungroup (scenario 11)", () => {
 
 ### `src/etl-core/__tests__/fase11-requisiti.test.ts`
 
-257 righe
+295 righe
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -478,7 +482,7 @@ import {
 } from "../rules/mutations";
 import { stepMissing } from "../rules/state";
 import { cardById, inputsOf, outputOf } from "../model/graph";
-import { ensureKeys, ensureMulti } from "../catalog/params";
+import { ensureKeys, ensureMulti, splitTokens } from "../catalog/params";
 import type { FilterParams, Graph, JoinParams, MultiRow, Params, PositionFn } from "../model/types";
 
 /** Requisiti espliciti della Fase 1.1 (vedi NOTE_DIVERGENZE.md). */
@@ -590,9 +594,9 @@ describe("invariante: dopo ogni operazione di rules/mutations.ts ogni lavorazion
   });
 });
 
-describe("conversione testo -> valori (virgola, punto e virgola, a capo, senza duplicati)", () => {
-  it("ensureMulti: campo 'find' di Sostituisci valori", () => {
-    const legacy = { items: [{ column: "regione", find: "Nord, Sud;Centro\nNord\n" }] };
+describe("conversione testo -> valori (solo sul separatore registrato, senza duplicati)", () => {
+  it("ensureMulti: campo 'find' di Sostituisci valori, testo senza separatore registrato -> virgola", () => {
+    const legacy = { items: [{ column: "regione", find: "Nord, Sud,Centro,,Nord" }] };
     const rows = ensureMulti("replaceVal", legacy)["items"] as MultiRow[];
     expect(rows[0]?.["find"]).toEqual({
       mode: "list",
@@ -602,20 +606,47 @@ describe("conversione testo -> valori (virgola, punto e virgola, a capo, senza d
     });
   });
 
-  it("ensureMulti: un campo manuale in forma di oggetto viene unito ai valori esistenti", () => {
+  it("ensureMulti: con sep ';' un valore 'Rossi, Mario' resta intero", () => {
     const legacy = {
       items: [
         {
-          column: "regione",
-          find: { mode: "manual", values: ["Nord"], text: "Sud;Nord", sep: "," },
+          column: "cliente",
+          find: {
+            mode: "manual",
+            values: [],
+            text: "Rossi, Mario;Bianchi, Anna;Rossi, Mario",
+            sep: ";",
+          },
         },
       ],
     };
     const rows = ensureMulti("replaceVal", legacy)["items"] as MultiRow[];
-    expect(rows[0]?.["find"]).toMatchObject({ mode: "list", values: ["Nord", "Sud"], text: "" });
+    expect(rows[0]?.["find"]).toEqual({
+      mode: "list",
+      values: ["Rossi, Mario", "Bianchi, Anna"],
+      text: "",
+      sep: ";",
+    });
   });
 
-  it("ensureKeys: rlist del join", () => {
+  it("ensureMulti: con sep '\\n' divide solo sugli a capo", () => {
+    const legacy = {
+      items: [
+        {
+          column: "regione",
+          find: { mode: "manual", values: ["Nord"], text: "Sud;Est\nNord\n", sep: "\n" },
+        },
+      ],
+    };
+    const rows = ensureMulti("replaceVal", legacy)["items"] as MultiRow[];
+    expect(rows[0]?.["find"]).toMatchObject({
+      mode: "list",
+      values: ["Nord", "Sud;Est"],
+      text: "",
+    });
+  });
+
+  it("ensureKeys: rlist del join, con sep ';'", () => {
     const par: JoinParams = {
       type: "inner",
       keys: [
@@ -624,12 +655,23 @@ describe("conversione testo -> valori (virgola, punto e virgola, a capo, senza d
           right: "",
           op: "è uno di",
           rmode: "list",
-          rlist: { mode: "manual", values: [], text: "x;y\nz,x", sep: "," },
+          rlist: { mode: "manual", values: [], text: "x;y, z;x", sep: ";" },
         },
       ],
     };
     const [key] = ensureKeys(par);
-    expect(key?.rlist).toEqual({ mode: "list", values: ["x", "y", "z"], text: "", sep: "," });
+    expect(key?.rlist).toEqual({ mode: "list", values: ["x", "y, z"], text: "", sep: ";" });
+  });
+});
+
+describe("splitTokens (solo inserimento dal vivo nel selettore)", () => {
+  it("divide su virgola, punto e virgola, barra verticale e a capo, senza duplicati", () => {
+    expect(splitTokens("Nord, Sud;Centro|Est\nNord\n")).toEqual(["Nord", "Sud", "Centro", "Est"]);
+  });
+
+  it("testo vuoto o assente -> nessun token", () => {
+    expect(splitTokens("")).toEqual([]);
+    expect(splitTokens(undefined)).toEqual([]);
   });
 });
 
