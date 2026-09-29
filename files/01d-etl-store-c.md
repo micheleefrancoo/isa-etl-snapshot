@@ -1,535 +1,14 @@
-# 13-misc-b.md
+# 01d-etl-store-c.md
 
 File in questo blocco:
 
-- `src/etl-store/__tests__/store.test.ts`
-- `src/etl-store/derived.ts`
-- `src/etl-store/index.ts`
-- `src/etl-store/persistence.ts`
-- `src/etl-store/react.ts`
 - `src/etl-store/reduce.ts`
 - `src/etl-store/serialize.ts`
 - `src/etl-store/state.ts`
+- `src/etl-store/store.ts`
+- `src/etl-store/types.ts`
 
 ---
-
-### `src/etl-store/__tests__/store.test.ts`
-
-230 righe
-
-```ts
-import { describe, expect, it } from "vitest";
-import { outputOf } from "../../etl-core";
-import type { Card, FilterParams, Params } from "../../etl-core";
-import { HISTORY_LIMIT, createEtlStore, initialState } from "..";
-import type { EtlStore } from "..";
-import { COLUMNS, withDatasetAndFilter } from "./helpers";
-
-function storeWith(): { store: EtlStore; ds: string; filter: string } {
-  const { state, ds, filter } = withDatasetAndFilter();
-  let t = 0;
-  return { store: createEtlStore({ initial: state, now: () => ++t }), ds, filter };
-}
-
-function pos(store: EtlStore, id: string): { x: number; y: number } {
-  const c = store.getState().graph.cards[id] as Card;
-  return { x: c.x, y: c.y };
-}
-
-describe("cronologia", () => {
-  it("un trascinamento di 30 aggiornamenti crea un solo passo; annulla e ripristina", () => {
-    const { store, ds } = storeWith();
-    const start = pos(store, ds);
-    expect(store.beginGesture({ ids: [ds] })).toEqual({ ok: true });
-    for (let i = 1; i <= 30; i++) store.updateGesture({ dx: i * 10, dy: i * 4 });
-    expect(store.historySize().past).toBe(0);
-    expect(store.commitGesture()).toEqual({ ok: true });
-    expect(store.historySize()).toEqual({ past: 1, future: 0 });
-    const end = pos(store, ds);
-    expect(end).not.toEqual(start);
-    store.undo();
-    expect(pos(store, ds)).toEqual(start);
-    store.redo();
-    expect(pos(store, ds)).toEqual(end);
-  });
-
-  it("annullare un gesto riporta lo stato di partenza senza passi", () => {
-    const { store, ds } = storeWith();
-    const before = store.getState().graph;
-    store.beginGesture({ ids: [ds] });
-    store.updateGesture({ dx: 300, dy: 0 });
-    store.cancelGesture();
-    expect(store.getState().graph).toBe(before);
-    expect(store.historySize().past).toBe(0);
-  });
-
-  it(`limite di ${HISTORY_LIMIT} passi (prototipo HIST_MAX)`, () => {
-    const { store, ds } = storeWith();
-    for (let i = 0; i < HISTORY_LIMIT + 10; i++)
-      store.dispatch({ type: "moveNodes", payload: { ids: [ds], dx: 2, dy: 0 } });
-    expect(HISTORY_LIMIT).toBe(50);
-    expect(store.historySize().past).toBe(50);
-    let n = 0;
-    while (store.canUndo()) {
-      store.undo();
-      n++;
-    }
-    expect(n).toBe(50);
-  });
-
-  it("un comando dopo un annullamento cancella i passi da ripristinare", () => {
-    const { store, ds } = storeWith();
-    store.dispatch({ type: "moveNodes", payload: { ids: [ds], dx: 2, dy: 0 } });
-    store.dispatch({ type: "moveNodes", payload: { ids: [ds], dx: 2, dy: 0 } });
-    store.undo();
-    expect(store.canRedo()).toBe(true);
-    store.dispatch({ type: "moveNodes", payload: { ids: [ds], dx: 0, dy: 2 } });
-    expect(store.canRedo()).toBe(false);
-  });
-
-  it("selezione, inspector, vista, pannelli, opzioni e libreria non creano passi", () => {
-    const { store, ds } = storeWith();
-    store.dispatch({ type: "select", payload: { ids: [ds] } });
-    store.dispatch({ type: "inspect", payload: { node: ds } });
-    store.dispatch({ type: "setView", payload: { x: 40, zoom: 1.5 } });
-    store.dispatch({ type: "setPanel", payload: { panel: "insp", open: true } });
-    store.dispatch({ type: "setOptions", payload: { flowOnlyIfValid: true } });
-    store.dispatch({
-      type: "loadDataset",
-      payload: { name: "b", path: "b.csv", columns: COLUMNS, rows: 1 },
-    });
-    expect(store.historySize()).toEqual({ past: 0, future: 0 });
-  });
-
-  it("un comando rifiutato o senza effetto non crea passi", () => {
-    const { store } = storeWith();
-    store.dispatch({ type: "deleteNodes", payload: { ids: ["nessuno"] } });
-    store.dispatch({ type: "setMode", payload: { mode: "free" } });
-    expect(store.historySize().past).toBe(0);
-  });
-
-  it("annullare ripristina anche la modalità e i contatori", () => {
-    const { store } = storeWith();
-    const before = store.getState();
-    store.dispatch({ type: "setMode", payload: { mode: "grid" } });
-    store.dispatch({ type: "addNode", payload: { component: "sort", point: { x: 900, y: 900 } } });
-    store.undo();
-    store.undo();
-    expect(store.getState().mode).toBe("free");
-    expect(store.getState().graph).toBe(before.graph);
-    expect(store.getState().counters).toEqual(before.counters);
-  });
-
-  it("dopo un annullamento la selezione perde i nodi spariti", () => {
-    const { store } = storeWith();
-    store.dispatch({ type: "addNode", payload: { component: "sort", point: { x: 900, y: 900 } } });
-    const id = Object.keys(store.getState().graph.cards).pop() as string;
-    store.dispatch({ type: "select", payload: { ids: [id] } });
-    store.dispatch({ type: "inspect", payload: { node: id } });
-    store.undo();
-    expect(store.getState().selection).toEqual([]);
-    expect(store.getState().inspector.nodeId).toBeNull();
-  });
-});
-
-describe("registro delle attività", () => {
-  it("i comandi rifiutati sono registrati con il motivo", () => {
-    const { store, ds } = storeWith();
-    store.dispatch({ type: "connect", payload: { from: ds, to: ds } });
-    const last = store.getLog().at(-1);
-    expect(last).toMatchObject({
-      type: "connect",
-      payload: { from: ds, to: ds },
-      result: { ok: false, reason: "Un nodo non si collega a sé stesso" },
-    });
-  });
-
-  it("un gesto produce una sola voce, con posizione iniziale e finale", () => {
-    const { store, ds } = storeWith();
-    const start = pos(store, ds);
-    const n0 = store.getLog().length;
-    store.beginGesture({ ids: [ds] });
-    for (let i = 1; i <= 30; i++) store.updateGesture({ dx: i * 10, dy: 0 });
-    store.commitGesture();
-    expect(store.getLog().length).toBe(n0 + 1);
-    const entry = store.getLog().at(-1);
-    expect(entry?.type).toBe("gesture");
-    expect(entry?.payload).toMatchObject({
-      kind: "move",
-      ids: [ds],
-      from: { [ds]: start },
-      to: { [ds]: pos(store, ds) },
-    });
-  });
-
-  it("ogni voce ha id crescente, istante, tipo, payload e risultato; l'esportazione è JSON valido", () => {
-    const { store, ds, filter } = storeWith();
-    store.dispatch({ type: "connect", payload: { from: ds, to: filter } });
-    store.undo();
-    store.redo();
-    const parsed = JSON.parse(store.exportLog()) as { id: number; time: number; type: string }[];
-    expect(parsed.map((e) => e.type)).toEqual(["connect", "undo", "redo"]);
-    expect(parsed.map((e) => e.id)).toEqual([1, 2, 3]);
-    expect(parsed.every((e) => typeof e.time === "number")).toBe(true);
-  });
-
-  it("caricando un CSV il registro contiene solo i metadati, non il contenuto del file", () => {
-    const store = createEtlStore();
-    const csv = "cliente;importo\nSEGRETO-1;10\nSEGRETO-2;20\n";
-    expect(store.loadCsv(csv, "clienti.csv")).toEqual({ ok: true });
-    const text = store.exportLog();
-    const entry = store.getLog()[0];
-    expect(entry?.payload).toMatchObject({ name: "clienti", path: "clienti.csv", rows: 2 });
-    expect(Object.keys(entry?.payload as object).sort()).toEqual([
-      "columns",
-      "name",
-      "path",
-      "rows",
-    ]);
-    expect(text).not.toContain("cliente;importo\n");
-  });
-});
-
-describe("scenario completo", () => {
-  it("CSV -> dataset -> filtro -> parametri -> join con un secondo dataset; annulla tutto e ripristina tutto", () => {
-    const store = createEtlStore();
-    expect(store.loadCsv("id,regione,importo\n1,Nord,10\n2,Sud,20\n", "vendite.csv")).toEqual({
-      ok: true,
-    });
-    expect(store.loadCsv("id,cliente\n1,Rossi\n2,Bianchi\n", "clienti.csv")).toEqual({ ok: true });
-    const d = (cmd: Parameters<EtlStore["dispatch"]>[0]): void => {
-      expect(store.dispatch(cmd), cmd.type).toEqual({ ok: true });
-    };
-    const newest = (): string => Object.keys(store.getState().graph.cards).at(-1) as string;
-
-    d({
-      type: "addNode",
-      payload: { component: "dataset", libraryId: "lib-1", point: { x: 150, y: 300 } },
-    });
-    const vendite = newest();
-    d({ type: "addNode", payload: { component: "filter", point: { x: 500, y: 300 } } });
-    const filter = newest();
-    d({ type: "connect", payload: { from: vendite, to: filter } });
-    const params: FilterParams = {
-      conditions: [
-        { column: "regione", op: "=", mode: "list", values: ["Nord"], text: "", sep: "," },
-      ],
-    };
-    d({
-      type: "setParams",
-      payload: { node: filter, index: 0, params: params as unknown as Params },
-    });
-    d({ type: "addNode", payload: { component: "join", point: { x: 1000, y: 400 } } });
-    const join = newest();
-    d({
-      type: "connect",
-      payload: { from: outputOf(store.getState().graph, filter) as string, to: join },
-    });
-    d({
-      type: "addNode",
-      payload: { component: "dataset", libraryId: "lib-2", point: { x: 600, y: 800 } },
-    });
-    const clienti = newest();
-    d({ type: "connect", payload: { from: clienti, to: join } });
-
-    const final = store.getState();
-    expect(final.graph.links.filter((l) => l.to === join)).toHaveLength(2);
-    const steps = store.historySize().past;
-    expect(steps).toBe(8);
-
-    while (store.canUndo()) store.undo();
-    expect(store.getState().graph).toEqual(initialState().graph);
-    expect(store.getState().library).toHaveLength(2);
-
-    while (store.canRedo()) store.redo();
-    expect(store.getState().graph).toEqual(final.graph);
-    expect(store.getState().counters).toEqual(final.counters);
-    expect(store.historySize()).toEqual({ past: steps, future: 0 });
-  });
-});
-```
-
-### `src/etl-store/derived.ts`
-
-52 righe
-
-```ts
-/**
- * Valori derivati dallo stato: calcolati, mai memorizzati nella cronologia
- * né salvati.
- */
-import { nodeState, schemaOf } from "../etl-core";
-import type { ColumnDef, Graph, Link } from "../etl-core";
-import { settleLinks } from "../etl-layout";
-import type { LinkRoutes } from "../etl-layout";
-import type { EtlState } from "./types";
-
-/** Stato di ogni nodo (prototipo `nodeState`, righe 1447-1459): `null` = pronto, altrimenti il motivo. */
-export function nodeStates(graph: Graph): Record<string, string | null> {
-  const out: Record<string, string | null> = {};
-  for (const id of Object.keys(graph.cards)) out[id] = nodeState(graph, id);
-  return out;
-}
-
-/** Schema di ogni nodo (prototipo `schemaOf`, righe 2415-2430). */
-export function schemas(graph: Graph): Record<string, ColumnDef[] | null> {
-  const out: Record<string, ColumnDef[] | null> = {};
-  for (const id of Object.keys(graph.cards)) out[id] = schemaOf(graph, id);
-  return out;
-}
-
-/**
- * Un collegamento trasporta dati? Prototipo `linkLive` (righe 1474-1477):
- * sempre, salvo con "flusso solo se valido", che richiede entrambi i capi
- * pronti.
- */
-export function linkLive(state: EtlState, l: Link): boolean {
-  if (!state.options.flowOnlyIfValid) return true;
-  return !nodeState(state.graph, l.from) && !nodeState(state.graph, l.to);
-}
-
-/**
- * Percorsi dei cavi con memoria: ogni calcolo parte dai percorsi
- * precedenti (stabilità di etl-layout) e si ricalcola solo quando cambiano
- * il grafo o il limite di snodi.
- */
-export function createRoutesCache(): (state: EtlState) => LinkRoutes {
-  let lastGraph: Graph | null = null;
-  let lastBends = -1;
-  let routes: LinkRoutes = {};
-  return (state) => {
-    if (state.graph === lastGraph && state.options.maxBends === lastBends) return routes;
-    routes = settleLinks(state.graph, routes, { maxBends: state.options.maxBends }).routes;
-    lastGraph = state.graph;
-    lastBends = state.options.maxBends;
-    return routes;
-  };
-}
-```
-
-### `src/etl-store/index.ts`
-
-29 righe
-
-```ts
-/**
- * etl-store — Fase 3: stato dell'applicazione, cronologia, registro delle
- * attività e salvataggio. Il nucleo esportato qui non importa React né usa
- * le API del browser; il collegamento a React è in `./react`, il
- * salvataggio nel browser in `./persistence`.
- */
-export * from "./types";
-export {
-  initialState,
-  DEFAULT_PANELS,
-  DEFAULT_VIEW,
-  DEFAULT_OPTIONS,
-  ZOOM_MIN,
-  ZOOM_MAX,
-} from "./state";
-export { reduce, dropAt } from "./reduce";
-export { createEtlStore, HISTORY_LIMIT, HISTORY_COMMANDS } from "./store";
-export type {
-  EtlStore,
-  StoreOptions,
-  GestureStart,
-  GestureUpdate,
-  GestureEnd,
-  Listener,
-} from "./store";
-export { nodeStates, schemas, linkLive, createRoutesCache } from "./derived";
-export { SAVE_VERSION, toSaved, fromSaved, parseSaved } from "./serialize";
-export type { SavedState } from "./serialize";
-```
-
-### `src/etl-store/persistence.ts`
-
-117 righe
-
-```ts
-/**
- * Salvataggio in localStorage. È l'UNICO modulo di etl-store che tocca
- * localStorage, sempre dopo aver verificato che esista (rendering lato
- * server: in Node non c'è).
- *
- * - Chiave nuova, per soluzione: `isa.etl.v2.<solutionId>`. I dati delle
- *   chiavi precedenti non si leggono né si cancellano.
- * - Scrittura differita di 400 ms dopo l'ultima modifica.
- * - Caricamento con validazione (serialize.ts): un dato non valido o di
- *   versione sconosciuta viene ignorato, partendo da un canvas vuoto.
- */
-import { initialState } from "./state";
-import { parseSaved, toSaved } from "./serialize";
-import type { EtlStore } from "./store";
-import type { EtlState } from "./types";
-
-export const STORAGE_PREFIX = "isa.etl.v2.";
-export const SAVE_DELAY_MS = 400;
-
-export function storageKey(solutionId: string): string {
-  return STORAGE_PREFIX + solutionId;
-}
-
-/** Il sottoinsieme di Storage che serve (iniettabile nei test). */
-export interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
-
-/** localStorage se disponibile (browser), altrimenti `null` (server, Node, accesso negato). */
-export function browserStorage(): StorageLike | null {
-  try {
-    if (typeof globalThis === "undefined" || !("localStorage" in globalThis)) return null;
-    const ls = (globalThis as { localStorage?: StorageLike }).localStorage;
-    return ls ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** Stato salvato per la soluzione, o un canvas vuoto. Mai eccezioni. */
-export function loadState(
-  solutionId: string,
-  storage: StorageLike | null = browserStorage(),
-): EtlState {
-  if (!storage) return initialState();
-  try {
-    return parseSaved(storage.getItem(storageKey(solutionId))) ?? initialState();
-  } catch {
-    return initialState();
-  }
-}
-
-export function saveState(
-  solutionId: string,
-  state: EtlState,
-  storage: StorageLike | null = browserStorage(),
-): boolean {
-  if (!storage) return false;
-  try {
-    storage.setItem(storageKey(solutionId), JSON.stringify(toSaved(state)));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export interface PersistenceHandle {
-  /** Scrive subito l'eventuale salvataggio in attesa. */
-  flush(): void;
-  /** Smette di osservare lo store (scrive prima quanto in attesa). */
-  stop(): void;
-}
-
-/**
- * Collega uno store al salvataggio: dopo ogni modifica di ciò che si
- * salva, scrive dopo `SAVE_DELAY_MS` dall'ultima.
- */
-export function persist(
-  store: EtlStore,
-  solutionId: string,
-  storage: StorageLike | null = browserStorage(),
-  delay: number = SAVE_DELAY_MS,
-): PersistenceHandle {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let last = store.getState();
-  const write = (): void => {
-    timer = null;
-    saveState(solutionId, store.getState(), storage);
-  };
-  const unsubscribe = store.subscribe(() => {
-    const s = store.getState();
-    const changed =
-      s.graph !== last.graph ||
-      s.mode !== last.mode ||
-      s.library !== last.library ||
-      s.panels !== last.panels ||
-      s.options !== last.options;
-    last = s;
-    if (!changed || !storage || store.isGesturing()) return;
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(write, delay);
-  });
-  return {
-    flush() {
-      if (timer) {
-        clearTimeout(timer);
-        write();
-      }
-    },
-    stop() {
-      unsubscribe();
-      this.flush();
-    },
-  };
-}
-```
-
-### `src/etl-store/react.ts`
-
-60 righe
-
-```ts
-/**
- * Collegamento a React: l'UNICO modulo di etl-store che importa React.
- * Usa `useSyncExternalStore` (nessuna nuova dipendenza).
- */
-import {
-  createContext,
-  createElement,
-  useContext,
-  useEffect,
-  useState,
-  useSyncExternalStore,
-} from "react";
-import type { ReactNode } from "react";
-import { persist, loadState } from "./persistence";
-import { createEtlStore } from "./store";
-import type { EtlStore } from "./store";
-import type { EtlState } from "./types";
-
-const EtlStoreContext = createContext<EtlStore | null>(null);
-
-export function EtlStoreProvider(props: { store: EtlStore; children?: ReactNode }): ReactNode {
-  return createElement(EtlStoreContext.Provider, { value: props.store }, props.children);
-}
-
-/** Lo store del provider più vicino. */
-export function useEtlStoreInstance(): EtlStore {
-  const store = useContext(EtlStoreContext);
-  if (!store) throw new Error("useEtlStore va usato dentro <EtlStoreProvider>");
-  return store;
-}
-
-/**
- * Una parte dello stato, aggiornata a ogni modifica. Il selettore deve
- * restituire valori stabili (parti dello stato o primitivi), non oggetti
- * nuovi a ogni chiamata.
- */
-export function useEtlState<T>(selector: (state: EtlState) => T, store?: EtlStore): T {
-  const ctx = useContext(EtlStoreContext);
-  const s = store ?? ctx;
-  if (!s) throw new Error("useEtlState va usato dentro <EtlStoreProvider> o con uno store");
-  return useSyncExternalStore(
-    s.subscribe,
-    () => selector(s.getState()),
-    () => selector(s.getState()),
-  );
-}
-
-/**
- * Crea uno store per la soluzione `solutionId`, caricato da localStorage
- * (lato server: canvas vuoto) e salvato con scrittura differita.
- */
-export function usePersistentEtlStore(solutionId: string): EtlStore {
-  const [store] = useState(() => createEtlStore({ initial: loadState(solutionId) }));
-  useEffect(() => {
-    const handle = persist(store, solutionId);
-    return () => handle.stop();
-  }, [store, solutionId]);
-  return store;
-}
-```
 
 ### `src/etl-store/reduce.ts`
 
@@ -1599,6 +1078,648 @@ export function initialState(): EtlState {
     options: DEFAULT_OPTIONS,
     counters: { uid: 0, ds: 0, lib: 0 },
   };
+}
+```
+
+### `src/etl-store/store.ts`
+
+434 righe
+
+```ts
+/**
+ * L'archivio unico: stato, comandi, cronologia, gesti e registro delle
+ * attività. Nessun React né API del browser: gira in Node.
+ */
+import { parseCSV } from "../etl-core";
+import type { Card, Graph } from "../etl-core";
+import { displace, separateWhileDragging, withPositions } from "../etl-layout";
+import type { LinkRoutes, Point } from "../etl-layout";
+import { relation } from "../etl-core";
+import { createRoutesCache } from "./derived";
+import { dropAt, reduce } from "./reduce";
+import { initialState } from "./state";
+import type {
+  Command,
+  CommandResult,
+  CommandType,
+  DropTarget,
+  EtlState,
+  HistoryEntry,
+  LogEntry,
+} from "./types";
+
+/** Profondità della cronologia (prototipo, `HIST_MAX = 50`, riga 4335). */
+export const HISTORY_LIMIT = 50;
+
+/**
+ * Comandi che creano un passo di cronologia, cioè quelli per cui il
+ * prototipo chiama `pushHistory()` (righe 1983, 2140, 2208, 2331, 3838,
+ * 3954, 4017, 4223, 4481, 4568, 4597, 4623, 4996), più `setParams` e
+ * `renameNode` (aggiunte, vedi README). Un comando di questo elenco crea
+ * un passo solo se riesce e cambia davvero grafo, contatori o modalità.
+ */
+export const HISTORY_COMMANDS: ReadonlySet<CommandType> = new Set<CommandType>([
+  "addNode",
+  "moveNodes",
+  "dropNodes",
+  "connect",
+  "merge",
+  "insertOnLink",
+  "detachStep",
+  "deleteStep",
+  "reorderSteps",
+  "deleteNodes",
+  "deleteLink",
+  "duplicate",
+  "setParams",
+  "renameNode",
+  "setMode",
+  "autoLayout",
+]);
+
+/**
+ * Comandi consecutivi con la stessa chiave, arrivati entro questo
+ * intervallo dal precedente, formano un solo passo di cronologia e una sola
+ * voce di registro (Fase 3.1: scrivere in un campo, tenere premuta una
+ * freccia).
+ */
+export const GROUP_WINDOW_MS = 1000;
+
+/** Comandi che non entrano nel registro: la vista cambia decine di volte al secondo (Fase 3.1). */
+export const UNLOGGED_COMMANDS: ReadonlySet<CommandType> = new Set<CommandType>(["setView"]);
+
+/**
+ * Chiave di raggruppamento: `setParams` → nodo + passaggio; `renameNode` →
+ * nodo; `moveNodes` → insieme degli identificativi (ordinato). `null` per
+ * tutti gli altri comandi, che non si raggruppano.
+ */
+export function groupKey(command: Command): string | null {
+  switch (command.type) {
+    case "setParams":
+      return `setParams|${command.payload.node}|${command.payload.index}`;
+    case "renameNode":
+      return `renameNode|${command.payload.node}`;
+    case "moveNodes":
+      return `moveNodes|${JSON.stringify([...new Set(command.payload.ids)].sort())}`;
+    default:
+      return null;
+  }
+}
+
+export interface GestureStart {
+  readonly ids: readonly string[];
+}
+
+export interface GestureUpdate {
+  /** Spostamento dall'inizio del gesto, in coordinate del mondo. */
+  readonly dx: number;
+  readonly dy: number;
+  /** Nodo sotto il puntatore, se c'è (per spingere via i nodi incompatibili). */
+  readonly over?: string | null;
+}
+
+export interface GestureEnd {
+  readonly target?: DropTarget;
+}
+
+export type Listener = () => void;
+
+export interface EtlStore {
+  getState(): EtlState;
+  subscribe(listener: Listener): () => void;
+  dispatch(command: Command): CommandResult;
+  undo(): CommandResult;
+  redo(): CommandResult;
+  canUndo(): boolean;
+  canRedo(): boolean;
+  /** Numero di passi annullabili e ripristinabili. */
+  historySize(): { past: number; future: number };
+  beginGesture(start: GestureStart): CommandResult;
+  updateGesture(update: GestureUpdate): CommandResult;
+  commitGesture(end?: GestureEnd): CommandResult;
+  cancelGesture(): CommandResult;
+  isGesturing(): boolean;
+  /** Registro delle attività (sola aggiunta). */
+  getLog(): readonly LogEntry[];
+  /** Il registro come JSON. */
+  exportLog(): string;
+  /** Legge un CSV e carica nella libreria SOLO i metadati (nome, percorso, colonne, righe). */
+  loadCsv(text: string, fileName: string): CommandResult;
+  /** Percorsi dei cavi, derivati e con memoria. */
+  getRoutes(): LinkRoutes;
+  /** Sostituisce lo stato (caricamento salvato): azzera cronologia e gesto, non il registro. */
+  replaceState(state: EtlState): void;
+}
+
+export interface StoreOptions {
+  readonly initial?: EtlState;
+  /** Orologio per il registro (predefinito: Date.now). */
+  readonly now?: () => number;
+  readonly historyLimit?: number;
+}
+
+interface Gesture {
+  readonly ids: readonly string[];
+  readonly start: EtlState;
+  readonly origin: ReadonlyMap<string, Point>;
+  lastDisplaced: string | null;
+}
+
+function entryOf(state: EtlState): HistoryEntry {
+  return {
+    graph: state.graph,
+    counters: { uid: state.counters.uid, ds: state.counters.ds },
+    mode: state.mode,
+  };
+}
+
+function sameEntry(a: EtlState, b: EtlState): boolean {
+  return (
+    a.graph === b.graph &&
+    a.mode === b.mode &&
+    a.counters.uid === b.counters.uid &&
+    a.counters.ds === b.counters.ds
+  );
+}
+
+/**
+ * Ripristina un punto di cronologia; selezione e inspector perdono i nodi
+ * spariti. Se il nodo dell'inspector esiste ma ha meno passaggi di prima
+ * (es. annullando una fusione), l'indice va all'ultimo passaggio esistente
+ * (Fase 3.1).
+ */
+function restore(state: EtlState, e: HistoryEntry): EtlState {
+  const exists = (id: string): boolean => !!e.graph.cards[id];
+  const insp = state.inspector;
+  const node = insp.nodeId ? e.graph.cards[insp.nodeId] : undefined;
+  const inspector =
+    insp.nodeId && !node
+      ? { nodeId: null, step: 0 }
+      : node && (insp.step >= node.components.length || insp.step < 0)
+        ? { nodeId: insp.nodeId, step: Math.max(0, node.components.length - 1) }
+        : insp;
+  return {
+    ...state,
+    graph: e.graph,
+    mode: e.mode,
+    counters: { ...state.counters, uid: e.counters.uid, ds: e.counters.ds },
+    selection: state.selection.filter(exists),
+    inspector,
+  };
+}
+
+function positionsOf(graph: Graph, ids: readonly string[]): Record<string, Point> {
+  const out: Record<string, Point> = {};
+  for (const id of ids) {
+    const c = graph.cards[id];
+    if (c) out[id] = { x: c.x, y: c.y };
+  }
+  return out;
+}
+
+/** Copia serializzabile in JSON (il registro non conserva riferimenti vivi). */
+function plain(v: unknown): unknown {
+  return v === undefined ? null : (JSON.parse(JSON.stringify(v)) as unknown);
+}
+
+export function createEtlStore(opts: StoreOptions = {}): EtlStore {
+  const now = opts.now ?? (() => Date.now());
+  const limit = opts.historyLimit ?? HISTORY_LIMIT;
+  let state: EtlState = opts.initial ?? initialState();
+  let past: HistoryEntry[] = [];
+  let future: HistoryEntry[] = [];
+  let gesture: Gesture | null = null;
+  /** Gruppo di comandi in corso: chiave, istante dell'ultimo comando, voce di registro, passo creato. */
+  let group: { key: string; last: number; logIndex: number; stepped: boolean } | null = null;
+  const log: LogEntry[] = [];
+  const listeners = new Set<Listener>();
+  const routes = createRoutesCache();
+
+  const emit = (): void => {
+    for (const l of [...listeners]) l();
+  };
+  const record = (
+    type: string,
+    payload: unknown,
+    result: CommandResult,
+    time: number = now(),
+  ): void => {
+    log.push({ id: log.length + 1, time, type, payload: plain(payload), result });
+  };
+  /** Nuovo passo: `before` va nella cronologia, i passi da ripristinare si cancellano (riga 4343). */
+  const pushStep = (before: EtlState): void => {
+    past.push(entryOf(before));
+    if (past.length > limit) past.shift();
+    future = [];
+  };
+  const setState = (next: EtlState): void => {
+    if (next === state) return;
+    state = next;
+    emit();
+  };
+  const dropGesture = (): void => {
+    if (!gesture) return;
+    const start = gesture.start;
+    gesture = null;
+    setState({ ...state, graph: start.graph });
+  };
+
+  const store: EtlStore = {
+    getState: () => state,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+
+    dispatch(command) {
+      if (gesture) dropGesture();
+      const t = now();
+      const key = groupKey(command);
+      const g = group;
+      const joinable = !!g && key !== null && key === g.key && t - g.last <= GROUP_WINDOW_MS;
+      const before = state;
+      const { state: next, result } = reduce(state, command);
+      const historic = HISTORY_COMMANDS.has(command.type) && !sameEntry(before, next);
+
+      if (joinable && g && result.ok) {
+        // stesso gruppo: nessun nuovo passo; l'ultima voce del registro si aggiorna
+        const prev = log[g.logIndex] as LogEntry;
+        log[g.logIndex] = {
+          ...prev,
+          payload: plain(command.payload),
+          result,
+          until: t,
+          count: (prev.count ?? 1) + 1,
+        };
+        if (historic && !g.stepped) {
+          pushStep(before);
+          g.stepped = true;
+        }
+        g.last = t;
+        setState(next);
+        return result;
+      }
+
+      // qualunque altro comando (o un rifiuto) interrompe il gruppo
+      group = null;
+      if (!UNLOGGED_COMMANDS.has(command.type)) record(command.type, command.payload, result, t);
+      if (!result.ok) return result;
+      if (historic) pushStep(before);
+      if (key !== null) group = { key, last: t, logIndex: log.length - 1, stepped: historic };
+      setState(next);
+      return result;
+    },
+
+    /** Prototipo, righe 4392-4397 (`undo`). */
+    undo() {
+      if (gesture) dropGesture();
+      group = null;
+      const e = past.pop();
+      const result: CommandResult = e ? { ok: true } : { ok: false, reason: "Niente da annullare" };
+      record("undo", {}, result);
+      if (!e) return result;
+      future.push(entryOf(state));
+      setState(restore(state, e));
+      return result;
+    },
+
+    /** Prototipo, righe 4398-4404 (`redo`). */
+    redo() {
+      if (gesture) dropGesture();
+      group = null;
+      const e = future.pop();
+      const result: CommandResult = e
+        ? { ok: true }
+        : { ok: false, reason: "Niente da ripristinare" };
+      record("redo", {}, result);
+      if (!e) return result;
+      past.push(entryOf(state));
+      if (past.length > limit) past.shift();
+      setState(restore(state, e));
+      return result;
+    },
+
+    canUndo: () => past.length > 0,
+    canRedo: () => future.length > 0,
+    historySize: () => ({ past: past.length, future: future.length }),
+
+    /**
+     * Inizio di un trascinamento (prototipo, riga 1983: il passo si prepara
+     * qui, con lo stato prima del gesto). Nessuna voce nel registro finché
+     * il gesto non si conclude.
+     */
+    beginGesture(start) {
+      if (gesture) dropGesture();
+      group = null;
+      const ids = start.ids.filter((id) => !!state.graph.cards[id]);
+      if (!ids.length) return { ok: false, reason: "Nessun nodo da trascinare" };
+      const origin = new Map<string, Point>();
+      for (const id of ids) {
+        const c = state.graph.cards[id] as Card;
+        origin.set(id, { x: c.x, y: c.y });
+      }
+      gesture = { ids, start: state, origin, lastDisplaced: null };
+      return { ok: true };
+    },
+
+    /**
+     * Aggiornamento transitorio (prototipo, righe 1979-2056, `onMove`): i
+     * nodi seguono il puntatore; in Libero, con un solo nodo, le coppie
+     * incompatibili si scansano e un nodo incompatibile sotto il puntatore
+     * viene spinto via. Né cronologia né registro.
+     */
+    updateGesture(update) {
+      const g = gesture;
+      if (!g) return { ok: false, reason: "Nessun gesto in corso" };
+      if (!Number.isFinite(update.dx) || !Number.isFinite(update.dy))
+        return { ok: false, reason: "Spostamento non valido" };
+      const pos = new Map<string, Point>();
+      for (const [id, o] of g.origin) pos.set(id, { x: o.x + update.dx, y: o.y + update.dy });
+      let graph = withPositions(state.graph, pos);
+      if (g.ids.length === 1 && state.mode === "free") {
+        const id = g.ids[0] as string;
+        graph = separateWhileDragging(graph, id);
+        const over = update.over ?? null;
+        if (over && over !== id && graph.cards[over]) {
+          if (relation(graph, id, over).relation === "displace" && over !== g.lastDisplaced) {
+            graph = displace(graph, id, over);
+            g.lastDisplaced = over;
+          }
+        } else g.lastDisplaced = null;
+      }
+      setState({ ...state, graph });
+      return { ok: true };
+    },
+
+    /**
+     * Rilascio (prototipo, righe 2058-2105): un solo passo di cronologia e
+     * una sola voce di registro, con le posizioni iniziali e finali.
+     */
+    commitGesture(end = {}) {
+      group = null;
+      const g = gesture;
+      if (!g) return { ok: false, reason: "Nessun gesto in corso" };
+      gesture = null;
+      const out = dropAt(state, g.ids, g.origin, end.target);
+      const from: Record<string, Point> = {};
+      for (const [id, o] of g.origin) from[id] = o;
+      if (!out.result.ok) {
+        record(
+          "gesture",
+          { kind: "move", ids: g.ids, from, to: from, target: end.target ?? null },
+          out.result,
+        );
+        setState({ ...state, graph: g.start.graph });
+        return out.result;
+      }
+      const to = positionsOf(out.state.graph, g.ids);
+      record(
+        "gesture",
+        { kind: "move", ids: g.ids, from, to, target: end.target ?? null },
+        out.result,
+      );
+      if (!sameEntry(g.start, out.state)) pushStep(g.start);
+      setState(out.state);
+      return out.result;
+    },
+
+    /** Gesto annullato: si torna allo stato di partenza, senza passi né voci. */
+    cancelGesture() {
+      if (!gesture) return { ok: false, reason: "Nessun gesto in corso" };
+      dropGesture();
+      return { ok: true };
+    },
+
+    isGesturing: () => gesture !== null,
+    getLog: () => log,
+    exportLog: () => JSON.stringify(log, null, 2),
+
+    loadCsv(text, fileName) {
+      const parsed = parseCSV(text);
+      return store.dispatch({
+        type: "loadDataset",
+        payload: {
+          name: fileName.replace(/\.[^.]+$/, ""),
+          path: fileName,
+          columns: parsed ? parsed.columns : [],
+          rows: parsed ? parsed.rows : 0,
+        },
+      });
+    },
+
+    getRoutes: () => routes(state),
+
+    replaceState(next) {
+      gesture = null;
+      group = null;
+      past = [];
+      future = [];
+      setState(next);
+    },
+  };
+  return store;
+}
+```
+
+### `src/etl-store/types.ts`
+
+196 righe
+
+```ts
+/** Tipi dello stato dell'applicazione (Fase 3). */
+import type { ColumnDef, ComponentId, Graph, Link, Params } from "../etl-core";
+import type { LayoutMode, Point, Size } from "../etl-layout";
+
+export type PanelKey = "tools" | "insp";
+export type Side = "left" | "right" | "top" | "bottom";
+
+export interface PanelState {
+  readonly side: Side;
+  readonly open: boolean;
+}
+
+export type Panels = Readonly<Record<PanelKey, PanelState>>;
+
+/** Un dataset caricato nella libreria: solo metadati, mai il contenuto del file. */
+export interface LibraryItem {
+  readonly id: string;
+  readonly name: string;
+  readonly path: string;
+  readonly columns: readonly ColumnDef[];
+  /** Numero di righe del file (senza intestazione). */
+  readonly rows: number;
+}
+
+export interface Options {
+  /** "Flusso solo se valido" (prototipo, `FEATURES.flowGate`, riga 918): spento per impostazione predefinita. */
+  readonly flowOnlyIfValid: boolean;
+  /** Snodi ammessi per cavo (etl-layout). */
+  readonly maxBends: number;
+}
+
+export interface View {
+  readonly x: number;
+  readonly y: number;
+  readonly zoom: number;
+}
+
+export interface Inspector {
+  readonly nodeId: string | null;
+  readonly step: number;
+}
+
+/**
+ * Contatori per nomi e identificativi, come `uidCounter`/`dsCounter`/
+ * `libCounter` del prototipo (righe 976, 4670). `uid` e `ds` fanno parte
+ * dei punti di cronologia (riga 4337); `lib` no, come la libreria.
+ */
+export interface Counters {
+  readonly uid: number;
+  readonly ds: number;
+  readonly lib: number;
+}
+
+export interface EtlState {
+  readonly graph: Graph;
+  readonly mode: LayoutMode;
+  readonly library: readonly LibraryItem[];
+  readonly selection: readonly string[];
+  readonly inspector: Inspector;
+  readonly panels: Panels;
+  readonly view: View;
+  readonly options: Options;
+  readonly counters: Counters;
+}
+
+/** Dove viene rilasciato qualcosa: su un nodo o su un cavo. */
+export type DropTarget = { readonly node: string } | { readonly link: Link };
+
+export type Command =
+  /** Nuovo nodo dalla cassetta (`type`) o dalla libreria (`libraryId`), rilasciato in `point` (coordinate del mondo). */
+  | {
+      readonly type: "addNode";
+      readonly payload: {
+        readonly component: ComponentId;
+        readonly libraryId?: string;
+        readonly point: Point;
+        readonly target?: DropTarget;
+      };
+    }
+  /** Spostamento da tastiera (prototipo `nudgeSelection`). */
+  | {
+      readonly type: "moveNodes";
+      readonly payload: {
+        readonly ids: readonly string[];
+        readonly dx: number;
+        readonly dy: number;
+      };
+    }
+  /** Trascinamento concluso in un solo comando: spostamento di (dx, dy) e rilascio. */
+  | {
+      readonly type: "dropNodes";
+      readonly payload: {
+        readonly ids: readonly string[];
+        readonly dx: number;
+        readonly dy: number;
+        readonly target?: DropTarget;
+      };
+    }
+  | { readonly type: "connect"; readonly payload: { readonly from: string; readonly to: string } }
+  | {
+      readonly type: "merge";
+      readonly payload: { readonly dragged: string; readonly target: string };
+    }
+  | {
+      readonly type: "insertOnLink";
+      readonly payload: { readonly node: string; readonly link: Link };
+    }
+  | {
+      readonly type: "detachStep";
+      readonly payload: {
+        readonly box: string;
+        readonly index: number;
+        readonly dropPoint?: Point;
+      };
+    }
+  | {
+      readonly type: "deleteStep";
+      readonly payload: { readonly box: string; readonly index: number };
+    }
+  | {
+      readonly type: "reorderSteps";
+      readonly payload: { readonly box: string; readonly from: number; readonly to: number };
+    }
+  | { readonly type: "deleteNodes"; readonly payload: { readonly ids: readonly string[] } }
+  | { readonly type: "deleteLink"; readonly payload: { readonly link: Link } }
+  | { readonly type: "duplicate"; readonly payload: { readonly ids: readonly string[] } }
+  | {
+      readonly type: "setParams";
+      readonly payload: { readonly node: string; readonly index: number; readonly params: Params };
+    }
+  | {
+      readonly type: "renameNode";
+      readonly payload: { readonly node: string; readonly name: string };
+    }
+  | { readonly type: "setMode"; readonly payload: { readonly mode: LayoutMode } }
+  | { readonly type: "autoLayout"; readonly payload: { readonly viewport: Size } }
+  | { readonly type: "select"; readonly payload: { readonly ids: readonly string[] } }
+  | {
+      readonly type: "inspect";
+      readonly payload: { readonly node: string | null; readonly step?: number };
+    }
+  | {
+      readonly type: "loadDataset";
+      readonly payload: {
+        readonly name: string;
+        readonly path: string;
+        readonly columns: readonly ColumnDef[];
+        readonly rows: number;
+      };
+    }
+  | {
+      readonly type: "setPanel";
+      readonly payload: { readonly panel: PanelKey; readonly open?: boolean; readonly side?: Side };
+    }
+  | { readonly type: "setView"; readonly payload: Partial<View> }
+  | { readonly type: "setOptions"; readonly payload: Partial<Options> };
+
+export type CommandType = Command["type"];
+
+export type CommandResult = { readonly ok: true } | { readonly ok: false; readonly reason: string };
+
+export interface ReduceOutcome {
+  readonly state: EtlState;
+  readonly result: CommandResult;
+}
+
+/**
+ * Contenuto di un punto di cronologia. Nel prototipo (riga 4337):
+ * `{ cards, linksArr, comboCounter, outCounter, uidCounter }`. Qui: il
+ * grafo (cards + links; i contatori di nomi "Combined Box N"/"Output N"
+ * sono derivati dal grafo in etl-core), i contatori di id e nomi, e la
+ * modalità (aggiunta: vedi README, "Cronologia").
+ */
+export interface HistoryEntry {
+  readonly graph: Graph;
+  readonly counters: Pick<Counters, "uid" | "ds">;
+  readonly mode: LayoutMode;
+}
+
+/** Voce del registro delle attività. */
+export interface LogEntry {
+  readonly id: number;
+  /** Istante in millisecondi (Date.now o l'orologio iniettato). */
+  readonly time: number;
+  readonly type: string;
+  readonly payload: unknown;
+  readonly result: CommandResult;
+  /**
+   * Solo per le voci che raggruppano più comandi consecutivi (Fase 3.1):
+   * istante dell'ultimo comando unito (`time` resta quello del primo) e
+   * numero di comandi uniti.
+   */
+  readonly until?: number;
+  readonly count?: number;
 }
 ```
 

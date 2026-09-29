@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-09-29T09:29:13Z (UTC)
+Generato: 2026-09-29T09:39:46Z (UTC)
 
 ## Type check
 
@@ -74,7 +74,7 @@ Ultime 60 righe di output:
 Comando: `npm test`
 
 Esito: OK (exit 0)
-Durata: 35s
+Durata: 33s
 
 Ultime 60 righe di output:
 ```
@@ -87,13 +87,13 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
  RUN  v5.0.1 /workspaces/isa-glass-platform
 
 
- Test Files  20 passed (20)
-      Tests  275 passed (275)
-   Start at  09:29:34
-   Duration  35.21s (tests 96%, import 2%, transform 2%)
+ Test Files  21 passed (21)
+      Tests  286 passed (286)
+   Start at  09:40:08
+   Duration  32.65s (tests 96%, import 2%, transform 2%)
 
-    Isolate  20 workers spawned · ~119ms startup each (spawn + environment, per file)
-             at least ~2.27s faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  21 workers spawned · ~111ms startup each (spawn + environment, per file)
+             at least ~2.21s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -102,7 +102,7 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 Comando: `npm run build`
 
 Esito: OK (exit 0)
-Durata: 7s
+Durata: 5s
 
 Ultime 60 righe di output:
 ```
@@ -157,7 +157,7 @@ Ultime 60 righe di output:
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.08s
+✓ built in 1.14s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -171,6 +171,7 @@ Ultime 60 righe di output:
 ## Git log (ultimi 20 commit)
 
 ```
+5ef51d1 Fase 3.1: raggruppamento della cronologia, registro senza vista, inspector
 c5696b6 Fase 3: stato dell'applicazione, cronologia e registro (src/etl-store/)
 951207c Report Fase 2.1: validazione ripetuta dopo npm ci pulito
 4ac5954 Report Fase 2.1: formattazione
@@ -190,7 +191,6 @@ e6e4bfe Formattazione automatica, nessuna modifica funzionale
 98f8366 Add project README
 3e40cd2 Fisso canvas con espansione
 c21caaa Changes
-3848fb4 Changes
 ```
 
 ## Branch
@@ -200,6 +200,7 @@ c21caaa Changes
   feat/etl-layout
   feat/etl-layout-fix
   feat/etl-store
+  feat/etl-store-fix
 * main
   wip/stato-2026-09-28
   remotes/origin/HEAD -> origin/main
@@ -207,6 +208,7 @@ c21caaa Changes
   remotes/origin/feat/etl-layout
   remotes/origin/feat/etl-layout-fix
   remotes/origin/feat/etl-store
+  remotes/origin/feat/etl-store-fix
   remotes/origin/main
   remotes/origin/wip/stato-2026-09-28
 ```
@@ -251,6 +253,17 @@ Diff stat rispetto a main:
 Ultimo commit:
 ```
 c5696b6 Fase 3: stato dell'applicazione, cronologia e registro (src/etl-store/)
+```
+
+Diff stat rispetto a main:
+```
+```
+
+### `feat/etl-store-fix`
+
+Ultimo commit:
+```
+5ef51d1 Fase 3.1: raggruppamento della cronologia, registro senza vista, inspector
 ```
 
 Diff stat rispetto a main:

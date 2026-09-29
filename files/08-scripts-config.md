@@ -856,7 +856,7 @@ console.log(`INDEX.md written to ${outPath}`);
 
 ### `scripts/generate-snapshot.mjs`
 
-534 righe
+535 righe
 
 ```js
 #!/usr/bin/env node
@@ -1060,6 +1060,7 @@ function areaFor(rel) {
   if (rel.startsWith("src/canvas/")) return "01-canvas";
   if (rel.startsWith("src/etl-core/")) return "01b-etl-core";
   if (rel.startsWith("src/etl-layout/")) return "01c-etl-layout";
+  if (rel.startsWith("src/etl-store/")) return "01d-etl-store";
   if (rel.startsWith("src/components/isa/etl/")) return "02-isa-etl";
   if (rel.startsWith("src/components/isa/") || rel.startsWith("src/components/ui/"))
     return "03-components";

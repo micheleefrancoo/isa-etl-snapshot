@@ -1,18 +1,18 @@
-# 13-misc-a.md
+# 01d-etl-store-a.md
 
 File in questo blocco:
 
 - `src/etl-store/README.md`
+- `src/etl-store/__tests__/grouping.test.ts`
 - `src/etl-store/__tests__/helpers.ts`
 - `src/etl-store/__tests__/persistence.test.ts`
 - `src/etl-store/__tests__/react.test.ts`
-- `src/etl-store/__tests__/reduce.test.ts`
 
 ---
 
 ### `src/etl-store/README.md`
 
-195 righe
+223 righe
 
 ```md
 # etl-store — Fase 3: stato, cronologia, registro, salvataggio
@@ -158,15 +158,43 @@ Regole:
 - Un comando rifiutato, o riuscito ma senza effetto sul contenuto dei
   punti (es. `setMode` sulla modalità attuale), non crea un passo.
 - Annullare e ripristinare tolgono dalla selezione e dall'inspector i nodi
-  che non esistono più.
+  che non esistono più; se il nodo dell'inspector esiste ma ha meno
+  passaggi (es. annullando una fusione), l'indice va all'ultimo passaggio
+  esistente (Fase 3.1).
 - Un comando, un annullamento o un nuovo gesto durante un gesto in corso
   lo annullano prima.
+
+### Raggruppamento dei comandi consecutivi (Fase 3.1)
+
+Scrivere in un campo o tenere premuta una freccia non produce un passo per
+ogni carattere o pressione.
+
+- Chiave di raggruppamento (`groupKey`): `setParams` → nodo + indice del
+  passaggio; `renameNode` → nodo; `moveNodes` → insieme degli
+  identificativi, ordinato. Gli altri comandi non si raggruppano.
+- Un comando riuscito con la stessa chiave del comando precedente, arrivato
+  entro 1000 ms (`GROUP_WINDOW_MS`) da quello, si unisce al passo
+  precedente: la cronologia non aggiunge un passo (resta lo stato prima del
+  primo comando del gruppo) e il registro aggiorna l'ultima voce invece di
+  aggiungerne una (payload e risultato dell'ultimo comando, `time` del
+  primo, `until` con l'istante dell'ultimo, `count` con il numero di
+  comandi uniti).
+- Il gruppo si interrompe con qualunque altro comando (anche un comando
+  rifiutato, che si registra a parte), annulla, ripristina o gesto, e dopo
+  più di 1000 ms di pausa.
+- Un solo annulla riporta allo stato prima del primo comando del gruppo.
+- L'orologio è quello iniettabile dello store (`now`): i test sono
+  deterministici.
 
 ## Registro delle attività
 
 Elenco in sola aggiunta (`store.getLog()`, `store.exportLog()` → JSON) di
 tutti i comandi, compresi quelli rifiutati, di annulla/ripristina e dei
-gesti conclusi: `{ id, time, type, payload, result }`. Un gesto si
+gesti conclusi: `{ id, time, type, payload, result }`, più `until` e
+`count` per le voci che raggruppano più comandi (vedi sopra: è l'unico caso
+in cui una voce si aggiorna invece di aggiungerne una). `setView` non entra
+nel registro (Fase 3.1): cambia decine di volte al secondo e non descrive il
+lavoro dell'utente. Un gesto si
 registra una sola volta, al rilascio, come
 `{ type: "gesture", payload: { kind: "move", ids, from, to, target } }` con
 le posizioni iniziali e finali; gli aggiornamenti transitori e i gesti
@@ -209,6 +237,210 @@ const mode = useEtlState((s) => s.mode);         // useSyncExternalStore
   nodo inesistente) viene rifiutato con il motivo; l'interfaccia del
   prototipo non poteva inviarlo. Rilasciando su un nodo senza relazione
   possibile, come nel prototipo, si rilascia nel vuoto.
+```
+
+### `src/etl-store/__tests__/grouping.test.ts`
+
+198 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import type { FilterParams, Params } from "../../etl-core";
+import { GROUP_WINDOW_MS, createEtlStore } from "..";
+import type { Command, EtlState, EtlStore } from "..";
+import { createdIds, ok, withDatasetAndFilter } from "./helpers";
+
+/** Store con un orologio manuale: `advance(ms)` sposta l'istante del prossimo comando. */
+function clockStore(initial: EtlState): { store: EtlStore; advance: (ms: number) => void } {
+  let t = 1_000_000;
+  const store = createEtlStore({ initial, now: () => t });
+  return { store, advance: (ms) => (t += ms) };
+}
+
+function filterParams(value: string): Params {
+  const p: FilterParams = {
+    conditions: [{ column: "regione", op: "=", mode: "list", values: [value], text: "", sep: "," }],
+  };
+  return p as unknown as Params;
+}
+
+function setParams(node: string, index: number, value: string): Command {
+  return { type: "setParams", payload: { node, index, params: filterParams(value) } };
+}
+
+describe("raggruppamento dei comandi consecutivi (Fase 3.1)", () => {
+  it("30 setParams sullo stesso passaggio a 50 ms: un passo, una voce con count 30; un annulla torna all'inizio", () => {
+    const { state, filter } = withDatasetAndFilter();
+    const { store, advance } = clockStore(state);
+    const start = store.getState().graph;
+    const t0 = 1_000_000;
+    for (let i = 1; i <= 30; i++) {
+      if (i > 1) advance(50);
+      expect(store.dispatch(setParams(filter, 0, "N".repeat(i)))).toEqual({ ok: true });
+    }
+    expect(store.historySize()).toEqual({ past: 1, future: 0 });
+    expect(store.getLog()).toHaveLength(1);
+    const entry = store.getLog()[0];
+    expect(entry).toMatchObject({ type: "setParams", count: 30, time: t0, until: t0 + 29 * 50 });
+    expect(entry?.payload).toMatchObject({ node: filter, index: 0 });
+    expect(JSON.stringify(entry?.payload)).toContain("N".repeat(30));
+    store.undo();
+    expect(store.getState().graph).toBe(start);
+  });
+
+  it("due gruppi sullo stesso passaggio separati da 1500 ms: due passi", () => {
+    const { state, filter } = withDatasetAndFilter();
+    const { store, advance } = clockStore(state);
+    for (let i = 0; i < 5; i++) {
+      store.dispatch(setParams(filter, 0, "A" + i));
+      advance(50);
+    }
+    advance(1500);
+    for (let i = 0; i < 5; i++) {
+      store.dispatch(setParams(filter, 0, "B" + i));
+      advance(50);
+    }
+    expect(store.historySize().past).toBe(2);
+    expect(store.getLog().map((e) => e.count)).toEqual([5, 5]);
+  });
+
+  it(`il limite è ${GROUP_WINDOW_MS} ms dal comando precedente, non dal primo`, () => {
+    const { state, filter } = withDatasetAndFilter();
+    const { store, advance } = clockStore(state);
+    for (let i = 0; i < 10; i++) {
+      store.dispatch(setParams(filter, 0, "x" + i));
+      advance(900);
+    }
+    expect(store.historySize().past).toBe(1);
+    advance(GROUP_WINDOW_MS);
+    store.dispatch(setParams(filter, 0, "dopo la pausa"));
+    expect(store.historySize().past).toBe(2);
+  });
+
+  it("setParams su due passaggi diversi, alternati: nessun raggruppamento", () => {
+    const { state, filter } = withDatasetAndFilter();
+    let s = ok(state, {
+      type: "addNode",
+      payload: { component: "filter", point: { x: 900, y: 900 } },
+    });
+    const other = createdIds(state, s)[0] as string;
+    s = ok(s, { type: "merge", payload: { dragged: other, target: filter } });
+    const { store, advance } = clockStore(s);
+    for (let i = 0; i < 6; i++) {
+      store.dispatch(setParams(filter, i % 2, "v" + i));
+      advance(50);
+    }
+    expect(store.historySize().past).toBe(6);
+    expect(store.getLog()).toHaveLength(6);
+    expect(store.getLog().every((e) => e.count === undefined)).toBe(true);
+  });
+
+  it("20 moveNodes della stessa selezione: un passo; cambiando selezione a metà: due passi", () => {
+    const { state, ds, filter } = withDatasetAndFilter();
+    const a = clockStore(state);
+    for (let i = 0; i < 20; i++) {
+      a.store.dispatch({ type: "moveNodes", payload: { ids: [filter, ds], dx: 2, dy: 0 } });
+      a.advance(30);
+    }
+    expect(a.store.historySize().past).toBe(1);
+    expect(a.store.getLog()[0]?.count).toBe(20);
+
+    const b = clockStore(state);
+    for (let i = 0; i < 20; i++) {
+      const ids = i < 10 ? [ds] : [ds, filter];
+      b.store.dispatch({ type: "moveNodes", payload: { ids, dx: 0, dy: 2 } });
+      b.advance(30);
+    }
+    expect(b.store.historySize().past).toBe(2);
+  });
+
+  it("l'ordine degli identificativi non conta per la chiave", () => {
+    const { state, ds, filter } = withDatasetAndFilter();
+    const { store, advance } = clockStore(state);
+    store.dispatch({ type: "moveNodes", payload: { ids: [ds, filter], dx: 2, dy: 0 } });
+    advance(30);
+    store.dispatch({ type: "moveNodes", payload: { ids: [filter, ds], dx: 2, dy: 0 } });
+    expect(store.historySize().past).toBe(1);
+  });
+
+  it("un annulla in mezzo interrompe il gruppo: il comando successivo crea un nuovo passo", () => {
+    const { state, filter } = withDatasetAndFilter();
+    const { store, advance } = clockStore(state);
+    store.dispatch({ type: "renameNode", payload: { node: filter, name: "A" } });
+    advance(50);
+    store.dispatch({ type: "renameNode", payload: { node: filter, name: "AB" } });
+    advance(50);
+    store.undo();
+    advance(50);
+    store.dispatch({ type: "renameNode", payload: { node: filter, name: "ABC" } });
+    expect(store.historySize()).toEqual({ past: 1, future: 0 });
+    expect(store.getLog().map((e) => [e.type, e.count ?? 1])).toEqual([
+      ["renameNode", 2],
+      ["undo", 1],
+      ["renameNode", 1],
+    ]);
+  });
+
+  it("qualunque altro comando interrompe il gruppo", () => {
+    const { state, filter } = withDatasetAndFilter();
+    const { store, advance } = clockStore(state);
+    store.dispatch(setParams(filter, 0, "a"));
+    advance(50);
+    store.dispatch({ type: "select", payload: { ids: [filter] } });
+    advance(50);
+    store.dispatch(setParams(filter, 0, "b"));
+    expect(store.historySize().past).toBe(2);
+  });
+
+  it("un gesto interrompe il gruppo", () => {
+    const { state, ds } = withDatasetAndFilter();
+    const { store, advance } = clockStore(state);
+    store.dispatch({ type: "moveNodes", payload: { ids: [ds], dx: 2, dy: 0 } });
+    advance(50);
+    store.beginGesture({ ids: [ds] });
+    store.updateGesture({ dx: 200, dy: 0 });
+    store.commitGesture();
+    advance(50);
+    store.dispatch({ type: "moveNodes", payload: { ids: [ds], dx: 2, dy: 0 } });
+    expect(store.historySize().past).toBe(3);
+  });
+});
+
+describe("registro senza vista (Fase 3.1)", () => {
+  it("100 setView: nessuna voce di registro; gli altri comandi restano registrati", () => {
+    const { store, advance } = clockStore(withDatasetAndFilter().state);
+    for (let i = 0; i < 100; i++) {
+      expect(store.dispatch({ type: "setView", payload: { x: i, zoom: 1 + i / 200 } })).toEqual({
+        ok: true,
+      });
+      advance(16);
+    }
+    expect(store.getLog()).toHaveLength(0);
+    expect(store.getState().view.x).toBe(99);
+    store.dispatch({ type: "setPanel", payload: { panel: "insp", open: true } });
+    expect(store.getLog().map((e) => e.type)).toEqual(["setPanel"]);
+  });
+});
+
+describe("inspector dopo annulla e ripristina (Fase 3.1)", () => {
+  it("annullando una fusione con l'inspector sull'ultimo passaggio, l'indice va a un passaggio esistente", () => {
+    const { state, filter } = withDatasetAndFilter();
+    const s = ok(state, {
+      type: "addNode",
+      payload: { component: "sort", point: { x: 900, y: 900 } },
+    });
+    const sort = createdIds(state, s)[0] as string;
+    const { store } = clockStore(s);
+    store.dispatch({ type: "merge", payload: { dragged: sort, target: filter } });
+    store.dispatch({ type: "inspect", payload: { node: filter, step: 1 } });
+    expect(store.getState().inspector).toEqual({ nodeId: filter, step: 1 });
+    store.undo();
+    expect(store.getState().graph.cards[filter]?.components).toEqual(["filter"]);
+    expect(store.getState().inspector).toEqual({ nodeId: filter, step: 0 });
+    store.redo();
+    expect(store.getState().inspector).toEqual({ nodeId: filter, step: 0 });
+  });
+});
 ```
 
 ### `src/etl-store/__tests__/helpers.ts`
@@ -479,459 +711,6 @@ describe("collegamento a React", () => {
 
   it("fuori dal provider l'errore è esplicito", () => {
     expect(() => renderToString(createElement(Mode))).toThrow(/EtlStoreProvider/);
-  });
-});
-```
-
-### `src/etl-store/__tests__/reduce.test.ts`
-
-447 righe
-
-```ts
-import { describe, expect, it } from "vitest";
-import { outputOf, inputsOf } from "../../etl-core";
-import type { Card, FilterParams, Params } from "../../etl-core";
-import { CARD, GRID, computeSlots } from "../../etl-layout";
-import { initialState, reduce } from "..";
-import type { EtlState } from "..";
-import { COLUMNS, card, createdIds, ok, refused, withDatasetAndFilter } from "./helpers";
-
-/** Dataset collegato al filtro: A -> F -> output. */
-function connected(): { state: EtlState; ds: string; filter: string; out: string } {
-  const { state, ds, filter } = withDatasetAndFilter();
-  const s = ok(state, { type: "connect", payload: { from: ds, to: filter } });
-  return { state: s, ds, filter, out: outputOf(s.graph, filter) as string };
-}
-
-/** Un box combinato filtro + ordina, alimentato da un dataset. */
-function combined(): { state: EtlState; box: string } {
-  const { state, ds, filter } = connected();
-  let s = ok(state, { type: "addNode", payload: { component: "sort", point: { x: 700, y: 700 } } });
-  const sort = createdIds(state, s)[0] as string;
-  s = ok(s, { type: "merge", payload: { dragged: sort, target: filter } });
-  void ds;
-  return { state: s, box: filter };
-}
-
-describe("addNode (cassetta e libreria)", () => {
-  it("riesce: dataset dalla cassetta, allineato alla griglia, con nome 'Dataset 1'", () => {
-    const s0 = initialState();
-    const s = ok(s0, {
-      type: "addNode",
-      payload: { component: "dataset", point: { x: 300, y: 300 } },
-    });
-    const id = createdIds(s0, s)[0] as string;
-    const c = card(s.graph, id);
-    expect(c).toMatchObject({ kind: "dataset", name: "Dataset 1", x: 260, y: 260 });
-    expect(c.x % GRID).toBe(0);
-  });
-
-  it("riesce: dalla libreria il dataset porta percorso e colonne", () => {
-    const { state, ds } = withDatasetAndFilter();
-    expect(card(state.graph, ds).params[0]).toMatchObject({
-      path: "vendite.csv",
-      columns: COLUMNS,
-    });
-    expect(card(state.graph, ds).name).toBe("vendite");
-  });
-
-  it("riesce: rilasciato su un box, un dataset si collega e nasce l'output", () => {
-    const { state, filter } = withDatasetAndFilter();
-    const s = ok(state, {
-      type: "addNode",
-      payload: {
-        component: "dataset",
-        libraryId: "lib-1",
-        point: { x: 0, y: 0 },
-        target: { node: filter },
-      },
-    });
-    expect(inputsOf(s.graph, filter)).toHaveLength(1);
-    expect(outputOf(s.graph, filter)).not.toBeNull();
-  });
-
-  it("riesce: una lavorazione rilasciata su un box si fonde", () => {
-    const { state, filter } = withDatasetAndFilter();
-    const s = ok(state, {
-      type: "addNode",
-      payload: { component: "sort", point: { x: 0, y: 0 }, target: { node: filter } },
-    });
-    expect(card(s.graph, filter).components).toEqual(["filter", "sort"]);
-    expect(Object.keys(s.graph.cards)).toHaveLength(2);
-  });
-
-  it("riesce: una lavorazione rilasciata su un cavo viene inserita", () => {
-    const { state, ds, filter } = connected();
-    const s = ok(state, {
-      type: "addNode",
-      payload: {
-        component: "sort",
-        point: { x: 450, y: 320 },
-        target: { link: { from: ds, to: filter } },
-      },
-    });
-    const sort = createdIds(state, s).find((id) => card(s.graph, id).kind === "op") as string;
-    expect(s.graph.links).toContainEqual({ from: ds, to: sort });
-    expect(inputsOf(s.graph, filter)[0]?.from).toBe(outputOf(s.graph, sort));
-  });
-
-  it("rifiuta: tipo sconosciuto, dataset non in libreria, dataset su un cavo", () => {
-    const { state, ds, filter } = connected();
-    expect(
-      refused(state, {
-        type: "addNode",
-        payload: { component: "nope" as "filter", point: { x: 0, y: 0 } },
-      }),
-    ).toMatch(/sconosciuto/);
-    expect(
-      refused(state, {
-        type: "addNode",
-        payload: { component: "dataset", libraryId: "lib-9", point: { x: 0, y: 0 } },
-      }),
-    ).toMatch(/libreria/);
-    expect(
-      refused(state, {
-        type: "addNode",
-        payload: {
-          component: "dataset",
-          point: { x: 0, y: 0 },
-          target: { link: { from: ds, to: filter } },
-        },
-      }),
-    ).toMatch(/lavorazione/);
-  });
-});
-
-describe("moveNodes (spostamento da tastiera)", () => {
-  it("riesce: sposta e limita al mondo", () => {
-    const { state, ds } = withDatasetAndFilter();
-    const s = ok(state, { type: "moveNodes", payload: { ids: [ds], dx: 2, dy: -9999 } });
-    expect(card(s.graph, ds)).toMatchObject({ x: card(state.graph, ds).x + 2, y: 6 });
-  });
-
-  it("rifiuta: in Organizzato le postazioni sono fisse", () => {
-    const { state, ds } = withDatasetAndFilter();
-    const g = ok(state, { type: "setMode", payload: { mode: "grid" } });
-    expect(refused(g, { type: "moveNodes", payload: { ids: [ds], dx: 2, dy: 0 } })).toMatch(
-      /Organizzato/,
-    );
-  });
-});
-
-describe("dropNodes (spostamento e rilascio)", () => {
-  it("riesce: rilasciato nel vuoto, gli altri si scansano e si riallineano", () => {
-    const { state, ds } = withDatasetAndFilter();
-    const s = ok(state, { type: "dropNodes", payload: { ids: [ds], dx: 100, dy: 50 } });
-    expect(card(s.graph, ds)).toMatchObject({
-      x: card(state.graph, ds).x + 100,
-      y: card(state.graph, ds).y + 50,
-    });
-  });
-
-  it("riesce: rilasciato su un box si collega, e il dataset torna al suo posto", () => {
-    const { state, ds, filter } = withDatasetAndFilter();
-    const s = ok(state, {
-      type: "dropNodes",
-      payload: { ids: [ds], dx: 500, dy: 0, target: { node: filter } },
-    });
-    expect(inputsOf(s.graph, filter)[0]?.from).toBe(ds);
-    expect(card(s.graph, ds)).toMatchObject({
-      x: card(state.graph, ds).x,
-      y: card(state.graph, ds).y,
-    });
-  });
-
-  it("rifiuta: nessun nodo esistente", () => {
-    expect(
-      refused(initialState(), { type: "dropNodes", payload: { ids: ["x"], dx: 1, dy: 1 } }),
-    ).toMatch(/Nessun nodo/);
-  });
-});
-
-describe("connect", () => {
-  it("riesce: in entrambi i versi (dalla lavorazione verso il dataset si collega al contrario)", () => {
-    const { state, ds, filter } = withDatasetAndFilter();
-    const s = ok(state, { type: "connect", payload: { from: filter, to: ds } });
-    expect(s.graph.links).toContainEqual({ from: ds, to: filter });
-  });
-
-  it("rifiuta con il motivo di etl-core: due dataset, cicli, lavorazione con lavorazione", () => {
-    const { state, ds, filter, out } = connected();
-    expect(refused(state, { type: "connect", payload: { from: ds, to: out } })).toBe(
-      "Due dataset non si fondono: serve una lavorazione, ad esempio un Join",
-    );
-    expect(refused(state, { type: "connect", payload: { from: out, to: filter } })).toMatch(
-      /ciclo/,
-    );
-    const s = ok(state, {
-      type: "addNode",
-      payload: { component: "sort", point: { x: 100, y: 900 } },
-    });
-    const sort = createdIds(state, s)[0] as string;
-    expect(refused(s, { type: "connect", payload: { from: sort, to: filter } })).toMatch(
-      /non si possono collegare/,
-    );
-  });
-});
-
-describe("merge", () => {
-  it("riesce: il box risultante ha i passaggi di entrambi", () => {
-    const { state, box } = combined();
-    expect(card(state.graph, box).components).toEqual(["filter", "sort"]);
-  });
-
-  it("rifiuta: un dataset non si fonde", () => {
-    const { state, ds, filter } = withDatasetAndFilter();
-    expect(refused(state, { type: "merge", payload: { dragged: ds, target: filter } })).toMatch(
-      /due lavorazioni/,
-    );
-  });
-});
-
-describe("insertOnLink", () => {
-  it("riesce: A -> X -> output di X -> F", () => {
-    const { state, ds, filter } = connected();
-    let s = ok(state, {
-      type: "addNode",
-      payload: { component: "sort", point: { x: 100, y: 1000 } },
-    });
-    const x = createdIds(state, s)[0] as string;
-    s = ok(s, { type: "insertOnLink", payload: { node: x, link: { from: ds, to: filter } } });
-    expect(s.graph.links).toContainEqual({ from: ds, to: x });
-  });
-
-  it("rifiuta: collegamento box -> output", () => {
-    const { state, filter, out } = connected();
-    const s = ok(state, {
-      type: "addNode",
-      payload: { component: "sort", point: { x: 100, y: 1000 } },
-    });
-    const x = createdIds(state, s)[0] as string;
-    expect(
-      refused(s, { type: "insertOnLink", payload: { node: x, link: { from: filter, to: out } } }),
-    ).toMatch(/Si può inserire/);
-  });
-});
-
-describe("detachStep, deleteStep, reorderSteps", () => {
-  it("detachStep riesce: il passaggio diventa un nodo sotto il box", () => {
-    const { state, box } = combined();
-    const s = ok(state, { type: "detachStep", payload: { box, index: 1 } });
-    const d = createdIds(state, s)[0] as string;
-    expect(card(s.graph, d).components).toEqual(["sort"]);
-    expect(card(s.graph, box).components).toEqual(["filter"]);
-  });
-
-  it("detachStep rifiuta: box non combinato o passaggio inesistente", () => {
-    const { state, filter } = withDatasetAndFilter();
-    expect(refused(state, { type: "detachStep", payload: { box: filter, index: 0 } })).toMatch(
-      /combinato/,
-    );
-    expect(refused(state, { type: "detachStep", payload: { box: filter, index: 3 } })).toMatch(
-      /non esiste/,
-    );
-  });
-
-  it("deleteStep riesce e rifiuta su un box semplice", () => {
-    const { state, box } = combined();
-    const s = ok(state, { type: "deleteStep", payload: { box, index: 0 } });
-    expect(card(s.graph, box).components).toEqual(["sort"]);
-    expect(refused(s, { type: "deleteStep", payload: { box, index: 0 } })).toMatch(/combinato/);
-  });
-
-  it("reorderSteps riesce (componenti e parametri insieme) e rifiuta un indice fuori range", () => {
-    const { state, box } = combined();
-    const s = ok(state, { type: "reorderSteps", payload: { box, from: 0, to: 1 } });
-    expect(card(s.graph, box).components).toEqual(["sort", "filter"]);
-    expect((card(s.graph, box).params[1] as unknown as FilterParams).conditions).toBeDefined();
-    expect(refused(state, { type: "reorderSteps", payload: { box, from: 0, to: 5 } })).toMatch(
-      /non esiste/,
-    );
-  });
-});
-
-describe("deleteNodes, deleteLink", () => {
-  it("deleteNodes riesce: il box sparisce con il suo output", () => {
-    const { state, filter, out } = connected();
-    const s = ok(state, { type: "deleteNodes", payload: { ids: [filter] } });
-    expect(s.graph.cards[filter]).toBeUndefined();
-    expect(s.graph.cards[out]).toBeUndefined();
-  });
-
-  it("deleteNodes rifiuta: nessun nodo esistente", () => {
-    expect(refused(initialState(), { type: "deleteNodes", payload: { ids: ["x"] } })).toMatch(
-      /Nessun nodo/,
-    );
-  });
-
-  it("deleteLink riesce: l'output senza ingressi sparisce; rifiuta un collegamento inesistente", () => {
-    const { state, ds, filter, out } = connected();
-    const s = ok(state, { type: "deleteLink", payload: { link: { from: ds, to: filter } } });
-    expect(s.graph.cards[out]).toBeUndefined();
-    expect(refused(s, { type: "deleteLink", payload: { link: { from: ds, to: filter } } })).toMatch(
-      /non esiste/,
-    );
-  });
-});
-
-describe("duplicate", () => {
-  it("riesce: copie spostate di GRID*2, selezionate; gli output esclusi", () => {
-    const { state, ds, out } = connected();
-    const s = ok(state, { type: "duplicate", payload: { ids: [ds, out] } });
-    const created = createdIds(state, s);
-    expect(created).toHaveLength(1);
-    expect(card(s.graph, created[0] as string).name).toBe("vendite copia");
-    expect(s.selection).toEqual(created);
-  });
-
-  it("rifiuta: solo output", () => {
-    const { state, out } = connected();
-    expect(refused(state, { type: "duplicate", payload: { ids: [out] } })).toMatch(/output/);
-  });
-});
-
-describe("setParams, renameNode", () => {
-  it("setParams riesce: il filtro compilato diventa completo", () => {
-    const { state, filter } = connected();
-    const params: FilterParams = {
-      conditions: [
-        { column: "regione", op: "=", mode: "list", values: ["Nord"], text: "", sep: "," },
-      ],
-    };
-    const s = ok(state, {
-      type: "setParams",
-      payload: { node: filter, index: 0, params: params as unknown as Params },
-    });
-    expect(card(s.graph, filter).params[0]).toEqual(params);
-  });
-
-  it("setParams rifiuta: passaggio inesistente", () => {
-    const { state, filter } = connected();
-    expect(
-      refused(state, { type: "setParams", payload: { node: filter, index: 2, params: {} } }),
-    ).toMatch(/non esiste/);
-  });
-
-  it("renameNode riesce e rifiuta un nome vuoto", () => {
-    const { state, filter } = connected();
-    const s = ok(state, { type: "renameNode", payload: { node: filter, name: "  Solo Nord " } });
-    expect(card(s.graph, filter).name).toBe("Solo Nord");
-    expect(refused(s, { type: "renameNode", payload: { node: filter, name: "  " } })).toMatch(
-      /vuoto/,
-    );
-  });
-});
-
-describe("setMode, autoLayout", () => {
-  it("setMode riesce: in Organizzato ogni nodo ha una postazione; in Libero le perde", () => {
-    const { state } = connected();
-    const g = ok(state, { type: "setMode", payload: { mode: "grid" } });
-    const slots = computeSlots();
-    for (const c of Object.values(g.graph.cards))
-      expect(slots[c.slot as number]).toEqual({ x: c.x, y: c.y });
-    const f = ok(g, { type: "setMode", payload: { mode: "free" } });
-    for (const c of Object.values(f.graph.cards)) expect(c.slot).toBeUndefined();
-  });
-
-  it("setMode rifiuta una modalità sconosciuta", () => {
-    expect(refused(initialState(), { type: "setMode", payload: { mode: "x" as "free" } })).toMatch(
-      /sconosciuta/,
-    );
-  });
-
-  it("autoLayout riesce: il flusso va da sinistra a destra; rifiuta un'area non valida", () => {
-    const { state, ds, filter, out } = connected();
-    const s = ok(state, { type: "autoLayout", payload: { viewport: { w: 712, h: 520 } } });
-    const x = (id: string): number => (s.graph.cards[id] as Card).x;
-    expect(x(ds)).toBeLessThan(x(filter));
-    expect(x(filter)).toBeLessThan(x(out));
-    expect(refused(state, { type: "autoLayout", payload: { viewport: { w: 0, h: 520 } } })).toMatch(
-      /non valida/,
-    );
-  });
-});
-
-describe("select, inspect", () => {
-  it("select riesce e rifiuta un nodo inesistente", () => {
-    const { state, ds, filter } = withDatasetAndFilter();
-    expect(ok(state, { type: "select", payload: { ids: [ds, filter, ds] } }).selection).toEqual([
-      ds,
-      filter,
-    ]);
-    expect(refused(state, { type: "select", payload: { ids: ["x"] } })).toMatch(/non esiste/);
-  });
-
-  it("inspect riesce e rifiuta un passaggio inesistente", () => {
-    const { state, filter } = withDatasetAndFilter();
-    expect(ok(state, { type: "inspect", payload: { node: filter } }).inspector).toEqual({
-      nodeId: filter,
-      step: 0,
-    });
-    expect(refused(state, { type: "inspect", payload: { node: filter, step: 1 } })).toMatch(
-      /non esiste/,
-    );
-  });
-});
-
-describe("loadDataset", () => {
-  it("riesce: id lib-N; rifiuta un file senza colonne", () => {
-    const s = ok(initialState(), {
-      type: "loadDataset",
-      payload: { name: "a", path: "a.csv", columns: COLUMNS, rows: 3 },
-    });
-    expect(s.library.map((l) => l.id)).toEqual(["lib-1"]);
-    expect(
-      refused(s, {
-        type: "loadDataset",
-        payload: { name: "b", path: "b.csv", columns: [], rows: 0 },
-      }),
-    ).toBe("Il file non contiene colonne leggibili");
-  });
-});
-
-describe("setPanel, setView, setOptions", () => {
-  it("setPanel: aprire un pannello chiude l'altro sullo stesso bordo; cambiare lato lo riapre", () => {
-    let s = ok(initialState(), { type: "setPanel", payload: { panel: "insp", side: "left" } });
-    expect(s.panels).toEqual({
-      tools: { side: "left", open: false },
-      insp: { side: "left", open: true },
-    });
-    s = ok(s, { type: "setPanel", payload: { panel: "tools", open: true } });
-    expect(s.panels.insp.open).toBe(false);
-    expect(
-      refused(s, { type: "setPanel", payload: { panel: "x" as "tools", open: true } }),
-    ).toMatch(/sconosciuto/);
-  });
-
-  it("setView: zoom limitato tra 0,35 e 2; rifiuta valori non finiti", () => {
-    const s = ok(initialState(), { type: "setView", payload: { x: 10, zoom: 9 } });
-    expect(s.view).toEqual({ x: 10, y: 0, zoom: 2 });
-    expect(refused(s, { type: "setView", payload: { y: Number.NaN } })).toMatch(/non valida/);
-  });
-
-  it("setOptions: flusso solo se valido; rifiuta snodi negativi", () => {
-    const s = ok(initialState(), { type: "setOptions", payload: { flowOnlyIfValid: true } });
-    expect(s.options.flowOnlyIfValid).toBe(true);
-    expect(refused(s, { type: "setOptions", payload: { maxBends: -1 } })).toMatch(/intero/);
-  });
-});
-
-describe("comando sconosciuto e purezza", () => {
-  it("un comando sconosciuto viene rifiutato", () => {
-    const s = initialState();
-    const out = reduce(s, { type: "boh", payload: {} } as unknown as Parameters<typeof reduce>[1]);
-    expect(out.result).toEqual({ ok: false, reason: "Comando sconosciuto: boh" });
-    expect(out.state).toBe(s);
-  });
-
-  it("reduce non modifica lo stato che riceve", () => {
-    const { state, ds, filter } = withDatasetAndFilter();
-    const snapshot = JSON.stringify(state);
-    reduce(state, { type: "connect", payload: { from: ds, to: filter } });
-    reduce(state, { type: "setMode", payload: { mode: "grid" } });
-    reduce(state, { type: "duplicate", payload: { ids: [ds] } });
-    expect(JSON.stringify(state)).toBe(snapshot);
-    void CARD;
   });
 });
 ```
