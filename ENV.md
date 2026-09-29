@@ -77,7 +77,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
-    "@lovable.dev/vite-tanstack-config": "^2.20.0",
+    "@tanstack/devtools-vite": "^0.8.5",
     "@types/node": "^22.16.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
@@ -88,6 +88,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",
+    "lightningcss": "^1.33.0",
     "nitro": "3.0.260603-beta",
     "playwright": "^1.63.0",
     "prettier": "^3.7.3",
@@ -139,20 +140,97 @@
 ## `vite.config.ts`
 
 ```ts
-// @lovable.dev/vite-tanstack-config already includes the following — do NOT add them manually
-// or the app will break with duplicate plugins:
-//   - TanStack devtools (dev-only, first), tanstackStart, viteReact, tailwindcss, tsConfigPaths,
-//     nitro (build-only using cloudflare as a default target), VITE_* env injection, @ path alias,
-//     React/TanStack dedupe, error logger plugins, and sandbox detection (port/host/strictPort).
-// You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
-import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { defineConfig, loadEnv } from "vite";
+import { devtools } from "@tanstack/devtools-vite";
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import tailwindcss from "@tailwindcss/vite";
+import viteReact from "@vitejs/plugin-react";
+import { nitro } from "nitro/vite";
+import tsConfigPaths from "vite-tsconfig-paths";
 
-export default defineConfig({
-  tanstackStart: {
-    // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
-    // nitro/vite builds from this
-    server: { entry: "server" },
-  },
+// Configurazione esplicita (prima delegata a un pacchetto esterno).
+// Ordine dei plugin: devtools (solo dev), tailwind, percorsi di tsconfig,
+// TanStack Start, nitro (solo build), React.
+export default defineConfig(({ command, mode }) => {
+  const isDev = mode === "development";
+  const viteEnv = loadEnv(mode, process.cwd(), "VITE_");
+
+  return {
+    define: Object.fromEntries(
+      Object.entries(viteEnv).map(([key, value]) => [
+        `import.meta.env.${key}`,
+        JSON.stringify(value),
+      ]),
+    ),
+    ...(command === "build" && isDev
+      ? {
+          environments: {
+            client: { define: { "process.env.NODE_ENV": JSON.stringify("development") } },
+          },
+        }
+      : {}),
+    css: { transformer: "lightningcss" },
+    resolve: {
+      alias: { "@": `${process.cwd()}/src` },
+      dedupe: [
+        "react",
+        "react-dom",
+        "react/jsx-runtime",
+        "react/jsx-dev-runtime",
+        "@tanstack/react-query",
+        "@tanstack/query-core",
+      ],
+    },
+    optimizeDeps: {
+      include: [
+        "react",
+        "react-dom",
+        "react-dom/client",
+        "react/jsx-runtime",
+        "react/jsx-dev-runtime",
+      ],
+      ignoreOutdatedRequests: true,
+    },
+    server: {
+      host: "::",
+      port: 8080,
+      watch: { awaitWriteFinish: { stabilityThreshold: 1000, pollInterval: 100 } },
+    },
+    plugins: [
+      ...(isDev
+        ? [
+            devtools({
+              logging: false,
+              eventBusConfig: { enabled: false },
+              enhancedLogs: { enabled: false },
+              consolePiping: { enabled: false },
+              removeDevtoolsOnBuild: false,
+              injectSource: { enabled: true },
+            }),
+          ]
+        : []),
+      tailwindcss(),
+      tsConfigPaths({ projects: ["./tsconfig.json"] }),
+      tanstackStart({
+        // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
+        server: { entry: "server" },
+        importProtection: {
+          behavior: "error",
+          client: { files: ["**/server/**"], specifiers: ["server-only"] },
+        },
+      }),
+      // Deploy: Cloudflare (non ancora in produzione), solo in build.
+      ...(command === "build"
+        ? [
+            nitro({
+              preset: "cloudflare-module",
+              cloudflare: { nodeCompat: true, deployConfig: true },
+            }),
+          ]
+        : []),
+      viteReact(),
+    ],
+  };
 });
 
 ```
@@ -276,6 +354,7 @@ routeTree.gen.ts
 ## `src/styles.css`
 
 ```css
+@import "@fontsource-variable/manrope/wght.css";
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
@@ -288,8 +367,7 @@ routeTree.gen.ts
  */
 
 @theme inline {
-  --font-sans:
-    "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Manrope Variable", "Manrope", system-ui, sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -392,6 +470,46 @@ routeTree.gen.ts
   --sidebar-accent-foreground: oklch(0.3 0.03 270);
   --sidebar-border: oklch(1 0 0 / 60%);
   --sidebar-ring: oklch(0.58 0.1 272);
+
+  /*
+   * Primitive condivise (--isa-*). Valori del canvas ETL promossi a primitive:
+   * il canvas le legge tramite i propri token (--ec-*, etl-canvas/tokens.css).
+   * I token dell'app sopra NON derivano ancora da qui: verranno riportati
+   * sulle primitive nel restyling della palette.
+   */
+  --isa-bg: #f5f3ee;
+  --isa-stage: rgba(255, 255, 255, 0.32);
+  --isa-surface-strong: rgba(255, 255, 255, 0.92);
+  --isa-panel-border: rgba(38, 36, 32, 0.06);
+  --isa-ink: #262420;
+  --isa-muted: #847e74;
+  --isa-empty-ink: #6a645a;
+  --isa-accent: #6c63ff;
+  --isa-accent-text: #6c63ff;
+  --isa-accent-soft: rgba(108, 99, 255, 0.16);
+  --isa-accent-soft-2: rgba(108, 99, 255, 0.34);
+  --isa-tint: #e1dcf0;
+  --isa-tint-ink: #6c63ff;
+  --isa-tint-border: rgba(0, 0, 0, 0);
+  --isa-on-accent: #ffffff;
+  --isa-split-bg: #efedf7;
+  --isa-split-empty: #e6e3f5;
+  --isa-split-empty-ink: #8f88c7;
+  --isa-split-line: rgba(108, 99, 255, 0.45);
+  --isa-amber: #e0a23b;
+  --isa-amber-ring: #f7f5f1;
+  --isa-select: #6c63ff;
+  --isa-link: rgba(108, 99, 255, 0.34);
+  --isa-link-dot-tint: #e1dcf0;
+  --isa-flow: rgba(108, 99, 255, 0.6);
+  --isa-mm-node: #cfc9ef;
+  --isa-mm-node-ds: #6c63ff;
+  --isa-mm-view-line: #6c63ff;
+  --isa-mm-view-bg: rgba(108, 99, 255, 0.08);
+  --isa-glass-shadow: 0 10px 24px -14px rgba(38, 36, 32, 0.4);
+  --isa-r-node-op: 22px;
+  --isa-r-node-fill: 26px;
+  --isa-glass-blur: 16px;
 }
 
 .dark {
@@ -445,6 +563,38 @@ routeTree.gen.ts
   --sidebar-accent-foreground: oklch(0.96 0.004 250);
   --sidebar-border: oklch(1 0 0 / 13%);
   --sidebar-ring: oklch(0.68 0.11 275);
+
+  /* Primitive condivise (--isa-*), tema scuro. */
+  --isa-bg: #17181d;
+  --isa-stage: rgba(255, 255, 255, 0.04);
+  --isa-surface-strong: rgba(36, 37, 45, 0.92);
+  --isa-panel-border: rgba(255, 255, 255, 0.11);
+  --isa-ink: #f1f2f5;
+  --isa-muted: #a9abb3;
+  --isa-empty-ink: #a9abb3;
+  --isa-accent: #6c63ff;
+  --isa-accent-text: #a8a3ff;
+  --isa-accent-soft: rgba(108, 99, 255, 0.28);
+  --isa-accent-soft-2: rgba(108, 99, 255, 0.5);
+  --isa-tint: #3a3670;
+  --isa-tint-ink: #d0ccff;
+  --isa-tint-border: #7f78e6;
+  --isa-on-accent: #ffffff;
+  --isa-split-bg: #2a2843;
+  --isa-split-empty: #2e2c4d;
+  --isa-split-empty-ink: #a8a3e6;
+  --isa-split-line: rgba(168, 163, 255, 0.55);
+  --isa-amber: #e8b34f;
+  --isa-amber-ring: #17181d;
+  --isa-select: #a8a3ff;
+  --isa-link: #7f78e6;
+  --isa-link-dot-tint: #a8a3ff;
+  --isa-flow: rgba(168, 163, 255, 0.9);
+  --isa-mm-node: #7b74d9;
+  --isa-mm-node-ds: #a8a3ff;
+  --isa-mm-view-line: #a8a3ff;
+  --isa-mm-view-bg: rgba(168, 163, 255, 0.12);
+  --isa-glass-shadow: 0 10px 24px -14px rgba(0, 0, 0, 0.6);
 }
 
 @layer base {
@@ -518,19 +668,11 @@ routeTree.gen.ts
 }
 
 @utility gradient-brand {
-  background-image: linear-gradient(
-    135deg,
-    var(--brand) 0%,
-    var(--brand-glow) 100%
-  );
+  background-image: linear-gradient(135deg, var(--brand) 0%, var(--brand-glow) 100%);
 }
 
 @utility text-gradient-brand {
-  background-image: linear-gradient(
-    120deg,
-    var(--brand) 0%,
-    var(--brand-glow) 100%
-  );
+  background-image: linear-gradient(120deg, var(--brand) 0%, var(--brand-glow) 100%);
   background-clip: text;
   color: transparent;
 }
@@ -610,43 +752,20 @@ routeTree.gen.ts
 }
 
 @utility node-selected {
-  border-color: color-mix(
-    in oklab,
-    var(--brand) 55%,
-    var(--glass-border)
-  );
+  border-color: color-mix(in oklab, var(--brand) 55%, var(--glass-border));
 
   box-shadow:
-    0 0 0 1px
-      color-mix(
-        in oklab,
-        var(--brand) 45%,
-        transparent
-      ),
-    0 0 24px
-      color-mix(
-        in oklab,
-        var(--brand) 28%,
-        transparent
-      );
+    0 0 0 1px color-mix(in oklab, var(--brand) 45%, transparent),
+    0 0 24px color-mix(in oklab, var(--brand) 28%, transparent);
 }
 
 /* Card evidenziata come destinazione di un collegamento in corso */
 @utility node-link-target {
-  border-color: color-mix(
-    in oklab,
-    var(--brand) 70%,
-    var(--glass-border)
-  );
+  border-color: color-mix(in oklab, var(--brand) 70%, var(--glass-border));
 
   box-shadow:
     0 0 0 2px var(--brand),
-    0 0 26px
-      color-mix(
-        in oklab,
-        var(--brand) 35%,
-        transparent
-      );
+    0 0 26px color-mix(in oklab, var(--brand) 35%, transparent);
 }
 
 /*
@@ -657,11 +776,7 @@ routeTree.gen.ts
  * node-selected/node-link-target, che possono comparire insieme.
  */
 @utility node-pending {
-  outline: 2px dashed color-mix(
-    in oklab,
-    var(--brand) 55%,
-    transparent
-  );
+  outline: 2px dashed color-mix(in oklab, var(--brand) 55%, transparent);
   outline-offset: 2px;
 }
 

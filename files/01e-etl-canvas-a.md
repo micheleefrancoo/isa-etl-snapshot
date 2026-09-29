@@ -561,7 +561,7 @@ export const Node = memo(function Node(props: { node: NodeView }) {
 
 ### `src/etl-canvas/README.md`
 
-132 righe
+136 righe
 
 ```md
 # etl-canvas — Fasi 4a e 4b: il canvas visibile e le sue animazioni
@@ -580,8 +580,8 @@ scrive solo attraverso `etl-store`.
 ## Moduli
 
 ```
-tokens.css       token, con ambito .etl-canvas; tema chiaro = prototipo (con la riga), scuro progettato
-canvas.css       aspetto di nodi, cavi, controlli, minimappa; carica Manrope e tokens.css
+tokens.css       token --ec-* con ambito .etl-canvas, alias delle primitive --isa-* di src/styles.css (valori: tema chiaro = prototipo, scuro progettato)
+canvas.css       aspetto di nodi, cavi, controlli, minimappa; importa tokens.css
 EtlCanvas.tsx    EtlCanvas (solo browser, misura l'area) e CanvasSurface (la resa, rendibile anche in Node)
 Node.tsx         un nodo: chip, icone, fette, etichetta, indicatore ambra
 Links.tsx        i cavi da store.getRoutes()
@@ -622,10 +622,14 @@ stesso contenitore vuoto (`useSyncExternalStore` con snapshot server
 
 ## Carattere e temi
 
-- Manrope (`@fontsource-variable/manrope`, unica dipendenza nuova) solo
-  dentro `.etl-canvas`; il resto dell'app resta in Poppins. Nessuna
+- Manrope (`@fontsource-variable/manrope`) è il carattere di tutta l'app,
+  caricato da `src/styles.css`; `--ec-font` deriva da `--font-sans`. Nessuna
   richiesta a server esterni: i file sono serviti dall'app, e il browser
   scarica un sottoinsieme solo se il testo lo usa.
+- Raggi dello stage e della minimappa derivati da `--radius` dell'app (stessi
+  20 e 14 px del prototipo). Gli altri token restano del canvas: vedi il
+  report della fase di fondazione per i ruoli che l'app definisce con valori
+  diversi.
 - Il tema segue la classe `.dark` sull'elemento radice, quella già impostata
   da `src/lib/theme.tsx`. Nessun meccanismo nuovo.
 - Tema chiaro = valori del prototipo, con la riga di provenienza accanto a

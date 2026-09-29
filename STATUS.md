@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-09-29T16:50:53Z (UTC)
+Generato: 2026-09-29T19:52:04Z (UTC)
 
 ## Type check
 
@@ -20,7 +20,7 @@ Ultime 60 righe di output:
 Comando: `npm run lint`
 
 Esito: OK (exit 0)
-Durata: 12s
+Durata: 11s
 
 Ultime 60 righe di output:
 ```
@@ -74,7 +74,7 @@ Ultime 60 righe di output:
 Comando: `npm test`
 
 Esito: OK (exit 0)
-Durata: 41s
+Durata: 33s
 
 Ultime 60 righe di output:
 ```
@@ -89,11 +89,11 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 
  Test Files  30 passed (30)
       Tests  400 passed (400)
-   Start at  16:51:18
-   Duration  39.60s (tests 91%, import 5%, transform 4%)
+   Start at  19:52:28
+   Duration  33.15s (tests 91%, import 5%, transform 4%)
 
-    Isolate  30 workers spawned · ~130ms startup each (spawn + environment, per file)
-             at least ~3.77s faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  30 workers spawned · ~110ms startup each (spawn + environment, per file)
+             at least ~3.19s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -113,7 +113,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/templates-DIZhedAs.mjs                          0.61 kB │ gzip:   0.39 kB
 .output/server/_ssr/solutions._solutionId.dashboard-CujVFx5K.mjs    0.86 kB │ gzip:   0.47 kB
 .output/server/_ssr/solutions._solutionId.model-D5GqwrKQ.mjs        0.88 kB │ gzip:   0.47 kB
-.output/server/_ssr/solutions._solutionId.etl-CdGAV2Ud.mjs          1.09 kB │ gzip:   0.58 kB
+.output/server/_ssr/solutions._solutionId.etl-D1GblInC.mjs          1.09 kB │ gzip:   0.58 kB
 .output/server/_libs/hookable.mjs                                   1.16 kB │ gzip:   0.51 kB
 .output/server/_ssr/theme-ovWAvoLq.mjs                              1.23 kB │ gzip:   0.57 kB
 .output/server/_ssr/start-RKGGYzjZ.mjs                              1.53 kB │ gzip:   0.70 kB
@@ -123,7 +123,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/createCsrfMiddleware-B2To0gPJ.mjs               3.11 kB │ gzip:   1.01 kB
 .output/server/_libs/d3-path.mjs                                    3.25 kB │ gzip:   1.16 kB
 .output/server/_ssr/activity-DmLzxlkY.mjs                           3.45 kB │ gzip:   0.97 kB
-.output/server/_tanstack-start-manifest_v-DwalMQgf.mjs              3.71 kB │ gzip:   0.87 kB
+.output/server/_tanstack-start-manifest_v-D1kecs6B.mjs              3.71 kB │ gzip:   0.86 kB
 .output/server/_ssr/solutions._solutionId.model-DN1m8FSz.mjs        4.05 kB │ gzip:   1.32 kB
 .output/server/_ssr/ssr.mjs                                         4.55 kB │ gzip:   1.92 kB
 .output/server/_libs/d3-interpolate.mjs                             5.02 kB │ gzip:   1.61 kB
@@ -136,10 +136,10 @@ Ultime 60 righe di output:
 .output/server/_libs/d3-color.mjs                                  10.38 kB │ gzip:   3.57 kB
 .output/server/_libs/d3-format.mjs                                 10.56 kB │ gzip:   3.02 kB
 .output/server/_libs/tanstack__history.mjs                         12.09 kB │ gzip:   3.48 kB
-.output/server/_ssr/router-D3jyNCIm.mjs                            14.19 kB │ gzip:   3.57 kB
+.output/server/_ssr/router-DQA_S--y.mjs                            12.93 kB │ gzip:   3.07 kB
 .output/server/_libs/fast-equals.mjs                               15.91 kB │ gzip:   4.13 kB
 .output/server/_libs/h3-v2+rou3+srvx+unenv.mjs                     15.92 kB │ gzip:   4.39 kB
-.output/server/index.mjs                                           16.41 kB │ gzip:   4.70 kB
+.output/server/index.mjs                                           16.41 kB │ gzip:   4.69 kB
 .output/server/_libs/h3+rou3+srvx.mjs                              17.30 kB │ gzip:   4.98 kB
 .output/server/_libs/react+tanstack__react-query.mjs               18.47 kB │ gzip:   4.82 kB
 .output/server/_libs/decimal.js-light.mjs                          23.31 kB │ gzip:   6.89 kB
@@ -149,15 +149,15 @@ Ultime 60 righe di output:
 .output/server/_libs/lucide-react.mjs                              37.25 kB │ gzip:   7.17 kB
 .output/server/_libs/react-smooth.mjs                              37.83 kB │ gzip:   8.14 kB
 .output/server/_libs/tanstack__query-core.mjs                      49.84 kB │ gzip:  11.12 kB
-.output/server/_ssr/server-rAdK1gC6.mjs                            54.77 kB │ gzip:  14.39 kB
+.output/server/_ssr/server-DNKDMnvy.mjs                            54.77 kB │ gzip:  14.39 kB
 .output/server/_libs/d3-scale+[...].mjs                            58.22 kB │ gzip:  12.11 kB
 .output/server/_libs/@tanstack/router-core+[...].mjs              125.35 kB │ gzip:  26.53 kB
 .output/server/_libs/lodash.mjs                                   161.80 kB │ gzip:  29.45 kB
-.output/server/_ssr/solutions._solutionId.etl-CFJj_bn1.mjs        334.03 kB │ gzip:  89.68 kB
+.output/server/_ssr/solutions._solutionId.etl-13gEfHOn.mjs        334.03 kB │ gzip:  89.68 kB
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.37s
+✓ built in 970ms
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -171,6 +171,8 @@ Ultime 60 righe di output:
 ## Git log (ultimi 20 commit)
 
 ```
+313a602 Fondazione: vite.config.ts esplicito (cloudflare-module) e primitive --isa-* condivise
+48de751 Fondazione (parziale): Manrope unico, derivazioni a valore identico, pulizia Lovable
 41a04c4 Fase 4b: animazioni del canvas (flusso, attesa, transizioni dei cavi)
 9663abe Il nuovo canvas diventa quello predefinito della pagina ETL
 81831f0 Test della rotta: distingue il canvas nuovo dal pulsante che lo apre
@@ -189,13 +191,12 @@ a70acf7 Fase 1.1: correzioni intenzionali al dominio ETL
 0098c85 sync-snapshot: stampa sempre come ultima riga il link INDEX.md fissato al commit
 2f7d695 Aggiunge report di validazione: merge fix Safari e allineamento main
 e6e4bfe Formattazione automatica, nessuna modifica funzionale
-9b14d46 Merge remote-tracking branch 'origin/main' into wip/stato-2026-09-28
-5987c8a Stato di lavoro al 2026-09-28: Fase 1, Fase 2A, snapshot, prototipo e inventario
 ```
 
 ## Branch
 
 ```
+  feat/design-tokens-unify
   feat/etl-canvas
   feat/etl-canvas-motion
   feat/etl-core
@@ -206,6 +207,7 @@ e6e4bfe Formattazione automatica, nessuna modifica funzionale
 * main
   wip/stato-2026-09-28
   remotes/origin/HEAD -> origin/main
+  remotes/origin/feat/design-tokens-unify
   remotes/origin/feat/etl-canvas
   remotes/origin/feat/etl-canvas-motion
   remotes/origin/feat/etl-core
@@ -218,6 +220,17 @@ e6e4bfe Formattazione automatica, nessuna modifica funzionale
 ```
 
 ## Branch diversi da main
+
+### `feat/design-tokens-unify`
+
+Ultimo commit:
+```
+313a602 Fondazione: vite.config.ts esplicito (cloudflare-module) e primitive --isa-* condivise
+```
+
+Diff stat rispetto a main:
+```
+```
 
 ### `feat/etl-canvas`
 

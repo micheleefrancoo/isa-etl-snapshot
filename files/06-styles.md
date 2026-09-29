@@ -8,9 +8,10 @@ File in questo blocco:
 
 ### `src/styles.css`
 
-404 righe
+441 righe
 
 ```css
+@import "@fontsource-variable/manrope/wght.css";
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
@@ -23,8 +24,7 @@ File in questo blocco:
  */
 
 @theme inline {
-  --font-sans:
-    "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Manrope Variable", "Manrope", system-ui, sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -127,6 +127,46 @@ File in questo blocco:
   --sidebar-accent-foreground: oklch(0.3 0.03 270);
   --sidebar-border: oklch(1 0 0 / 60%);
   --sidebar-ring: oklch(0.58 0.1 272);
+
+  /*
+   * Primitive condivise (--isa-*). Valori del canvas ETL promossi a primitive:
+   * il canvas le legge tramite i propri token (--ec-*, etl-canvas/tokens.css).
+   * I token dell'app sopra NON derivano ancora da qui: verranno riportati
+   * sulle primitive nel restyling della palette.
+   */
+  --isa-bg: #f5f3ee;
+  --isa-stage: rgba(255, 255, 255, 0.32);
+  --isa-surface-strong: rgba(255, 255, 255, 0.92);
+  --isa-panel-border: rgba(38, 36, 32, 0.06);
+  --isa-ink: #262420;
+  --isa-muted: #847e74;
+  --isa-empty-ink: #6a645a;
+  --isa-accent: #6c63ff;
+  --isa-accent-text: #6c63ff;
+  --isa-accent-soft: rgba(108, 99, 255, 0.16);
+  --isa-accent-soft-2: rgba(108, 99, 255, 0.34);
+  --isa-tint: #e1dcf0;
+  --isa-tint-ink: #6c63ff;
+  --isa-tint-border: rgba(0, 0, 0, 0);
+  --isa-on-accent: #ffffff;
+  --isa-split-bg: #efedf7;
+  --isa-split-empty: #e6e3f5;
+  --isa-split-empty-ink: #8f88c7;
+  --isa-split-line: rgba(108, 99, 255, 0.45);
+  --isa-amber: #e0a23b;
+  --isa-amber-ring: #f7f5f1;
+  --isa-select: #6c63ff;
+  --isa-link: rgba(108, 99, 255, 0.34);
+  --isa-link-dot-tint: #e1dcf0;
+  --isa-flow: rgba(108, 99, 255, 0.6);
+  --isa-mm-node: #cfc9ef;
+  --isa-mm-node-ds: #6c63ff;
+  --isa-mm-view-line: #6c63ff;
+  --isa-mm-view-bg: rgba(108, 99, 255, 0.08);
+  --isa-glass-shadow: 0 10px 24px -14px rgba(38, 36, 32, 0.4);
+  --isa-r-node-op: 22px;
+  --isa-r-node-fill: 26px;
+  --isa-glass-blur: 16px;
 }
 
 .dark {
@@ -180,6 +220,38 @@ File in questo blocco:
   --sidebar-accent-foreground: oklch(0.96 0.004 250);
   --sidebar-border: oklch(1 0 0 / 13%);
   --sidebar-ring: oklch(0.68 0.11 275);
+
+  /* Primitive condivise (--isa-*), tema scuro. */
+  --isa-bg: #17181d;
+  --isa-stage: rgba(255, 255, 255, 0.04);
+  --isa-surface-strong: rgba(36, 37, 45, 0.92);
+  --isa-panel-border: rgba(255, 255, 255, 0.11);
+  --isa-ink: #f1f2f5;
+  --isa-muted: #a9abb3;
+  --isa-empty-ink: #a9abb3;
+  --isa-accent: #6c63ff;
+  --isa-accent-text: #a8a3ff;
+  --isa-accent-soft: rgba(108, 99, 255, 0.28);
+  --isa-accent-soft-2: rgba(108, 99, 255, 0.5);
+  --isa-tint: #3a3670;
+  --isa-tint-ink: #d0ccff;
+  --isa-tint-border: #7f78e6;
+  --isa-on-accent: #ffffff;
+  --isa-split-bg: #2a2843;
+  --isa-split-empty: #2e2c4d;
+  --isa-split-empty-ink: #a8a3e6;
+  --isa-split-line: rgba(168, 163, 255, 0.55);
+  --isa-amber: #e8b34f;
+  --isa-amber-ring: #17181d;
+  --isa-select: #a8a3ff;
+  --isa-link: #7f78e6;
+  --isa-link-dot-tint: #a8a3ff;
+  --isa-flow: rgba(168, 163, 255, 0.9);
+  --isa-mm-node: #7b74d9;
+  --isa-mm-node-ds: #a8a3ff;
+  --isa-mm-view-line: #a8a3ff;
+  --isa-mm-view-bg: rgba(168, 163, 255, 0.12);
+  --isa-glass-shadow: 0 10px 24px -14px rgba(0, 0, 0, 0.6);
 }
 
 @layer base {
@@ -253,19 +325,11 @@ File in questo blocco:
 }
 
 @utility gradient-brand {
-  background-image: linear-gradient(
-    135deg,
-    var(--brand) 0%,
-    var(--brand-glow) 100%
-  );
+  background-image: linear-gradient(135deg, var(--brand) 0%, var(--brand-glow) 100%);
 }
 
 @utility text-gradient-brand {
-  background-image: linear-gradient(
-    120deg,
-    var(--brand) 0%,
-    var(--brand-glow) 100%
-  );
+  background-image: linear-gradient(120deg, var(--brand) 0%, var(--brand-glow) 100%);
   background-clip: text;
   color: transparent;
 }
@@ -345,43 +409,20 @@ File in questo blocco:
 }
 
 @utility node-selected {
-  border-color: color-mix(
-    in oklab,
-    var(--brand) 55%,
-    var(--glass-border)
-  );
+  border-color: color-mix(in oklab, var(--brand) 55%, var(--glass-border));
 
   box-shadow:
-    0 0 0 1px
-      color-mix(
-        in oklab,
-        var(--brand) 45%,
-        transparent
-      ),
-    0 0 24px
-      color-mix(
-        in oklab,
-        var(--brand) 28%,
-        transparent
-      );
+    0 0 0 1px color-mix(in oklab, var(--brand) 45%, transparent),
+    0 0 24px color-mix(in oklab, var(--brand) 28%, transparent);
 }
 
 /* Card evidenziata come destinazione di un collegamento in corso */
 @utility node-link-target {
-  border-color: color-mix(
-    in oklab,
-    var(--brand) 70%,
-    var(--glass-border)
-  );
+  border-color: color-mix(in oklab, var(--brand) 70%, var(--glass-border));
 
   box-shadow:
     0 0 0 2px var(--brand),
-    0 0 26px
-      color-mix(
-        in oklab,
-        var(--brand) 35%,
-        transparent
-      );
+    0 0 26px color-mix(in oklab, var(--brand) 35%, transparent);
 }
 
 /*
@@ -392,11 +433,7 @@ File in questo blocco:
  * node-selected/node-link-target, che possono comparire insieme.
  */
 @utility node-pending {
-  outline: 2px dashed color-mix(
-    in oklab,
-    var(--brand) 55%,
-    transparent
-  );
+  outline: 2px dashed color-mix(in oklab, var(--brand) 55%, transparent);
   outline-offset: 2px;
 }
 

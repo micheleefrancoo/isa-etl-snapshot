@@ -155,7 +155,7 @@
     },
     {
       "name": "files/01e-etl-canvas-a.md",
-      "bytes": 58697,
+      "bytes": 58989,
       "files": [
         "src/etl-canvas/EtlCanvas.tsx",
         "src/etl-canvas/Links.tsx",
@@ -173,7 +173,7 @@
     },
     {
       "name": "files/01e-etl-canvas-b.md",
-      "bytes": 56721,
+      "bytes": 57682,
       "files": [
         "src/etl-canvas/__tests__/render.test.ts",
         "src/etl-canvas/__tests__/ssr.test.tsx",
@@ -191,7 +191,7 @@
     },
     {
       "name": "files/01e-etl-canvas-c.md",
-      "bytes": 22091,
+      "bytes": 22745,
       "files": [
         "src/etl-canvas/loop.ts",
         "src/etl-canvas/model.ts",
@@ -332,10 +332,9 @@
     },
     {
       "name": "files/04-lib-hooks-store-b.md",
-      "bytes": 28110,
+      "bytes": 26187,
       "files": [
         "src/lib/etl-workflow.tsx",
-        "src/lib/lovable-error-reporting.ts",
         "src/lib/modules.ts",
         "src/lib/solutions-store.tsx",
         "src/lib/theme.tsx",
@@ -344,7 +343,7 @@
     },
     {
       "name": "files/05-app-pages-a.md",
-      "bytes": 59131,
+      "bytes": 58632,
       "files": [
         "src/routeTree.gen.ts",
         "src/router.tsx",
@@ -376,19 +375,18 @@
     },
     {
       "name": "files/06-styles.md",
-      "bytes": 11705,
+      "bytes": 13980,
       "files": [
         "src/styles.css"
       ]
     },
     {
       "name": "files/08-scripts-config-a.md",
-      "bytes": 49497,
+      "bytes": 52498,
       "files": [
         ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",
         ".gitignore",
-        ".lovable/project.json",
         ".prettierignore",
         ".prettierrc",
         ".vscode/settings.json",
@@ -398,12 +396,13 @@
         "scripts/extract-golden.mjs",
         "scripts/generate-index.mjs",
         "scripts/generate-snapshot.mjs",
-        "scripts/sync-snapshot.sh"
+        "scripts/sync-snapshot.sh",
+        "scripts/visual-compare.mjs"
       ]
     },
     {
       "name": "files/08-scripts-config-b.md",
-      "bytes": 30240,
+      "bytes": 32229,
       "files": [
         "scripts/visual-fase4.mjs",
         "scripts/visual-fase4b.mjs",
@@ -415,9 +414,8 @@
     },
     {
       "name": "files/09-docs.md",
-      "bytes": 6342,
+      "bytes": 3593,
       "files": [
-        ".lovable/plan/barra-risorse-etl-ancorata-al-canvas-2026-09-10.md",
         "AGENTS.md",
         "README.md",
         "roadmap.md"
@@ -475,7 +473,7 @@
     },
     {
       "name": "files/12-docs-other-a.md",
-      "bytes": 32608,
+      "bytes": 32450,
       "files": [
         "docs/visual/fase4/console.txt",
         "docs/visual/fase4/misure.json",
@@ -801,7 +799,16 @@
       "reason": "out-of-scope-dir"
     }
   ],
-  "redactions": [],
+  "redactions": [
+    {
+      "file": "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T17-13-50Z.md",
+      "pattern": "secret-like assignment"
+    },
+    {
+      "file": "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T19-51-32Z.md",
+      "pattern": "secret-like assignment"
+    }
+  ],
   "areas": {
     "01-canvas": {
       "files": [
@@ -1066,7 +1073,6 @@
         "src/lib/etl-node-size.ts",
         "src/lib/etl-schema.ts",
         "src/lib/etl-workflow.tsx",
-        "src/lib/lovable-error-reporting.ts",
         "src/lib/modules.ts",
         "src/lib/solutions-store.tsx",
         "src/lib/theme.tsx",
@@ -1118,7 +1124,6 @@
         ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",
         ".gitignore",
-        ".lovable/project.json",
         ".prettierignore",
         ".prettierrc",
         ".vscode/settings.json",
@@ -1129,6 +1134,7 @@
         "scripts/generate-index.mjs",
         "scripts/generate-snapshot.mjs",
         "scripts/sync-snapshot.sh",
+        "scripts/visual-compare.mjs",
         "scripts/visual-fase4.mjs",
         "scripts/visual-fase4b.mjs",
         "scripts/visual-lib.mjs",
@@ -1143,7 +1149,6 @@
     },
     "09-docs": {
       "files": [
-        ".lovable/plan/barra-risorse-etl-ancorata-al-canvas-2026-09-10.md",
         "AGENTS.md",
         "README.md",
         "roadmap.md"
@@ -1226,8 +1231,10 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T09-28-26Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T09-39-17Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T15-34-16Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T16-50-41Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T16-50-41Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T17-13-50Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T19-51-32Z.md"
   ],
-  "inScopeFileCount": 257,
-  "reportFileCount": 13
+  "inScopeFileCount": 255,
+  "reportFileCount": 15
 }

@@ -310,7 +310,7 @@ export function prototypeScene(): EtlState {
 
 ### `src/etl-canvas/tokens.css`
 
-126 righe
+127 righe
 
 ```css
 /*
@@ -325,74 +325,75 @@ export function prototypeScene(): EtlState {
  */
 .etl-canvas {
   /* sfondo della pagina dietro al canvas — riga 10 */
-  --ec-bg: #f5f3ee;
+  --ec-bg: var(--isa-bg);
   /* superficie del canvas (stage) — riga 623 */
-  --ec-stage: rgba(255, 255, 255, 0.32);
+  --ec-stage: var(--isa-stage);
   /* vetro dei controlli e della minimappa — riga 11 */
-  --ec-surface-strong: rgba(255, 255, 255, 0.92);
+  --ec-surface-strong: var(--isa-surface-strong);
   /* bordo del vetro — riga 12 */
-  --ec-panel-border: rgba(38, 36, 32, 0.06);
+  --ec-panel-border: var(--isa-panel-border);
   /* testo — riga 13 */
-  --ec-ink: #262420;
+  --ec-ink: var(--isa-ink);
   /* testo secondario — riga 14 */
-  --ec-muted: #847e74;
+  --ec-muted: var(--isa-muted);
   /* stato vuoto (elemento nuovo, assente nel prototipo): testo con contrasto ≥ 4,5:1 */
-  --ec-empty-ink: #6a645a;
+  --ec-empty-ink: var(--isa-empty-ink);
   /* accento — riga 15 */
-  --ec-accent: #6c63ff;
+  --ec-accent: var(--isa-accent);
   /* accento come colore di testo (etichette, "Adatta") — righe 15, 149, 649: coincide con l'accento */
-  --ec-accent-text: #6c63ff;
+  --ec-accent-text: var(--isa-accent-text);
   /* accento tenue — riga 16 */
-  --ec-accent-soft: rgba(108, 99, 255, 0.16);
+  --ec-accent-soft: var(--isa-accent-soft);
   /* accento medio — riga 17 */
-  --ec-accent-soft-2: rgba(108, 99, 255, 0.34);
+  --ec-accent-soft-2: var(--isa-accent-soft-2);
   /* nodo lavorazione (chip tinto) — riga 631 */
-  --ec-node-op: #e1dcf0;
+  --ec-node-op: var(--isa-tint);
   /* icona del nodo lavorazione — riga 631 */
-  --ec-node-op-ink: #6c63ff;
+  --ec-node-op-ink: var(--isa-tint-ink);
   /* bordo del nodo lavorazione: il prototipo non ne ha (trasparente) */
-  --ec-node-op-border: rgba(0, 0, 0, 0);
+  --ec-node-op-border: var(--isa-tint-border);
   /* nodo dataset e output (chip pieno) — riga 634 */
-  --ec-node-fill: #6c63ff;
+  --ec-node-fill: var(--isa-accent);
   /* icona sul chip pieno — riga 634 */
-  --ec-node-fill-ink: #ffffff;
+  --ec-node-fill-ink: var(--isa-on-accent);
   /* opacità dell'output — riga 637 */
   --ec-output-opacity: 0.92;
   /* output parziale: fondo del nodo — riga 658 */
-  --ec-split-bg: #efedf7;
+  --ec-split-bg: var(--isa-split-bg);
   /* fetta vuota: fondo e icona — riga 665 */
-  --ec-split-empty: #e6e3f5;
-  --ec-split-empty-ink: #8f88c7;
+  --ec-split-empty: var(--isa-split-empty);
+  --ec-split-empty-ink: var(--isa-split-empty-ink);
   /* separatore tra le fette — riga 666 */
-  --ec-split-line: rgba(108, 99, 255, 0.45);
+  --ec-split-line: var(--isa-split-line);
   /* indicatore ambra e suo bordo — riga 185 */
-  --ec-warn: #e0a23b;
-  --ec-warn-ring: #f7f5f1;
+  --ec-warn: var(--isa-amber);
+  --ec-warn-ring: var(--isa-amber-ring);
   /* contorno di selezione — riga 508 */
-  --ec-select: #6c63ff;
+  --ec-select: var(--isa-select);
   /* cavo e suoi capi — righe 1404, 1047 */
-  --ec-link: rgba(108, 99, 255, 0.34);
-  --ec-link-dot-fill: #6c63ff;
-  --ec-link-dot-op: #e1dcf0;
+  --ec-link: var(--isa-link);
+  --ec-link-dot-fill: var(--isa-accent);
+  --ec-link-dot-op: var(--isa-link-dot-tint);
   /* flusso nei cavi — riga 1517 */
-  --ec-flow: rgba(108, 99, 255, 0.6);
+  --ec-flow: var(--isa-flow);
   /* minimappa — righe 159-161 */
-  --ec-mm-node: #cfc9ef;
-  --ec-mm-node-ds: #6c63ff;
-  --ec-mm-view-line: #6c63ff;
-  --ec-mm-view-bg: rgba(108, 99, 255, 0.08);
+  --ec-mm-node: var(--isa-mm-node);
+  --ec-mm-node-ds: var(--isa-mm-node-ds);
+  --ec-mm-view-line: var(--isa-mm-view-line);
+  --ec-mm-view-bg: var(--isa-mm-view-bg);
   /* raggi — righe 631 (nodo op), 634 (nodo pieno), 623 (stage), 154 (minimappa), 140 (controlli) */
-  --ec-r-op: 22px;
-  --ec-r-fill: 26px;
-  --ec-r-stage: 20px;
-  --ec-r-minimap: 14px;
+  --ec-r-op: var(--isa-r-node-op);
+  --ec-r-fill: var(--isa-r-node-fill);
+  /* derivati dal raggio dell'app (`--radius`, src/styles.css): stessi valori del prototipo, 20 e 14 px */
+  --ec-r-stage: calc(var(--radius) + 4px);
+  --ec-r-minimap: calc(var(--radius) - 2px);
   --ec-r-pill: 999px;
   /* ombra del vetro — righe 141, 155 */
-  --ec-glass-shadow: 0 10px 24px -14px rgba(38, 36, 32, 0.4);
+  --ec-glass-shadow: var(--isa-glass-shadow);
   /* sfocatura del vetro — righe 140, 154 */
-  --ec-glass-blur: 16px;
-  /* carattere — riga 6 (link) e 21 (body) */
-  --ec-font: "Manrope Variable", "Manrope", system-ui, sans-serif;
+  --ec-glass-blur: var(--isa-glass-blur);
+  /* carattere — riga 6 (link) e 21 (body): quello dell'app (`--font-sans`, src/styles.css) */
+  --ec-font: var(--font-sans);
 }
 
 /*
@@ -404,39 +405,39 @@ export function prototypeScene(): EtlState {
  * sottili su fondo scuro si usa una tinta più chiara della stessa famiglia.
  */
 .dark .etl-canvas {
-  --ec-bg: #17181d;
-  --ec-stage: rgba(255, 255, 255, 0.04);
-  --ec-surface-strong: rgba(36, 37, 45, 0.92);
-  --ec-panel-border: rgba(255, 255, 255, 0.11);
-  --ec-ink: #f1f2f5;
-  --ec-muted: #a9abb3;
-  --ec-empty-ink: #a9abb3;
-  --ec-accent: #6c63ff;
-  --ec-accent-text: #a8a3ff;
-  --ec-accent-soft: rgba(108, 99, 255, 0.28);
-  --ec-accent-soft-2: rgba(108, 99, 255, 0.5);
-  --ec-node-op: #3a3670;
-  --ec-node-op-ink: #d0ccff;
-  --ec-node-op-border: #7f78e6;
-  --ec-node-fill: #6c63ff;
-  --ec-node-fill-ink: #ffffff;
+  --ec-bg: var(--isa-bg);
+  --ec-stage: var(--isa-stage);
+  --ec-surface-strong: var(--isa-surface-strong);
+  --ec-panel-border: var(--isa-panel-border);
+  --ec-ink: var(--isa-ink);
+  --ec-muted: var(--isa-muted);
+  --ec-empty-ink: var(--isa-empty-ink);
+  --ec-accent: var(--isa-accent);
+  --ec-accent-text: var(--isa-accent-text);
+  --ec-accent-soft: var(--isa-accent-soft);
+  --ec-accent-soft-2: var(--isa-accent-soft-2);
+  --ec-node-op: var(--isa-tint);
+  --ec-node-op-ink: var(--isa-tint-ink);
+  --ec-node-op-border: var(--isa-tint-border);
+  --ec-node-fill: var(--isa-accent);
+  --ec-node-fill-ink: var(--isa-on-accent);
   --ec-output-opacity: 0.92;
-  --ec-split-bg: #2a2843;
-  --ec-split-empty: #2e2c4d;
-  --ec-split-empty-ink: #a8a3e6;
-  --ec-split-line: rgba(168, 163, 255, 0.55);
-  --ec-warn: #e8b34f;
-  --ec-warn-ring: #17181d;
-  --ec-select: #a8a3ff;
-  --ec-link: #7f78e6;
-  --ec-link-dot-fill: #6c63ff;
-  --ec-link-dot-op: #a8a3ff;
-  --ec-flow: rgba(168, 163, 255, 0.9);
-  --ec-mm-node: #7b74d9;
-  --ec-mm-node-ds: #a8a3ff;
-  --ec-mm-view-line: #a8a3ff;
-  --ec-mm-view-bg: rgba(168, 163, 255, 0.12);
-  --ec-glass-shadow: 0 10px 24px -14px rgba(0, 0, 0, 0.6);
+  --ec-split-bg: var(--isa-split-bg);
+  --ec-split-empty: var(--isa-split-empty);
+  --ec-split-empty-ink: var(--isa-split-empty-ink);
+  --ec-split-line: var(--isa-split-line);
+  --ec-warn: var(--isa-amber);
+  --ec-warn-ring: var(--isa-amber-ring);
+  --ec-select: var(--isa-select);
+  --ec-link: var(--isa-link);
+  --ec-link-dot-fill: var(--isa-accent);
+  --ec-link-dot-op: var(--isa-link-dot-tint);
+  --ec-flow: var(--isa-flow);
+  --ec-mm-node: var(--isa-mm-node);
+  --ec-mm-node-ds: var(--isa-mm-node-ds);
+  --ec-mm-view-line: var(--isa-mm-view-line);
+  --ec-mm-view-bg: var(--isa-mm-view-bg);
+  --ec-glass-shadow: var(--isa-glass-shadow);
 }
 ```
 

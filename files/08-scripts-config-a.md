@@ -5,7 +5,6 @@ File in questo blocco:
 - `.claude/settings.local.json`
 - `.devcontainer/devcontainer.json`
 - `.gitignore`
-- `.lovable/project.json`
 - `.prettierignore`
 - `.prettierrc`
 - `.vscode/settings.json`
@@ -16,6 +15,7 @@ File in questo blocco:
 - `scripts/generate-index.mjs`
 - `scripts/generate-snapshot.mjs`
 - `scripts/sync-snapshot.sh`
+- `scripts/visual-compare.mjs`
 
 ---
 
@@ -109,18 +109,6 @@ dist-ssr
 *.sln
 *.sw?
 .pw-tmp/
-```
-
-### `.lovable/project.json`
-
-6 righe
-
-```json
-{
-  "schemaVersion": 1,
-  "template": "tanstack_start_ts_current",
-  "revision": "tanstack_start_ts_current-7da8770d11d6"
-}
 ```
 
 ### `.prettierignore`
@@ -241,7 +229,7 @@ export default tseslint.config(
 
 ### `package.json`
 
-95 righe
+96 righe
 
 ```json
 {
@@ -318,7 +306,7 @@ export default tseslint.config(
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
-    "@lovable.dev/vite-tanstack-config": "^2.20.0",
+    "@tanstack/devtools-vite": "^0.8.5",
     "@types/node": "^22.16.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
@@ -329,6 +317,7 @@ export default tseslint.config(
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",
+    "lightningcss": "^1.33.0",
     "nitro": "3.0.260603-beta",
     "playwright": "^1.63.0",
     "prettier": "^3.7.3",
@@ -854,7 +843,7 @@ console.log(`INDEX.md written to ${outPath}`);
 
 ### `scripts/generate-snapshot.mjs`
 
-536 righe
+528 righe
 
 ```js
 #!/usr/bin/env node
@@ -989,14 +978,12 @@ const ROOT_ALLOWLIST = new Set([
 const EXTRA_CONFIG_FILES = new Set([
   ".devcontainer/devcontainer.json",
   ".vscode/settings.json",
-  ".lovable/project.json",
   ".claude/settings.local.json",
 ]);
 
 function isInScopeTextFile(rel) {
   if (classify(rel) !== "text") return false;
   if (rel.startsWith("src/") || rel.startsWith("scripts/") || rel.startsWith("docs/")) return true;
-  if (rel.startsWith(".lovable/plan/") && rel.endsWith(".md")) return true;
   if (!rel.includes("/") && ROOT_ALLOWLIST.has(rel)) return true;
   if (EXTRA_CONFIG_FILES.has(rel)) return true;
   return false;
@@ -1084,13 +1071,7 @@ function areaFor(rel) {
     if (rel === "README.md" || rel === "AGENTS.md" || rel === "roadmap.md") return "09-docs";
     return "08-scripts-config";
   }
-  if (
-    rel === "README.md" ||
-    rel === "AGENTS.md" ||
-    rel === "roadmap.md" ||
-    rel.startsWith(".lovable/")
-  )
-    return "09-docs";
+  if (rel === "README.md" || rel === "AGENTS.md" || rel === "roadmap.md") return "09-docs";
   if (rel.startsWith("docs/prototype/")) return "10-prototype";
   if (rel.startsWith("docs/inventory/")) return "11-inventory";
   if (rel.startsWith("docs/")) return "12-docs-other";
@@ -1635,5 +1616,110 @@ echo "== Done =="
 echo "INDEX.md (branch $SNAPSHOT_BRANCH, moving target): https://raw.githubusercontent.com/$SNAPSHOT_REPO/$SNAPSHOT_BRANCH/INDEX.md"
 echo "INDEX.md (fissato al commit $FINAL_SHA di questo run) -- ultima riga, sempre stampata:"
 echo "https://raw.githubusercontent.com/$SNAPSHOT_REPO/$FINAL_SHA/INDEX.md"
+```
+
+### `scripts/visual-compare.mjs`
+
+99 righe
+
+```js
+#!/usr/bin/env node
+/**
+ * Confronto pixel per pixel tra le schermate nel working tree e quelle
+ * committate in HEAD (o in un altro riferimento git). Nessuna dipendenza
+ * nuova: le immagini si decodificano in Chromium (Playwright) con un canvas.
+ *
+ * Uso: node scripts/visual-compare.mjs [--ref HEAD] <file.png>[@x,y,w,h] ...
+ *   `@x,y,w,h` limita il confronto a un rettangolo (per escludere il resto
+ *   della pagina, per esempio l'intestazione dell'app).
+ * Esce con codice 1 se una qualunque coppia differisce.
+ */
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { chromium } from "playwright";
+import { ROOT } from "./visual-lib.mjs";
+
+const args = process.argv.slice(2);
+let ref = "HEAD";
+const items = [];
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === "--ref") ref = args[++i];
+  else items.push(args[i]);
+}
+
+const dataUrl = (buf) => "data:image/png;base64," + buf.toString("base64");
+const browser = await chromium.launch();
+const page = await browser.newPage();
+let failed = 0;
+const rows = [];
+for (const item of items) {
+  const [file, clip] = item.split("@");
+  const now = readFileSync(resolve(ROOT, file));
+  let old;
+  try {
+    old = execFileSync("git", ["show", `${ref}:${file}`], { cwd: ROOT, maxBuffer: 1 << 28 });
+  } catch {
+    rows.push({ file, esito: "assente in " + ref });
+    failed++;
+    continue;
+  }
+  const r = await page.evaluate(
+    async ([a, b, clip]) => {
+      const load = (src) =>
+        new Promise((res, rej) => {
+          const img = new Image();
+          img.onload = () => res(img);
+          img.onerror = rej;
+          img.src = src;
+        });
+      const [ia, ib] = await Promise.all([load(a), load(b)]);
+      if (ia.width !== ib.width || ia.height !== ib.height)
+        return { size: [ia.width, ia.height, ib.width, ib.height] };
+      const [x, y, w, h] = clip ? clip.split(",").map(Number) : [0, 0, ia.width, ia.height];
+      const px = (img) => {
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext("2d");
+        ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+        return ctx.getImageData(0, 0, w, h).data;
+      };
+      const da = px(ia);
+      const db = px(ib);
+      let diff = 0;
+      let max = 0;
+      for (let i = 0; i < da.length; i += 4) {
+        const d = Math.max(
+          Math.abs(da[i] - db[i]),
+          Math.abs(da[i + 1] - db[i + 1]),
+          Math.abs(da[i + 2] - db[i + 2]),
+          Math.abs(da[i + 3] - db[i + 3]),
+        );
+        if (d > 0) diff++;
+        if (d > max) max = d;
+      }
+      return { pixels: w * h, diff, max };
+    },
+    [dataUrl(old), dataUrl(now), clip ?? null],
+  );
+  if (r.size) {
+    rows.push({ file, esito: `dimensioni diverse ${r.size.slice(0, 2)} → ${r.size.slice(2)}` });
+    failed++;
+  } else {
+    rows.push({
+      file,
+      regione: clip ?? "intera",
+      pixel: r.pixels,
+      differenti: r.diff,
+      scartoMax: r.max,
+    });
+    if (r.diff > 0) failed++;
+  }
+}
+await browser.close();
+console.table(rows);
+console.log(failed ? `DIFFERENZE in ${failed} file` : "TUTTE LE IMMAGINI COINCIDONO al pixel");
+process.exit(failed ? 1 : 0);
 ```
 

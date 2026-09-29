@@ -19,7 +19,7 @@ nessun errore né avviso in console
 
 ### `docs/visual/fase4/misure.json`
 
-1054 righe
+1048 righe
 
 ```json
 {
@@ -689,13 +689,10 @@ nessun errore né avviso in console
       }
     },
     "body": {
-      "fontFamily": "Poppins, ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", sans-serif"
+      "fontFamily": "\"Manrope Variable\", Manrope, system-ui, sans-serif"
     },
     "font": {
       "loaded": [
-        "Poppins",
-        "Poppins",
-        "Poppins",
         "Manrope Variable"
       ]
     },
@@ -1042,13 +1039,10 @@ nessun errore né avviso in console
       }
     },
     "body": {
-      "fontFamily": "Poppins, ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", sans-serif"
+      "fontFamily": "\"Manrope Variable\", Manrope, system-ui, sans-serif"
     },
     "font": {
       "loaded": [
-        "Poppins",
-        "Poppins",
-        "Poppins",
         "Manrope Variable"
       ]
     },

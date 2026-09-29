@@ -309,7 +309,7 @@ describe("rendering lato server", () => {
 
 ### `src/etl-canvas/__tests__/tokens.test.ts`
 
-89 righe
+90 righe
 
 ```ts
 import { readFileSync } from "node:fs";
@@ -317,12 +317,13 @@ import { describe, expect, it } from "vitest";
 import { PAIRS, measure, readTokens } from "../contrast";
 
 const css = readFileSync(new URL("../tokens.css", import.meta.url), "utf8");
+const appCss = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 const prototype = readFileSync(
   new URL("../../../docs/prototype/isa-fusion-prototype.html", import.meta.url),
   "utf8",
 );
-const light = readTokens(css, "light");
-const dark = readTokens(css, "dark");
+const light = readTokens(css, "light", appCss);
+const dark = readTokens(css, "dark", appCss);
 
 /** Il prototipo scrive i colori in forme diverse (`#E1DCF0`, `rgba(108,99,255,0.34)`): si confrontano normalizzati. */
 function norm(s: string): string {
@@ -760,9 +761,9 @@ export function zoomAtPoint(store: EtlStore, px: number, py: number, zoom: numbe
  * Aspetto del canvas ETL (Fase 4a): nodi, cavi, controlli, minimappa.
  * Misure e classi del prototipo (docs/prototype/isa-fusion-prototype.html,
  * righe indicate); colori solo dai token di tokens.css. Tutte le regole
- * sono limitate a `.etl-canvas`.
+ * sono limitate a `.etl-canvas`. Il carattere (Manrope) è quello di tutta l'app,
+ * caricato da src/styles.css.
  */
-@import "@fontsource-variable/manrope/wght.css";
 @import "./tokens.css";
 
 .etl-canvas {
@@ -1092,7 +1093,7 @@ export function zoomAtPoint(store: EtlStore, px: number, py: number, zoom: numbe
 
 ### `src/etl-canvas/contrast.ts`
 
-112 righe
+137 righe
 
 ```ts
 /**
@@ -1148,16 +1149,41 @@ export function contrast(a: Rgba, b: Rgba): number {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
-/** Legge i token di un tema da tokens.css: `dark` = blocco `.dark .etl-canvas`. */
-export function readTokens(css: string, theme: "light" | "dark"): Record<string, string> {
-  const selector = theme === "dark" ? ".dark .etl-canvas" : ".etl-canvas";
+function readBlock(css: string, selector: string, prefix: string): Record<string, string> {
   const start = css.indexOf(`\n${selector} {`);
   if (start < 0) throw new Error(`blocco non trovato: ${selector}`);
-  const end = css.indexOf("}", start);
-  const body = css.slice(start, end);
+  const end = css.indexOf("\n}", start);
   const out: Record<string, string> = {};
-  for (const m of body.matchAll(/(--ec-[a-z0-9-]+):\s*([^;]+);/g)) {
+  for (const m of css
+    .slice(start, end)
+    .matchAll(new RegExp(`(${prefix}[a-z0-9-]+):\\s*([^;]+);`, "g"))) {
     out[m[1] as string] = (m[2] as string).trim();
+  }
+  return out;
+}
+
+/**
+ * Legge i token di un tema da tokens.css: `dark` = blocco `.dark .etl-canvas`.
+ * I `var(--isa-*)` sono risolti con le primitive di `styles.css` (`:root`,
+ * `.dark`; nel tema scuro, per le primitive non ridefinite, vale il chiaro).
+ */
+export function readTokens(
+  css: string,
+  theme: "light" | "dark",
+  primitivesCss: string,
+): Record<string, string> {
+  const tokens = readBlock(css, theme === "dark" ? ".dark .etl-canvas" : ".etl-canvas", "--ec-");
+  const primitives = {
+    ...readBlock(primitivesCss, ":root", "--isa-"),
+    ...(theme === "dark" ? readBlock(primitivesCss, ".dark", "--isa-") : {}),
+  };
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(tokens)) {
+    out[name] = value.replace(/var\((--isa-[a-z0-9-]+)\)/g, (_, ref: string) => {
+      const resolved = primitives[ref];
+      if (resolved === undefined) throw new Error(`primitiva non trovata: ${ref}`);
+      return resolved;
+    });
   }
   return out;
 }

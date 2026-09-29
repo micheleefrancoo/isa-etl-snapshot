@@ -2,64 +2,26 @@
 
 File in questo blocco:
 
-- `.lovable/plan/barra-risorse-etl-ancorata-al-canvas-2026-09-10.md`
 - `AGENTS.md`
 - `README.md`
 - `roadmap.md`
 
 ---
 
-### `.lovable/plan/barra-risorse-etl-ancorata-al-canvas-2026-09-10.md`
-
-25 righe
-
-```md
-# Barra risorse ETL ancorata al canvas
-
-## Obiettivo
-Rendere la barra delle risorse parte strutturale dell’area ETL: può vivere solo sui quattro bordi, occupa spazio reale e non si sovrappone mai al workflow.
-
-## Modifiche
-- Eliminare la posizione libera e qualsiasi posizionamento assoluto della barra sopra il canvas.
-- Gestire quattro agganci consentiti: alto, basso, sinistra, destra.
-- Durante il trascinamento, determinare il bordo più vicino e agganciare lì la barra, mantenendola sempre entro il perimetro ETL.
-- Adattare automaticamente l’orientamento:
-  - orizzontale in alto o in basso;
-  - verticale a sinistra o a destra.
-- Fare della barra e del canvas due aree adiacenti nello stesso layout, così la barra riduce sempre lo spazio disponibile al canvas.
-- All’apertura di una categoria o di tutte le risorse, mostrare un secondo livello interno all’area della barra, mai come menu o livello sovrapposto.
-- Quando la barra orizzontale superiore si espande, il canvas sottostante si abbassa e tutte le card si spostano visivamente con esso senza alterare le coordinate salvate.
-- Quando la barra laterale si espande, il canvas si restringe lateralmente; le card restano contenute grazie ai limiti già presenti.
-- Conservare aggiunta con click/drag, categorie, stato espanso/ridotto e stile isa esistente.
-
-## Dettagli tecnici
-- Lo stato di aggancio sarà controllato dal contenitore del workflow.
-- Il layout userà una struttura flex ordinata in base al bordo scelto, senza `absolute` per la palette.
-- Il drag della barra sarà limitato al rettangolo dell’area ETL e al rilascio selezionerà uno dei quattro bordi.
-- Saranno rimossi il comando e il tipo `free`.
-- Verranno verificati orientamento, espansione, aggiunta risorse e contenimento delle card nel canvas.
-```
-
 ### `AGENTS.md`
 
-11 righe
+5 righe
 
 ```md
-<!-- LOVABLE:BEGIN -->
 > [!IMPORTANT]
-> This project is connected to [Lovable](https://lovable.dev). Avoid rewriting
-> published git history — force pushing, or rebasing/amending/squashing commits
-> that are already pushed — as it rewrites history on Lovable's side and the
-> user will likely lose their project history.
->
-> Commits you push to the connected branch sync back to Lovable and show up in
-> the editor, so keep the branch in a working state.
-<!-- LOVABLE:END -->
+> Evita di riscrivere la cronologia git già pubblicata (force push, rebase,
+> amend o squash di commit già pushati). Tieni sempre il branch principale in
+> uno stato funzionante.
 ```
 
 ### `README.md`
 
-37 righe
+27 righe
 
 ```md
 # Isa Glass Platform
@@ -76,21 +38,11 @@ Crea la piattaforma di calcolo "isa" usando il design system glassmorphism forni
   - Recent Activity
   - Batch Jobs con barre di progresso calcolo
 - Predisponi le viste/rotte future per la piattaforma di calcolo: dettaglio calcolo/soluzione con configuratore parametri, esecuzione job e visualizzazione dati.
-Includi Lucide icons e Poppins come font.
-
-This project was built with [Lovable](https://lovable.dev).
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/2a10b01f-cdfc-4c19-93f0-8d63f283723f).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+Icone Lucide e font Manrope (self-hosted, senza richieste a server esterni).
 
 ## Development
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Servono Node.js e npm ([installazione con nvm](https://github.com/nvm-sh/nvm#installing-and-updating)).
 
 ```sh
 git clone <this-repository-url>
