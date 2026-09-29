@@ -155,32 +155,50 @@
     },
     {
       "name": "files/01e-etl-canvas-a.md",
-      "bytes": 55698,
+      "bytes": 58697,
       "files": [
         "src/etl-canvas/EtlCanvas.tsx",
         "src/etl-canvas/Links.tsx",
         "src/etl-canvas/Minimap.tsx",
+        "src/etl-canvas/NOTE_DIVERGENZE.md",
         "src/etl-canvas/Node.tsx",
         "src/etl-canvas/README.md",
+        "src/etl-canvas/__tests__/engine.test.ts",
+        "src/etl-canvas/__tests__/fake-env.ts",
+        "src/etl-canvas/__tests__/flow.test.ts",
         "src/etl-canvas/__tests__/helpers.ts",
-        "src/etl-canvas/__tests__/render.test.ts",
-        "src/etl-canvas/__tests__/ssr.test.tsx",
-        "src/etl-canvas/__tests__/tokens.test.ts",
-        "src/etl-canvas/__tests__/view.test.ts",
-        "src/etl-canvas/actions.ts",
-        "src/etl-canvas/canvas.css",
-        "src/etl-canvas/contrast.ts",
-        "src/etl-canvas/icons.tsx",
-        "src/etl-canvas/index.ts",
-        "src/etl-canvas/model.ts",
-        "src/etl-canvas/seed.ts"
+        "src/etl-canvas/__tests__/loop.test.ts",
+        "src/etl-canvas/__tests__/no-reroute.test.ts"
       ]
     },
     {
       "name": "files/01e-etl-canvas-b.md",
-      "bytes": 9403,
+      "bytes": 56721,
       "files": [
+        "src/etl-canvas/__tests__/render.test.ts",
+        "src/etl-canvas/__tests__/ssr.test.tsx",
+        "src/etl-canvas/__tests__/tokens.test.ts",
+        "src/etl-canvas/__tests__/transitions.test.ts",
+        "src/etl-canvas/__tests__/view.test.ts",
+        "src/etl-canvas/actions.ts",
+        "src/etl-canvas/canvas.css",
+        "src/etl-canvas/contrast.ts",
+        "src/etl-canvas/engine.ts",
+        "src/etl-canvas/flow.ts",
+        "src/etl-canvas/icons.tsx",
+        "src/etl-canvas/index.ts"
+      ]
+    },
+    {
+      "name": "files/01e-etl-canvas-c.md",
+      "bytes": 22091,
+      "files": [
+        "src/etl-canvas/loop.ts",
+        "src/etl-canvas/model.ts",
+        "src/etl-canvas/motion.tsx",
+        "src/etl-canvas/seed.ts",
         "src/etl-canvas/tokens.css",
+        "src/etl-canvas/transitions.ts",
         "src/etl-canvas/view.ts"
       ]
     },
@@ -326,7 +344,7 @@
     },
     {
       "name": "files/05-app-pages-a.md",
-      "bytes": 59132,
+      "bytes": 59131,
       "files": [
         "src/routeTree.gen.ts",
         "src/router.tsx",
@@ -385,9 +403,11 @@
     },
     {
       "name": "files/08-scripts-config-b.md",
-      "bytes": 15471,
+      "bytes": 30240,
       "files": [
         "scripts/visual-fase4.mjs",
+        "scripts/visual-fase4b.mjs",
+        "scripts/visual-lib.mjs",
         "tsconfig.json",
         "vite.config.ts",
         "vitest.config.ts"
@@ -454,11 +474,188 @@
       ]
     },
     {
-      "name": "files/12-docs-other.md",
-      "bytes": 25711,
+      "name": "files/12-docs-other-a.md",
+      "bytes": 32608,
       "files": [
         "docs/visual/fase4/console.txt",
-        "docs/visual/fase4/misure.json"
+        "docs/visual/fase4/misure.json",
+        "docs/visual/fase4b/console.txt",
+        "docs/visual/fase4b/misure.json"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-b.md",
+      "bytes": 48525,
+      "files": [
+        "docs/visual/fase4b/prototipo.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-c.md",
+      "bytes": 49720,
+      "files": [
+        "docs/visual/fase4b/prototipo.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-d.md",
+      "bytes": 49755,
+      "files": [
+        "docs/visual/fase4b/prototipo.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-e.md",
+      "bytes": 49712,
+      "files": [
+        "docs/visual/fase4b/prototipo.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-f.md",
+      "bytes": 49446,
+      "files": [
+        "docs/visual/fase4b/prototipo.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-g.md",
+      "bytes": 49777,
+      "files": [
+        "docs/visual/fase4b/prototipo.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-h.md",
+      "bytes": 49538,
+      "files": [
+        "docs/visual/fase4b/prototipo.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-i.md",
+      "bytes": 49721,
+      "files": [
+        "docs/visual/fase4b/prototipo.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-j.md",
+      "bytes": 49888,
+      "files": [
+        "docs/visual/fase4b/prototipo.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-k.md",
+      "bytes": 48619,
+      "files": [
+        "docs/visual/fase4b/prototipo.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-l.md",
+      "bytes": 49426,
+      "files": [
+        "docs/visual/fase4b/prototipo.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-m.md",
+      "bytes": 49908,
+      "files": [
+        "docs/visual/fase4b/prototipo.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-n.md",
+      "bytes": 28887,
+      "files": [
+        "docs/visual/fase4b/prototipo.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-o.md",
+      "bytes": 49668,
+      "files": [
+        "docs/visual/fase4b/v2-chiaro.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-p.md",
+      "bytes": 48975,
+      "files": [
+        "docs/visual/fase4b/v2-chiaro.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-q.md",
+      "bytes": 49492,
+      "files": [
+        "docs/visual/fase4b/v2-chiaro.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-r.md",
+      "bytes": 48657,
+      "files": [
+        "docs/visual/fase4b/v2-chiaro.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-s.md",
+      "bytes": 49678,
+      "files": [
+        "docs/visual/fase4b/v2-chiaro.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-t.md",
+      "bytes": 49629,
+      "files": [
+        "docs/visual/fase4b/v2-chiaro.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-u.md",
+      "bytes": 49385,
+      "files": [
+        "docs/visual/fase4b/v2-chiaro.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-v.md",
+      "bytes": 49537,
+      "files": [
+        "docs/visual/fase4b/v2-chiaro.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-w.md",
+      "bytes": 49425,
+      "files": [
+        "docs/visual/fase4b/v2-chiaro.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-x.md",
+      "bytes": 49096,
+      "files": [
+        "docs/visual/fase4b/v2-chiaro.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-y.md",
+      "bytes": 49696,
+      "files": [
+        "docs/visual/fase4b/v2-chiaro.webm"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-z.md",
+      "bytes": 26328,
+      "files": [
+        "docs/visual/fase4b/v2-chiaro.webm"
       ]
     }
   ],
@@ -549,6 +746,46 @@
     },
     {
       "file": "docs/visual/fase4/v2-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4b/prototipo-t0.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4b/prototipo-t250.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4b/prototipo-t500.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4b/v2-chiaro-movimento-ridotto.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4b/v2-chiaro-t0.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4b/v2-chiaro-t250.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4b/v2-chiaro-t500.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4b/v2-scuro-t0.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4b/v2-scuro-t250.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4b/v2-scuro-t500.png",
       "reason": "binary"
     },
     {
@@ -693,26 +930,39 @@
         "src/etl-canvas/EtlCanvas.tsx",
         "src/etl-canvas/Links.tsx",
         "src/etl-canvas/Minimap.tsx",
+        "src/etl-canvas/NOTE_DIVERGENZE.md",
         "src/etl-canvas/Node.tsx",
         "src/etl-canvas/README.md",
+        "src/etl-canvas/__tests__/engine.test.ts",
+        "src/etl-canvas/__tests__/fake-env.ts",
+        "src/etl-canvas/__tests__/flow.test.ts",
         "src/etl-canvas/__tests__/helpers.ts",
+        "src/etl-canvas/__tests__/loop.test.ts",
+        "src/etl-canvas/__tests__/no-reroute.test.ts",
         "src/etl-canvas/__tests__/render.test.ts",
         "src/etl-canvas/__tests__/ssr.test.tsx",
         "src/etl-canvas/__tests__/tokens.test.ts",
+        "src/etl-canvas/__tests__/transitions.test.ts",
         "src/etl-canvas/__tests__/view.test.ts",
         "src/etl-canvas/actions.ts",
         "src/etl-canvas/canvas.css",
         "src/etl-canvas/contrast.ts",
+        "src/etl-canvas/engine.ts",
+        "src/etl-canvas/flow.ts",
         "src/etl-canvas/icons.tsx",
         "src/etl-canvas/index.ts",
+        "src/etl-canvas/loop.ts",
         "src/etl-canvas/model.ts",
+        "src/etl-canvas/motion.tsx",
         "src/etl-canvas/seed.ts",
         "src/etl-canvas/tokens.css",
+        "src/etl-canvas/transitions.ts",
         "src/etl-canvas/view.ts"
       ],
       "outFiles": [
         "01e-etl-canvas-a.md",
-        "01e-etl-canvas-b.md"
+        "01e-etl-canvas-b.md",
+        "01e-etl-canvas-c.md"
       ]
     },
     "02-isa-etl": {
@@ -880,6 +1130,8 @@
         "scripts/generate-snapshot.mjs",
         "scripts/sync-snapshot.sh",
         "scripts/visual-fase4.mjs",
+        "scripts/visual-fase4b.mjs",
+        "scripts/visual-lib.mjs",
         "tsconfig.json",
         "vite.config.ts",
         "vitest.config.ts"
@@ -925,10 +1177,39 @@
     "12-docs-other": {
       "files": [
         "docs/visual/fase4/console.txt",
-        "docs/visual/fase4/misure.json"
+        "docs/visual/fase4/misure.json",
+        "docs/visual/fase4b/console.txt",
+        "docs/visual/fase4b/misure.json",
+        "docs/visual/fase4b/prototipo.webm",
+        "docs/visual/fase4b/v2-chiaro.webm"
       ],
       "outFiles": [
-        "12-docs-other.md"
+        "12-docs-other-a.md",
+        "12-docs-other-b.md",
+        "12-docs-other-c.md",
+        "12-docs-other-d.md",
+        "12-docs-other-e.md",
+        "12-docs-other-f.md",
+        "12-docs-other-g.md",
+        "12-docs-other-h.md",
+        "12-docs-other-i.md",
+        "12-docs-other-j.md",
+        "12-docs-other-k.md",
+        "12-docs-other-l.md",
+        "12-docs-other-m.md",
+        "12-docs-other-n.md",
+        "12-docs-other-o.md",
+        "12-docs-other-p.md",
+        "12-docs-other-q.md",
+        "12-docs-other-r.md",
+        "12-docs-other-s.md",
+        "12-docs-other-t.md",
+        "12-docs-other-u.md",
+        "12-docs-other-v.md",
+        "12-docs-other-w.md",
+        "12-docs-other-x.md",
+        "12-docs-other-y.md",
+        "12-docs-other-z.md"
       ]
     }
   },
@@ -944,8 +1225,9 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T08-57-43Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T09-28-26Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T09-39-17Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T15-34-16Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T15-34-16Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T16-50-41Z.md"
   ],
-  "inScopeFileCount": 239,
-  "reportFileCount": 12
+  "inScopeFileCount": 257,
+  "reportFileCount": 13
 }

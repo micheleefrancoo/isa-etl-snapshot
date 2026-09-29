@@ -1066,19 +1066,19 @@ export const Route = createFileRoute("/solutions/$solutionId/etl")({
       },
     ],
   }),
-  validateSearch: (search: Record<string, unknown>): { canvas?: "v2"; seed?: string } => {
-    const out: { canvas?: "v2"; seed?: string } = {};
-    if (search["canvas"] === "v2") out.canvas = "v2";
+  validateSearch: (search: Record<string, unknown>): { canvas?: "v1"; seed?: string } => {
+    const out: { canvas?: "v1"; seed?: string } = {};
+    if (search["canvas"] === "v1") out.canvas = "v1";
     if (typeof search["seed"] === "string") out.seed = search["seed"];
     return out;
   },
   component: EtlRoute,
 });
 
-/** Con `?canvas=v2` il nuovo canvas (Fase 4a); senza parametro resta quello vecchio. */
+/** Il nuovo canvas è quello predefinito; il vecchio resta raggiungibile solo con `?canvas=v1`. */
 function EtlRoute() {
   const { canvas } = Route.useSearch();
-  return canvas === "v2" ? <EtlCanvasV2 /> : <EtlWorkspace />;
+  return canvas === "v1" ? <EtlWorkspace /> : <EtlCanvasV2 />;
 }
 
 function EtlCanvasV2() {
@@ -1121,7 +1121,7 @@ function EtlCanvasV2() {
           <span>/</span>
           <span className="truncate">{solution.name}</span>
           <span>/</span>
-          <span className="text-foreground">ETL (canvas v2)</span>
+          <span className="text-foreground">ETL</span>
         </nav>
         <button
           type="button"
