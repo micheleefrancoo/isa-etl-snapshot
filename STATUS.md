@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-09-28T21:08:21Z (UTC)
+Generato: 2026-09-29T07:21:20Z (UTC)
 
 ## Type check
 
@@ -9,7 +9,7 @@ Nessuno script "typecheck" in package.json: eseguito il comando diretto.
 Comando: `npx tsc --noEmit`
 
 Esito: OK (exit 0)
-Durata: 10s
+Durata: 9s
 
 Ultime 60 righe di output:
 ```
@@ -20,7 +20,7 @@ Ultime 60 righe di output:
 Comando: `npm run lint`
 
 Esito: OK (exit 0)
-Durata: 8s
+Durata: 7s
 
 Ultime 60 righe di output:
 ```
@@ -87,13 +87,13 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
  RUN  v5.0.1 /workspaces/isa-glass-platform
 
 
- Test Files  11 passed (11)
-      Tests  118 passed (118)
-   Start at  21:08:40
-   Duration  2.00s (transform 49%, import 28%, tests 14%, worker 9%)
+ Test Files  13 passed (13)
+      Tests  157 passed (157)
+   Start at  07:21:37
+   Duration  2.35s (transform 38%, import 36%, tests 19%, worker 7%)
 
-    Isolate  11 workers spawned · ~111ms startup each (spawn + environment, per file)
-             at least ~1.11s faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  13 workers spawned · ~111ms startup each (spawn + environment, per file)
+             at least ~1.33s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -102,7 +102,7 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 Comando: `npm run build`
 
 Esito: OK (exit 0)
-Durata: 7s
+Durata: 6s
 
 Ultime 60 righe di output:
 ```
@@ -157,7 +157,7 @@ Ultime 60 righe di output:
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.28s
+✓ built in 1.14s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -171,6 +171,8 @@ Ultime 60 righe di output:
 ## Git log (ultimi 20 commit)
 
 ```
+46e0718 Fase 1.1: invariante output su tutte le mutazioni, separatori, test dei requisiti
+a70acf7 Fase 1.1: correzioni intenzionali al dominio ETL
 1c7a964 Fase 1: dominio ETL puro (src/etl-core/)
 0098c85 sync-snapshot: stampa sempre come ultima riga il link INDEX.md fissato al commit
 2f7d695 Aggiunge report di validazione: merge fix Safari e allineamento main
@@ -189,15 +191,13 @@ e5bdd1a Changes
 6012a8a Changes
 60544d5 Corretta griglia canvas chiara
 a3687c3 Changes
-b3fe2f3 Changes
-89ff865 Changes
 ```
 
 ## Branch
 
 ```
-* feat/etl-core
-  main
+  feat/etl-core
+* main
   wip/stato-2026-09-28
   remotes/origin/HEAD -> origin/main
   remotes/origin/feat/etl-core
@@ -211,36 +211,11 @@ b3fe2f3 Changes
 
 Ultimo commit:
 ```
-1c7a964 Fase 1: dominio ETL puro (src/etl-core/)
+46e0718 Fase 1.1: invariante output su tutte le mutazioni, separatori, test dei requisiti
 ```
 
 Diff stat rispetto a main:
 ```
- scripts/generate-snapshot.mjs                      |   1 +
- .../VALIDATION_REPORT_2026-09-28T21-06-48Z.md      | 100 +++
- src/etl-core/NOTE_DIVERGENZE.md                    |  59 ++
- src/etl-core/README.md                             | 161 +++++
- src/etl-core/__tests__/csv.test.ts                 |  65 ++
- src/etl-core/__tests__/expressions.test.ts         | 101 +++
- src/etl-core/__tests__/helpers.ts                  |  52 ++
- src/etl-core/__tests__/mutations.test.ts           | 221 ++++++
- src/etl-core/__tests__/params.test.ts              | 123 ++++
- src/etl-core/__tests__/relations.test.ts           | 163 +++++
- src/etl-core/__tests__/schema.test.ts              |  73 ++
- src/etl-core/__tests__/state.test.ts               | 105 +++
- src/etl-core/catalog/icons.ts                      |  42 ++
- src/etl-core/catalog/operations.ts                 |  77 +++
- src/etl-core/catalog/params.ts                     | 768 +++++++++++++++++++++
- src/etl-core/data/csv.ts                           |  81 +++
- src/etl-core/index.ts                              |  98 +++
- src/etl-core/logic/expressions.ts                  | 171 +++++
- src/etl-core/model/graph.ts                        |  97 +++
- src/etl-core/model/types.ts                        | 227 ++++++
- src/etl-core/rules/mutations.ts                    | 473 +++++++++++++
- src/etl-core/rules/relations.ts                    | 115 +++
- src/etl-core/rules/state.ts                        |  95 +++
- src/etl-core/schema/schema.ts                      |  36 +
- 24 files changed, 3504 insertions(+)
 ```
 
 ### `wip/stato-2026-09-28`

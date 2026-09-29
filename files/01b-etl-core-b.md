@@ -2,19 +2,660 @@
 
 File in questo blocco:
 
+- `src/etl-core/__tests__/params.test.ts`
+- `src/etl-core/__tests__/relations.test.ts`
+- `src/etl-core/__tests__/schema.test.ts`
+- `src/etl-core/__tests__/state.test.ts`
+- `src/etl-core/catalog/icons.ts`
+- `src/etl-core/catalog/operations.ts`
 - `src/etl-core/catalog/params.ts`
 - `src/etl-core/data/csv.ts`
 - `src/etl-core/index.ts`
 - `src/etl-core/logic/expressions.ts`
-- `src/etl-core/model/graph.ts`
-- `src/etl-core/model/types.ts`
-- `src/etl-core/rules/mutations.ts`
 
 ---
 
+### `src/etl-core/__tests__/params.test.ts`
+
+124 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import {
+  ensureKeys,
+  ensureMulti,
+  migrateFilterLogic,
+  hasEquiJoinCondition,
+  createValuesField,
+} from "../catalog/params";
+import type { FilterParams, JoinParams, MultiRow } from "../model/types";
+
+describe("migrazioni (scenario 9)", () => {
+  it("il selettore globale E/O del filtro diventa il connettore di ogni condizione", () => {
+    const par: FilterParams = {
+      logic: "O",
+      conditions: [
+        { column: "regione", op: "=", mode: "list", values: ["Nord"], text: "", sep: "," },
+        { column: "importo", op: ">", mode: "manual", values: [], text: "100", sep: "," },
+        { column: "stato", op: "=", mode: "list", values: ["Chiuso"], text: "", sep: "," },
+      ],
+    };
+    const migrated = migrateFilterLogic(par);
+    expect(migrated.logic).toBeUndefined();
+    expect(migrated.conditions[0]?.conn).toBeUndefined();
+    expect(migrated.conditions[1]?.conn).toBe("OR");
+    expect(migrated.conditions[2]?.conn).toBe("OR");
+  });
+
+  it("una condizione con conn gia impostato non viene sovrascritta dalla migrazione", () => {
+    const par: FilterParams = {
+      logic: "O",
+      conditions: [
+        { column: "a", op: "=", mode: "list", values: [], text: "", sep: "," },
+        { column: "b", op: "=", mode: "list", values: [], text: "", sep: ",", conn: "AND" },
+      ],
+    };
+    const migrated = migrateFilterLogic(par);
+    expect(migrated.conditions[1]?.conn).toBe("AND");
+  });
+
+  it("chiavi di join leftKey/rightKey diventano una lista `keys`", () => {
+    const par = { type: "inner", leftKey: "id", rightKey: "customer_id" } as unknown as JoinParams;
+    const keys = ensureKeys(par);
+    expect(keys).toEqual([
+      expect.objectContaining({
+        left: "id",
+        right: "customer_id",
+        op: "=",
+        lmode: "col",
+        rmode: "col",
+      }),
+    ]);
+  });
+
+  it("campi semplici (vecchio formato) diventano la prima voce della lista", () => {
+    const legacy = { column: "importo", decimals: "3" };
+    const migrated = ensureMulti("round", legacy);
+    const rows = migrated["items"] as MultiRow[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.["column"]).toBe("importo");
+    expect(rows[0]?.["decimals"]).toBe("3");
+  });
+
+  it("un testo (vecchio formato) viene migrato in una lista di valori", () => {
+    const legacy = { items: [{ column: "regione", find: "Nord, Centro" }] };
+    const migrated = ensureMulti("replaceVal", legacy);
+    const rows = migrated["items"] as MultiRow[];
+    const find = rows[0]?.["find"];
+    expect(find).toEqual({ mode: "list", values: ["Nord", "Centro"], text: "", sep: "," });
+  });
+
+  it("un valore `values` gia in forma di oggetto non viene toccato dalla migrazione", () => {
+    const already = createValuesField();
+    already.mode = "list";
+    already.values = ["A", "B"];
+    const legacy = { items: [{ column: "x", find: already }] };
+    const migrated = ensureMulti("replaceVal", legacy);
+    const rows = migrated["items"] as MultiRow[];
+    expect(rows[0]?.["find"]).toBe(already);
+  });
+
+  it("l'operatore mancante nelle condizioni di join diventa '='", () => {
+    const par: JoinParams = { type: "inner", keys: [{ left: "a", right: "b" }] };
+    const [key] = ensureKeys(par);
+    expect(key?.op).toBe("=");
+  });
+
+  it("lmode, rmode e rlist hanno valori predefiniti", () => {
+    const par: JoinParams = { type: "inner", keys: [{ left: "a", right: "b" }] };
+    const [key] = ensureKeys(par);
+    expect(key?.lmode).toBe("col");
+    expect(key?.rmode).toBe("col");
+    expect(key?.rlist).toEqual({ mode: "list", values: [], text: "", sep: "," });
+  });
+});
+
+describe("avviso di prestazioni sul Join (scenario 12): hasEquiJoinCondition", () => {
+  it("false (quindi l'avviso va mostrato) con sole disuguaglianze", () => {
+    const keys = ensureKeys({
+      type: "inner",
+      keys: [{ left: "a", right: "b", op: ">" }],
+    });
+    expect(hasEquiJoinCondition(keys)).toBe(false);
+  });
+
+  it("false (quindi l'avviso va mostrato) con uguaglianze colonna = valore", () => {
+    const keys = ensureKeys({
+      type: "inner",
+      keys: [{ left: "a", right: "", op: "=", lmode: "col", rmode: "val", rval: "Nord" }],
+    });
+    expect(hasEquiJoinCondition(keys)).toBe(false);
+  });
+
+  it("true (quindi l'avviso NON va mostrato) con almeno una condizione colonna = colonna", () => {
+    const keys = ensureKeys({
+      type: "inner",
+      keys: [
+        { left: "a", right: "", op: ">", lmode: "col", rmode: "val", rval: "10" },
+        { left: "id", right: "customer_id", op: "=" },
+      ],
+    });
+    expect(hasEquiJoinCondition(keys)).toBe(true);
+  });
+});
+```
+
+### `src/etl-core/__tests__/relations.test.ts`
+
+167 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import { dataset, op, buildGraph, testIdGenerator } from "./helpers";
+import { connect, enforceCapacity, refreshOutput, deleteStep } from "../rules/mutations";
+import { relation, boxCapacity } from "../rules/relations";
+import { cardById, outputOf, inputsOf } from "../model/graph";
+import type { Graph } from "../model/types";
+
+function expectOk(result: { ok: boolean }): asserts result is { ok: true; graph: Graph } {
+  expect(result.ok).toBe(true);
+}
+
+describe("connect: ciclo a distanza (scenario 1)", () => {
+  it("A -> box1 -> out1 -> box2 -> out2; collegare out2 a box1 e rifiutato per ciclo", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([dataset("A"), op("box1", ["filter"]), op("box2", ["filter"])]);
+
+    const r1 = connect(graph, "A", "box1", nextId);
+    expectOk(r1);
+    graph = refreshOutput(r1.graph, "box1", nextId);
+    const out1 = outputOf(graph, "box1");
+    expect(out1).not.toBeNull();
+
+    const r2 = connect(graph, out1 as string, "box2", nextId);
+    expectOk(r2);
+    graph = refreshOutput(r2.graph, "box2", nextId);
+    const out2 = outputOf(graph, "box2");
+    expect(out2).not.toBeNull();
+
+    const rejected = connect(graph, out2 as string, "box1", nextId);
+    expect(rejected.ok).toBe(false);
+    if (!rejected.ok) {
+      expect(rejected.reason).toBe(
+        "Un box non può agganciarsi a ciò che produce: sarebbe un ciclo infinito",
+      );
+    }
+  });
+});
+
+describe("boxCapacity e connect: capienza (scenario 2)", () => {
+  it("un join accetta 2 tabelle, join+union 3", () => {
+    const joinBox = op("joinBox", ["join"]);
+    const joinUnionBox = op("comboBox", ["join", "union"]);
+    expect(boxCapacity(joinBox)).toBe(2);
+    expect(boxCapacity(joinUnionBox)).toBe(3);
+  });
+
+  it("una terza tabella su un box con un solo join e rifiutata con la capienza reale", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([dataset("A"), dataset("B"), dataset("C"), op("box", ["join"])]);
+    const r1 = connect(graph, "A", "box", nextId);
+    expectOk(r1);
+    graph = r1.graph;
+    const r2 = connect(graph, "B", "box", nextId);
+    expectOk(r2);
+    graph = r2.graph;
+
+    const r3 = connect(graph, "C", "box", nextId);
+    expect(r3.ok).toBe(false);
+    if (!r3.ok) expect(r3.reason).toBe("Il box ha già tutte le sue 2 tabelle");
+  });
+
+  it("un box senza join (capacita 1) rifiuta la seconda tabella con il motivo generico", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([dataset("A"), dataset("B"), op("box", ["sort"])]);
+    const r1 = connect(graph, "A", "box", nextId);
+    expectOk(r1);
+    graph = r1.graph;
+    const r2 = connect(graph, "B", "box", nextId);
+    expect(r2.ok).toBe(false);
+    if (!r2.ok) expect(r2.reason).toBe("Il box accetta una sola tabella in ingresso");
+  });
+});
+
+describe("enforceCapacity: rimozione del join da un box con due ingressi (scenario 5)", () => {
+  it("resta il collegamento piu vecchio e l'output torna a capacity 1", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([dataset("A"), dataset("B"), op("box", ["join", "sort"])]);
+    const r1 = connect(graph, "A", "box", nextId);
+    expectOk(r1);
+    graph = r1.graph;
+    const r2 = connect(graph, "B", "box", nextId);
+    expectOk(r2);
+    graph = r2.graph;
+    graph = refreshOutput(graph, "box", nextId);
+
+    const outBefore = cardById(graph, outputOf(graph, "box") as string);
+    expect(outBefore?.capacity).toBe(2);
+    expect(outBefore?.filled).toBe(2);
+    expect(inputsOf(graph, "box").map((l) => l.from)).toEqual(["A", "B"]);
+
+    // Rimuove il passaggio 'join' (indice 0): il box resta con solo 'sort'.
+    graph = deleteStep(graph, "box", 0, nextId);
+
+    expect(cardById(graph, "box")?.components).toEqual(["sort"]);
+    expect(inputsOf(graph, "box").map((l) => l.from)).toEqual(["A"]);
+    const outAfter = cardById(graph, outputOf(graph, "box") as string);
+    expect(outAfter?.capacity).toBe(1);
+    expect(outAfter?.filled).toBe(1);
+  });
+
+  it("enforceCapacity da solo mantiene i collegamenti piu vecchi entro la nuova capienza", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([
+      dataset("A"),
+      dataset("B"),
+      dataset("C"),
+      op("box", ["join", "union"]),
+    ]);
+    for (const id of ["A", "B", "C"]) {
+      const r = connect(graph, id, "box", nextId);
+      expectOk(r);
+      graph = r.graph;
+    }
+    expect(inputsOf(graph, "box")).toHaveLength(3);
+    graph = {
+      ...graph,
+      cards: {
+        ...graph.cards,
+        box: { ...(cardById(graph, "box") as ReturnType<typeof op>), components: ["join"] },
+      },
+    };
+    graph = enforceCapacity(graph, "box");
+    expect(inputsOf(graph, "box").map((l) => l.from)).toEqual(["A", "B"]);
+  });
+});
+
+describe("relation: matrice (scenario 8)", () => {
+  it("lavorazione su lavorazione -> merge", () => {
+    const graph = buildGraph([op("a", ["filter"]), op("b", ["sort"])]);
+    expect(relation(graph, "a", "b").relation).toBe("merge");
+  });
+
+  it("dataset su lavorazione -> link (se valido)", () => {
+    const graph = buildGraph([dataset("d"), op("b", ["filter"])]);
+    expect(relation(graph, "d", "b").relation).toBe("link");
+  });
+
+  it("lavorazione su dataset -> link-reverse (se valido)", () => {
+    const graph = buildGraph([op("b", ["filter"]), dataset("d")]);
+    expect(relation(graph, "b", "d").relation).toBe("link-reverse");
+  });
+
+  it("box sul proprio output -> displace, motivo ciclo", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([dataset("A"), op("box", ["filter"])]);
+    const r1 = connect(graph, "A", "box", nextId);
+    expectOk(r1);
+    graph = refreshOutput(r1.graph, "box", nextId);
+    const outId = outputOf(graph, "box") as string;
+
+    const res = relation(graph, "box", outId);
+    expect(res.relation).toBe("displace");
+    expect(res.displaceReason).toBe(
+      "Un box non può agganciarsi a ciò che produce: sarebbe un ciclo infinito",
+    );
+  });
+
+  it("dataset su dataset -> displace, motivo 'serve una lavorazione'", () => {
+    const graph = buildGraph([dataset("x"), dataset("y")]);
+    const res = relation(graph, "x", "y");
+    expect(res.relation).toBe("displace");
+    expect(res.displaceReason).toBe(
+      "Due dataset non si fondono: serve una lavorazione, ad esempio un Join",
+    );
+  });
+});
+```
+
+### `src/etl-core/__tests__/schema.test.ts`
+
+75 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import { dataset, op, buildGraph, testIdGenerator } from "./helpers";
+import { connect, refreshOutput } from "../rules/mutations";
+import { outputOf } from "../model/graph";
+import { schemaOf } from "../schema/schema";
+import type { ColumnDef, DatasetParams } from "../model/types";
+
+const COLS_A: ColumnDef[] = [
+  { name: "id", type: "integer", values: ["1", "2"] },
+  { name: "regione", type: "stringa", values: ["Nord", "Sud"] },
+];
+const COLS_B: ColumnDef[] = [
+  { name: "id", type: "integer", values: ["1", "2"] },
+  { name: "importo", type: "numerico", values: ["10", "20"] },
+];
+
+function withColumns(id: string, columns: ColumnDef[]) {
+  const params0: DatasetParams = { columns };
+  return dataset(id, { params0: params0 as unknown as Record<string, unknown> });
+}
+
+describe("schemaOf (scenario 14)", () => {
+  it("le colonne di una sorgente vengono dai suoi parametri", () => {
+    const graph = buildGraph([withColumns("A", COLS_A)]);
+    expect(schemaOf(graph, "A")).toEqual(COLS_A);
+  });
+
+  it("attraverso due livelli di output (sorgente -> box1 -> box2)", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([withColumns("A", COLS_A), op("box1", ["sort"]), op("box2", ["limit"])]);
+    const c1 = connect(graph, "A", "box1", nextId);
+    if (!c1.ok) throw new Error("unexpected refusal");
+    graph = refreshOutput(c1.graph, "box1", nextId);
+    const out1 = outputOf(graph, "box1") as string;
+    const c2 = connect(graph, out1, "box2", nextId);
+    if (!c2.ok) throw new Error("unexpected refusal");
+    graph = refreshOutput(c2.graph, "box2", nextId);
+    const out2 = outputOf(graph, "box2") as string;
+
+    expect(schemaOf(graph, out1)).toEqual(COLS_A);
+    expect(schemaOf(graph, out2)).toEqual(COLS_A);
+  });
+
+  it("una lavorazione con due ingressi vede l'unione delle colonne, senza duplicati", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([
+      withColumns("A", COLS_A),
+      withColumns("B", COLS_B),
+      op("box", ["join"]),
+    ]);
+    const c1 = connect(graph, "A", "box", nextId);
+    if (!c1.ok) throw new Error("unexpected refusal");
+    graph = c1.graph;
+    const c2 = connect(graph, "B", "box", nextId);
+    if (!c2.ok) throw new Error("unexpected refusal");
+    graph = c2.graph;
+
+    const cols = schemaOf(graph, "box");
+    expect(cols?.map((c) => c.name)).toEqual(["id", "regione", "importo"]);
+  });
+
+  it("null se non determinabile (sorgente senza colonne caricate)", () => {
+    const graph = buildGraph([dataset("A")]);
+    expect(schemaOf(graph, "A")).toBeNull();
+  });
+
+  it("null oltre la profondita massima (guardia anti-ciclo)", () => {
+    // Non costruibile con un ciclo reale (il dominio lo impedisce): verifica
+    // solo che la guardia esista e non generi un loop infinito su un id
+    // inesistente passato con profondita elevata.
+    const graph = buildGraph([]);
+    expect(schemaOf(graph, "assente", 30)).toBeNull();
+  });
+});
+```
+
+### `src/etl-core/__tests__/state.test.ts`
+
+115 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import { stepMissing } from "../rules/state";
+import { defaultParams } from "../catalog/params";
+import type { ComponentId, FilterParams, JoinParams, Params } from "../model/types";
+
+/**
+ * Scenario 10: per ogni tipo di operazione, parametri vuoti -> incompleto;
+ * compilati -> completo. Copre i tre rami di stepMissing (filter, join,
+ * MULTI_DEFS, exportOp, campo semplice) su ogni tipo del catalogo.
+ */
+describe("stepMissing per ogni tipo di operazione (scenario 10)", () => {
+  it("filter: vuoto -> incompleto", () => {
+    const par = defaultParams("filter");
+    expect(stepMissing("filter", par)).toBe(true);
+  });
+
+  it("filter: con colonna e valore -> completo", () => {
+    const par: FilterParams = {
+      conditions: [
+        { column: "regione", op: "=", mode: "list", values: ["Nord"], text: "", sep: "," },
+      ],
+    };
+    expect(stepMissing("filter", par as unknown as Params)).toBe(false);
+  });
+
+  it("filter: operatore a più valori con solo un testo residuo -> incompleto", () => {
+    const par: FilterParams = {
+      conditions: [
+        { column: "regione", op: "=", mode: "list", values: [], text: "Nord", sep: "," },
+      ],
+    };
+    expect(stepMissing("filter", par as unknown as Params)).toBe(true);
+  });
+
+  it("filter: operatore 'e vuoto' non richiede valore -> completo con sola colonna", () => {
+    const par: FilterParams = {
+      conditions: [
+        { column: "regione", op: "è vuoto", mode: "list", values: [], text: "", sep: "," },
+      ],
+    };
+    expect(stepMissing("filter", par as unknown as Params)).toBe(false);
+  });
+
+  it("join: vuoto (chiavi senza colonne) -> incompleto", () => {
+    const par = defaultParams("join");
+    expect(stepMissing("join", par)).toBe(true);
+  });
+
+  it("join: con entrambe le colonne -> completo", () => {
+    const par: JoinParams = { type: "inner", keys: [{ left: "id", right: "customer_id" }] };
+    expect(stepMissing("join", par as unknown as Params)).toBe(false);
+  });
+
+  const multiTypes: ComponentId[] = [
+    "cast",
+    "rename",
+    "fillNa",
+    "replaceVal",
+    "round",
+    "scale",
+    "textClean",
+    "compute",
+    "selectCols",
+    "dedup",
+    "sort",
+    "aggregate",
+  ];
+  for (const type of multiTypes) {
+    it(`${type}: parametri predefiniti (riga vuota) -> incompleto`, () => {
+      const par = defaultParams(type);
+      expect(stepMissing(type, par)).toBe(true);
+    });
+  }
+
+  it("cast: colonna e tipo compilati -> completo", () => {
+    const par = { items: [{ column: "importo", to: "intero" }] } as unknown as ReturnType<
+      typeof defaultParams
+    >;
+    expect(stepMissing("cast", par)).toBe(false);
+  });
+
+  it("aggregate: chiave e misura compilate -> completo", () => {
+    const par = {
+      groupBy: [{ column: "regione" }],
+      measures: [{ column: "importo", fn: "somma", alias: "" }],
+    } as unknown as ReturnType<typeof defaultParams>;
+    expect(stepMissing("aggregate", par)).toBe(false);
+  });
+
+  it("exportOp: senza destinazione -> incompleto", () => {
+    const par = defaultParams("exportOp");
+    expect(stepMissing("exportOp", par)).toBe(true);
+  });
+
+  it("exportOp: con destinazione -> completo", () => {
+    const par = { format: "CSV", dest: "output.csv" };
+    expect(stepMissing("exportOp", par)).toBe(false);
+  });
+
+  const simpleRequiredTypes: ComponentId[] = ["sort", "limit", "sample"];
+  for (const type of simpleRequiredTypes) {
+    it(`${type}: parametri predefiniti -> completo o incompleto secondo i campi richiesti`, () => {
+      const par = defaultParams(type);
+      // sort ha 'column' (type:'column', sempre richiesto) vuoto -> incompleto;
+      // limit/sample hanno 'n'/'pct' con default non vuoto e req:true -> completo.
+      const expected = type === "sort";
+      expect(stepMissing(type, par)).toBe(expected);
+    });
+  }
+
+  it("undefined -> sempre incompleto", () => {
+    expect(stepMissing("filter", undefined)).toBe(true);
+  });
+});
+```
+
+### `src/etl-core/catalog/icons.ts`
+
+43 righe
+
+```ts
+/**
+ * Tracciati SVG (frammenti `<path>`/`<circle>`/...) come stringhe, senza
+ * JSX: chi disegna l'icona li avvolge nel proprio `<svg>` (prototipo:
+ * `svgTag`, righe 979-981 di docs/prototype/isa-fusion-prototype.html).
+ *
+ * Porting letterale di ICONS (righe 871-894).
+ */
+import type { ComponentId } from "../model/types";
+
+export const ICONS: Readonly<Record<ComponentId, string>> = {
+  filter: '<path d="M4 4h16l-6 8v6l-4 2v-8z"/>',
+  dataset:
+    '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
+  join: '<circle cx="9" cy="12" r="6.5"/><circle cx="15" cy="12" r="6.5"/>',
+  sort: '<path d="M8 9l4-4 4 4"/><path d="M16 15l-4 4-4-4"/>',
+  exportOp: '<path d="M14 3h7v7"/><path d="M21 3l-9 9"/><path d="M5 12v7a2 2 0 0 0 2 2h7"/>',
+  dedup:
+    '<rect x="4" y="4" width="11" height="11" rx="2"/><rect x="9" y="9" width="11" height="11" rx="2"/>',
+  limit:
+    '<line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="11" x2="20" y2="11"/><line x1="4" y1="16" x2="11" y2="16"/><path d="M15 14l3 3 3-3"/>',
+  sample:
+    '<circle cx="6" cy="6" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="18" cy="8" r="1.8"/><circle cx="8" cy="18" r="1.8"/><circle cx="17" cy="17" r="1.8"/>',
+  selectCols:
+    '<rect x="4" y="4" width="4" height="16" rx="1"/><rect x="10" y="4" width="4" height="16" rx="1"/><rect x="16" y="4" width="4" height="16" rx="1"/>',
+  compute: '<path d="M9 20c2 0 2-4 3-8s1-8 3-8"/><line x1="7" y1="11" x2="15" y2="11"/>',
+  cast: '<path d="M5 8h13l-3-3"/><path d="M19 16H6l3 3"/>',
+  round: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/>',
+  scale:
+    '<line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="9"/><line x1="18" y1="20" x2="18" y2="4"/>',
+  aggregate: '<path d="M18 5H7l6 7-6 7h11"/>',
+  textClean: '<path d="M5 6h14"/><path d="M12 6v13"/>',
+  replaceVal:
+    '<path d="M4 7h11"/><path d="M12 4l3 3-3 3"/><path d="M20 17H9"/><path d="M12 14l-3 3 3 3"/>',
+  splitCol: '<path d="M12 4v16"/><path d="M4 8l4 4-4 4"/><path d="M20 8l-4 4 4 4"/>',
+  rename: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+  fillNa: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8"/><path d="M12 8v8"/>',
+  union:
+    '<rect x="5" y="4" width="14" height="6" rx="1.5"/><rect x="5" y="14" width="14" height="6" rx="1.5"/>',
+};
+
+/** Icona per una "fetta" vuota di un output parziale (prototipo: `ICONS.empty`, riga 877). */
+export const EMPTY_SLOT_ICON = '<path d="M9 7l-5 5 5 5"/><path d="M15 7l5 5-5 5"/>';
+```
+
+### `src/etl-core/catalog/operations.ts`
+
+78 righe
+
+```ts
+/**
+ * Operazioni, etichette e sezioni della cassetta degli strumenti.
+ * Porting letterale di META (righe 895-904) e SECTIONS (righe 4657-4663)
+ * di docs/prototype/isa-fusion-prototype.html.
+ */
+import type { ComponentId, OperationType } from "../model/types";
+
+export interface OperationMeta {
+  readonly label: string;
+}
+
+/** Prototipo: META. Etichetta per ogni componente, incluso 'dataset'. */
+export const META: Readonly<Record<ComponentId, OperationMeta>> = {
+  filter: { label: "Filtra Righe" },
+  dataset: { label: "Vendite 2026" },
+  join: { label: "Unisci (Join)" },
+  sort: { label: "Ordina" },
+  exportOp: { label: "Esporta" },
+  dedup: { label: "Rimuovi duplicati" },
+  limit: { label: "Limita righe" },
+  sample: { label: "Campiona" },
+  selectCols: { label: "Seleziona colonne" },
+  compute: { label: "Calcola colonna" },
+  cast: { label: "Converti tipo" },
+  round: { label: "Arrotonda" },
+  scale: { label: "Normalizza" },
+  aggregate: { label: "Raggruppa" },
+  textClean: { label: "Pulisci testo" },
+  replaceVal: { label: "Sostituisci valori" },
+  splitCol: { label: "Dividi colonna" },
+  rename: { label: "Rinomina" },
+  fillNa: { label: "Riempi vuoti" },
+  union: { label: "Accoda (Union)" },
+};
+
+export interface SectionDef {
+  readonly id: string;
+  readonly name: string;
+  readonly items?: readonly OperationType[];
+}
+
+/** Prototipo: SECTIONS. La sezione "data" non ha `items`: contiene il dataset. */
+export const SECTIONS: readonly SectionDef[] = [
+  { id: "data", name: "Dataset" },
+  {
+    id: "rows",
+    name: "Filtra e ordina",
+    items: ["filter", "sort", "dedup", "limit", "sample", "selectCols"],
+  },
+  {
+    id: "xform",
+    name: "Trasforma dati",
+    items: [
+      "compute",
+      "cast",
+      "round",
+      "scale",
+      "aggregate",
+      "textClean",
+      "replaceVal",
+      "splitCol",
+      "rename",
+      "fillNa",
+    ],
+  },
+  { id: "merge", name: "Merge e union", items: ["join", "union"] },
+  { id: "out", name: "Output", items: ["exportOp"] },
+];
+
+/** Operazioni che richiedono più di una tabella in ingresso (prototipo: MERGE_OPS, riga 1611). */
+export const MERGE_OPS: readonly OperationType[] = ["join", "union"];
+
+/** Sezione che contiene un dato tipo di operazione, se esiste (derivato da SECTIONS). */
+export function sectionOf(type: ComponentId): SectionDef | null {
+  if (type === "dataset") return SECTIONS.find((s) => s.id === "data") ?? null;
+  return SECTIONS.find((s) => s.items?.includes(type)) ?? null;
+}
+```
+
 ### `src/etl-core/catalog/params.ts`
 
-769 righe
+828 righe
 
 ```ts
 /**
@@ -113,19 +754,49 @@ export function valuesText(v: string | ValuesField | undefined): string {
   return v.mode === "list" ? v.values.join(", ") : v.text;
 }
 
-/** Prototipo, righe 2534-2537. */
+/**
+ * Correzione intenzionale rispetto al prototipo (Fase 1.1, vedi
+ * src/etl-core/NOTE_DIVERGENZE.md — "una sola fonte di verità per i
+ * valori"): un campo a più valori conta solo `values`; `text` è solo un
+ * formato di transito verso `values` (vedi `normalizeValuesField`), non
+ * un secondo modo di essere "compilato". Nel prototipo (righe 2534-2537)
+ * `fieldFilled` considerava compilato anche un `text` non vuoto rimasto
+ * dalla modalità manuale.
+ */
 export function fieldFilled(
   f: { readonly type: string },
   v: string | ValuesField | undefined,
 ): boolean {
   if (f.type === "values") {
     const vf = v as ValuesField | undefined;
-    return !!(
-      vf &&
-      ((vf.values && vf.values.length > 0) || (vf.text && vf.text.trim().length > 0))
-    );
+    return !!(vf && vf.values && vf.values.length > 0);
   }
   return !!(v && String(v).trim().length > 0);
+}
+
+/**
+ * Correzione intenzionale rispetto al prototipo (Fase 1.1): migrazione
+ * unica per ogni campo a più valori, oggi sparsa dentro `pickerHtml`
+ * (prototipo, righe 2840-2848). Se `mode` è `'manual'` e `text` non è
+ * vuoto, `text` viene diviso su virgola, punto e virgola, a capo e sul
+ * separatore dichiarato `sep` (il prototipo usava solo `sep` qui, ma
+ * `splitTokens`, riga 2839, già accettava `,` `;` `|` e a capo), i token
+ * non vuoti vengono aggiunti a `values` senza duplicati, poi `text` diventa
+ * `''` e `mode` diventa `'list'`. Altrimenti il campo torna inalterato
+ * (mai mutato: restituisce sempre un nuovo oggetto solo se c'è qualcosa
+ * da migrare).
+ */
+export function normalizeValuesField(v: ValuesField): ValuesField {
+  if (v.mode === "list" || !v.text || !v.text.trim()) return v;
+  const seps = [",", ";", "\n", ...(v.sep ? [v.sep] : [])];
+  let parts = [v.text];
+  for (const sep of seps) parts = parts.flatMap((p) => p.split(sep));
+  const tokens = parts.map((t) => t.trim()).filter((t) => t.length > 0);
+  const values = v.values.slice();
+  for (const t of tokens) {
+    if (!values.includes(t)) values.push(t);
+  }
+  return { mode: "list", values, text: "", sep: v.sep };
 }
 
 function strField(row: MultiRow, key: string): string {
@@ -627,11 +1298,13 @@ export function ensureMulti(type: OperationType, par: Params): MultiParams {
         for (const f of list.fields) {
           if (f.type === "values") {
             const v = migrated[f.k];
-            if (v === undefined || typeof v !== "object") {
-              migrated[f.k] = v
-                ? { ...createValuesField(), mode: "manual", text: String(v) }
-                : createValuesField();
-            }
+            const asField: ValuesField =
+              v === undefined || typeof v !== "object"
+                ? v
+                  ? { ...createValuesField(), mode: "manual", text: String(v) }
+                  : createValuesField()
+                : v;
+            migrated[f.k] = normalizeValuesField(asField);
           }
         }
         return migrated;
@@ -641,14 +1314,24 @@ export function ensureMulti(type: OperationType, par: Params): MultiParams {
   return next;
 }
 
-/** Prototipo, righe 2604-2612. */
+/**
+ * Prototipo, righe 2604-2612. Correzione intenzionale rispetto al
+ * prototipo (Fase 1.1): produce direttamente il formato attuale — il
+ * filtro senza il campo `logic` (superato, mai stato lì fin dall'inizio
+ * in questo dominio: non ha senso generarlo solo per poi migrarlo), il
+ * join con le chiavi già passate da `ensureKeys` (op `'='`, `lmode`/
+ * `rmode` `'col'`, `rlist` vuota, `lval`/`rval` vuoti).
+ */
 export function defaultParams(type: ComponentId): Params {
   if (type === "filter") {
-    const params: FilterParams = { logic: "E", conditions: [newCondition()] };
+    const params: FilterParams = { conditions: [newCondition()] };
     return params as unknown as Params;
   }
   if (type === "join") {
-    const params: JoinParams = { type: "inner", keys: [{ left: "", right: "" }] };
+    const params: JoinParams = {
+      type: "inner",
+      keys: ensureKeys({ type: "inner", keys: [{ left: "", right: "" }] }),
+    };
     return params as unknown as Params;
   }
   if (type !== "dataset" && MULTI_DEFS[type]) return ensureMulti(type, {});
@@ -672,7 +1355,10 @@ export function ensureParamsFor(
   return next;
 }
 
-/** Prototipo, righe 3124-3140. */
+/**
+ * Prototipo, righe 3124-3140. Normalizza anche `rlist` (Fase 1.1: una
+ * sola fonte di verità per i valori, vedi `normalizeValuesField`).
+ */
 export function ensureKeys(par: JoinParams): JoinKey[] {
   let keys = par.keys;
   if (!keys) {
@@ -686,7 +1372,9 @@ export function ensureKeys(par: JoinParams): JoinKey[] {
     op: k.op ?? "=",
     lmode: k.lmode ?? "col",
     rmode: k.rmode ?? "col",
-    rlist: k.rlist && typeof k.rlist === "object" ? k.rlist : createValuesField(),
+    rlist: normalizeValuesField(
+      k.rlist && typeof k.rlist === "object" ? k.rlist : createValuesField(),
+    ),
     lval: k.lval ?? "",
     rval: k.rval ?? "",
   }));
@@ -694,17 +1382,35 @@ export function ensureKeys(par: JoinParams): JoinKey[] {
 
 /**
  * Prototipo, righe 3396-3400 (dentro `renderFilter`): il vecchio selettore
- * globale E/O diventa il connettore di ogni condizione dalla seconda in poi.
+ * globale E/O diventa il connettore di ogni condizione dalla seconda in
+ * poi. Applica anche (Fase 1.1, "una sola fonte di verità per i valori")
+ * la migrazione testo → valori di `normalizeValuesField` a ogni
+ * condizione, oggi sparsa dentro `pickerHtml` (prototipo, righe 2840-2848).
  */
 export function migrateFilterLogic(par: FilterParams): FilterParams {
-  const conditions = par.conditions ?? [newCondition()];
-  if (!par.logic) return { ...par, conditions };
-  const migrated = conditions.map((c, i) =>
-    i > 0 && !c.conn ? { ...c, conn: par.logic === "O" ? ("OR" as const) : ("AND" as const) } : c,
-  );
+  const baseConditions = par.conditions ?? [newCondition()];
+  const withLogic = par.logic
+    ? baseConditions.map((c, i) =>
+        i > 0 && !c.conn
+          ? { ...c, conn: par.logic === "O" ? ("OR" as const) : ("AND" as const) }
+          : c,
+      )
+    : baseConditions;
+  const conditions = withLogic.map((c) => {
+    const normalized = normalizeValuesField(c);
+    return normalized === c
+      ? c
+      : {
+          ...c,
+          mode: normalized.mode,
+          values: normalized.values,
+          text: normalized.text,
+          sep: normalized.sep,
+        };
+  });
   const { logic, ...rest } = par;
   void logic;
-  return { ...rest, conditions: migrated };
+  return { ...rest, conditions };
 }
 
 // --- Riassunti (prototipo, righe 3109-3121, 3143-3194) ----------------------
@@ -757,23 +1463,17 @@ export function summarizeKey(k: JoinKey): string | null {
 }
 
 /**
- * Prototipo, righe 3109-3121. `columnHasValues` risponde se la colonna ha un
- * dominio noto (equivalente a `columnDef(c.column).values.length > 0` nel
- * prototipo, dove lo schema attivo vive fuori dal dominio puro).
+ * Prototipo, righe 3109-3121. Correzione intenzionale rispetto al
+ * prototipo (Fase 1.1, vedi src/etl-core/NOTE_DIVERGENZE.md — "una sola
+ * fonte di verità per i valori"): per gli operatori in `MULTI_OPS` il
+ * riassunto usa sempre `values` (non `text`, e non serve più sapere se
+ * la colonna ha un dominio noto: il parametro `columnHasValues` del
+ * prototipo è stato rimosso). Per gli altri operatori usa `text`.
  */
-export function summarizeCond(
-  c: FilterCondition,
-  columnHasValues: (column: string) => boolean,
-): string | null {
+export function summarizeCond(c: FilterCondition): string | null {
   if (!c.column) return null;
   if (NO_VALUE_OPS.includes(c.op)) return `${c.column} ${c.op}`;
-  let v = "";
-  if (MULTI_OPS.includes(c.op)) {
-    const hasList = columnHasValues(c.column);
-    v = hasList && c.mode === "list" ? (c.values.length ? c.values.join(", ") : "") : c.text;
-  } else {
-    v = c.text;
-  }
+  const v = MULTI_OPS.includes(c.op) ? c.values.join(", ") : c.text;
   if (!v) return `${c.column} ${c.op} …`;
   return `${c.column} ${c.op} ${v}`;
 }
@@ -877,7 +1577,7 @@ export function parseCSV(text: string): ParsedCsv | null {
 
 ### `src/etl-core/index.ts`
 
-99 righe
+100 righe
 
 ```ts
 /**
@@ -922,6 +1622,7 @@ export {
   LOGIC_HELP,
   newCondition,
   createValuesField,
+  normalizeValuesField,
   valuesText,
   fieldFilled,
   ensureMulti,
@@ -1155,824 +1856,6 @@ export function groupedPreview<T extends Groupable>(
   });
   const topConns = runs.map((r) => list[r.s]?.conn);
   return leftAssoc(parts, topConns);
-}
-```
-
-### `src/etl-core/model/graph.ts`
-
-98 righe
-
-```ts
-/**
- * Creazione e lettura del grafo. Porting di frammenti sparsi nel
- * prototipo (l'oggetto globale `cards`/`linksArr` diventa un valore
- * immutabile `Graph`).
- */
-import type { Card, Graph, IdGenerator, Link, Params } from "./types";
-
-export function createGraph(): Graph {
-  return { cards: {}, links: [] };
-}
-
-/** Prototipo: `cards[uid]`. */
-export function cardById(graph: Graph, id: string): Card | undefined {
-  return graph.cards[id];
-}
-
-/** Prototipo, riga 1613: `linksArr.filter(l => l.to === boxUid)`. */
-export function inputsOf(graph: Graph, boxId: string): Link[] {
-  return graph.links.filter((l) => l.to === boxId);
-}
-
-/** Prototipo, riga 1614: `linksArr.find(l => l.from === boxUid)`. */
-export function outputOf(graph: Graph, boxId: string): string | null {
-  const l = graph.links.find((link) => link.from === boxId);
-  return l ? l.to : null;
-}
-
-// --- Helper immutabili per rules/mutations.ts --------------------------
-
-/** Nuovo grafo con una card creata o sostituita. */
-export function setCard(graph: Graph, card: Card): Graph {
-  return { cards: { ...graph.cards, [card.id]: card }, links: graph.links };
-}
-
-/** Nuovo grafo senza la card indicata. */
-export function removeCard(graph: Graph, id: string): Graph {
-  if (!(id in graph.cards)) return graph;
-  const cards = { ...graph.cards };
-  delete cards[id];
-  return { cards, links: graph.links };
-}
-
-/** Nuovo grafo senza le card indicate. */
-export function removeCards(graph: Graph, ids: ReadonlySet<string> | readonly string[]): Graph {
-  const idSet = ids instanceof Set ? ids : new Set(ids);
-  if (idSet.size === 0) return graph;
-  const cards = { ...graph.cards };
-  let changed = false;
-  for (const id of idSet) {
-    if (id in cards) {
-      delete cards[id];
-      changed = true;
-    }
-  }
-  return changed ? { cards, links: graph.links } : graph;
-}
-
-/** Nuovo grafo con un collegamento in più. */
-export function addLink(graph: Graph, link: Link): Graph {
-  return { cards: graph.cards, links: [...graph.links, link] };
-}
-
-/** Nuovo grafo con i soli collegamenti che soddisfano il predicato. */
-export function filterLinks(graph: Graph, predicate: (link: Link) => boolean): Graph {
-  const links = graph.links.filter(predicate);
-  return links.length === graph.links.length ? graph : { cards: graph.cards, links };
-}
-
-/** Nuovo grafo con i collegamenti sostituiti interamente. */
-export function withLinks(graph: Graph, links: readonly Link[]): Graph {
-  return { cards: graph.cards, links };
-}
-
-/** Nuova card con alcuni campi sostituiti (equivalente a `Object.assign({}, card, patch)`). */
-export function patchCard(card: Card, patch: Partial<Card>): Card {
-  return { ...card, ...patch };
-}
-
-/** Nuova card con un parametro di un componente sostituito. */
-export function withParamAt(card: Card, index: number, params: Params): Card {
-  const next = card.params.slice();
-  next[index] = params;
-  return { ...card, params: next };
-}
-
-/**
- * Generatore di id deterministico e iniettabile (prototipo: `uidCounter`,
- * `outCounter`, ... contatori globali con prefisso). Non richiesto in
- * produzione con questa firma esatta: qualunque `IdGenerator` va bene.
- */
-export function createSequentialIdGenerator(prefix = ""): IdGenerator {
-  let counter = 0;
-  return () => {
-    counter += 1;
-    return `${prefix}${counter}`;
-  };
-}
-```
-
-### `src/etl-core/model/types.ts`
-
-228 righe
-
-```ts
-/**
- * Modello dati del dominio ETL, porting del prototipo
- * docs/prototype/isa-fusion-prototype.html (oggetto `cards` + array
- * `linksArr`). Nessuna dipendenza da React/DOM: deve funzionare identico
- * in Node (rendering lato server di TanStack Start).
- */
-
-// --- Colonne e schema -------------------------------------------------------
-
-/** Tipo dedotto da parseCSV (data/csv.ts). Il prototipo usa questi 4 valori. */
-export type ColumnType = "integer" | "numerico" | "data" | "stringa";
-
-export interface ColumnDef {
-  readonly name: string;
-  readonly type: ColumnType;
-  /** Valori distinti noti (fino a 500), usati dai selettori di valore. */
-  readonly values: readonly string[];
-}
-
-// --- Operazioni ---------------------------------------------------------
-
-/** I 19 tipi di operazione del prototipo (catalog/operations.ts). */
-export type OperationType =
-  | "filter"
-  | "join"
-  | "sort"
-  | "exportOp"
-  | "dedup"
-  | "limit"
-  | "sample"
-  | "selectCols"
-  | "compute"
-  | "cast"
-  | "round"
-  | "scale"
-  | "aggregate"
-  | "textClean"
-  | "replaceVal"
-  | "splitCol"
-  | "rename"
-  | "fillNa"
-  | "union";
-
-/** Uno dei componenti di una card: un'operazione, oppure lo pseudo-tipo 'dataset'. */
-export type ComponentId = OperationType | "dataset";
-
-// --- Parametri per voci a campo semplice (PARAM_DEFS) -----------------------
-
-export type SimpleFieldType = "text" | "select" | "column";
-
-export interface SimpleFieldDef {
-  readonly k: string;
-  readonly label: string;
-  readonly type: SimpleFieldType;
-  readonly opts?: readonly string[];
-  readonly def: string;
-  readonly req?: boolean;
-}
-
-// --- Parametri a voci multiple (MULTI_DEFS) ---------------------------------
-
-/** Valori scelti dal dominio di una colonna: elenco a spunta oppure testo con separatore. */
-export interface ValuesField {
-  mode: "list" | "manual";
-  values: string[];
-  text: string;
-  sep: string;
-}
-
-export type MultiFieldType = "text" | "select" | "column" | "value" | "values";
-
-export interface MultiFieldDef {
-  readonly k: string;
-  readonly label: string;
-  readonly type: MultiFieldType;
-  readonly opts?: readonly string[];
-  /** Valore predefinito, oppure funzione che lo produce (per i campi `values`). */
-  readonly def: string | (() => ValuesField);
-  readonly req?: boolean;
-}
-
-/** Una riga di una lista MULTI_DEFS (es. una conversione, una chiave di raggruppamento). */
-export interface MultiRow {
-  [fieldKey: string]: string | ValuesField | undefined;
-}
-
-export interface MultiListDef {
-  readonly key: string;
-  readonly label: string;
-  readonly noun: string;
-  readonly add: string;
-  readonly fields: readonly MultiFieldDef[];
-  readonly sum: (row: MultiRow) => string | null;
-  readonly note?: string;
-}
-
-export interface MultiOperationDef {
-  readonly globals?: readonly SimpleFieldDef[];
-  readonly lists: readonly MultiListDef[];
-}
-
-/** Parametri di un'operazione a voci multiple: globali + una o più liste di righe. */
-export interface MultiParams {
-  [key: string]: string | MultiRow[] | undefined;
-}
-
-// --- Filtro -----------------------------------------------------------------
-
-export type LogicOp = "AND" | "OR" | "XOR" | "NAND" | "NOR" | "XNOR";
-
-export type FilterOp =
-  | "="
-  | "≠" // ≠
-  | "è uno di" // è uno di
-  | "non è uno di" // non è uno di
-  | "contiene"
-  | ">"
-  | "<"
-  | "≥" // ≥
-  | "≤" // ≤
-  | "è vuoto" // è vuoto
-  | "non è vuoto"; // non è vuoto
-
-/** Una condizione del filtro. Dalla seconda in poi porta il proprio connettore. */
-export interface FilterCondition {
-  column: string;
-  op: FilterOp;
-  mode: "list" | "manual";
-  values: string[];
-  text: string;
-  sep: string;
-  /** Connettore con la condizione precedente (assente sulla prima). */
-  conn?: LogicOp;
-  /** Identificativo di gruppo: condizioni contigue con lo stesso id si valutano insieme. */
-  g?: string;
-}
-
-export interface FilterParams {
-  /** Vecchio formato (selettore globale E/O): migrato da migrateFilterLogic. */
-  logic?: "E" | "O";
-  conditions: FilterCondition[];
-}
-
-// --- Join ---------------------------------------------------------------
-
-export type JoinType = "inner" | "left" | "right" | "full";
-export type JoinSideMode = "col" | "val";
-export type JoinRightMode = "col" | "val" | "list";
-export type JoinOp = "=" | "≠" | "<" | "≤" | ">" | "≥" | "è uno di" | "non è uno di";
-
-/** Una condizione di unione: lato sinistro e destro, ciascuno colonna, valore o (a destra) lista. */
-export interface JoinKey {
-  left: string;
-  right: string;
-  op?: JoinOp;
-  lmode?: JoinSideMode;
-  rmode?: JoinRightMode;
-  lval?: string;
-  rval?: string;
-  rlist?: ValuesField;
-  conn?: LogicOp;
-  g?: string;
-}
-
-export interface JoinParams {
-  type: JoinType;
-  keys: JoinKey[];
-  /** Vecchio formato a chiave singola: migrato da ensureKeys. */
-  leftKey?: string;
-  rightKey?: string;
-}
-
-// --- Dataset ------------------------------------------------------------
-
-export interface DatasetParams {
-  source?: string;
-  path?: string;
-  header?: string;
-  /** Presenti solo dopo il caricamento (parseCSV): rendono il dataset una sorgente di schema. */
-  columns?: ColumnDef[];
-}
-
-/** Parametri generici: ogni funzione che dispatcha su `type` restringe questo tipo. */
-export type Params = Record<string, unknown>;
-
-// --- Grafo ------------------------------------------------------------------
-
-export interface Card {
-  readonly id: string;
-  readonly kind: "dataset" | "op";
-  /**
-   * Tipi di operazione in ordine di esecuzione; per un dataset è sempre
-   * `['dataset']`. Un box combinato ha più di un componente.
-   */
-  readonly components: readonly ComponentId[];
-  /** Un oggetto parametri per componente, nello stesso ordine. */
-  readonly params: readonly Params[];
-  readonly name: string;
-  readonly x: number;
-  readonly y: number;
-  /** Postazione nella modalità Organizzato (fuori dall'ambito di questa fase). */
-  readonly slot?: number;
-  /** Solo per i dataset generati come output di un box. */
-  readonly isOutput?: boolean;
-  readonly capacity?: number;
-  readonly filled?: number;
-}
-
-export interface Link {
-  readonly from: string;
-  readonly to: string;
-}
-
-export interface Graph {
-  readonly cards: Readonly<Record<string, Card>>;
-  readonly links: readonly Link[];
-}
-
-/** Generatore di identificativi iniettabile, per test deterministici. */
-export type IdGenerator = () => string;
-
-/** Funzione di posizionamento per i nodi generati dal dominio (output, nodi sganciati, ...). */
-export type PositionFn = (graph: Graph, anchorId: string) => { x: number; y: number };
-
-/** Esito di un'operazione che può essere rifiutata con un motivo testuale. */
-export type OperationResult =
-  { readonly ok: true; readonly graph: Graph } | { readonly ok: false; readonly reason: string };
-```
-
-### `src/etl-core/rules/mutations.ts`
-
-474 righe
-
-```ts
-/**
- * Operazioni sul grafo. Porting delle righe 1730-1957, 2137-2248,
- * 4412-4453, 4480-4618 di docs/prototype/isa-fusion-prototype.html —
- * SENZA animazioni, DOM o geometria di posizionamento (Fase 2): ogni
- * funzione qui riceve un `Graph` e restituisce un nuovo `Graph`, mai
- * mutando l'input.
- *
- * Nota sui contatori di denominazione: il prototipo usa contatori globali
- * mutabili (`outCounter`, `comboCounter`) incrementati una volta per
- * sempre. Un dominio a funzioni pure non ha un posto per questo stato: il
- * numero mostrato ("Output N", "Combined Box N") viene invece derivato
- * dal grafo corrente (quanti output/box combinati esistono già). Nell'uso
- * normale (senza eliminare e poi ricreare più volte gli stessi nodi) il
- * risultato è identico al prototipo; è una conseguenza necessaria del
- * vincolo "funzione pura", non un comportamento diverso deliberato.
- */
-import { META } from "../catalog/operations";
-import { defaultParams } from "../catalog/params";
-import { boxCapacity, linkRefusal } from "./relations";
-import {
-  addLink,
-  cardById,
-  filterLinks,
-  inputsOf,
-  outputOf,
-  patchCard,
-  removeCard,
-  removeCards,
-  setCard,
-} from "../model/graph";
-import type {
-  Card,
-  ComponentId,
-  Graph,
-  IdGenerator,
-  Link,
-  OperationResult,
-  Params,
-  PositionFn,
-} from "../model/types";
-
-/** Prototipo, riga 1745 (uso in `spawnOutput`): scostamento semplice, senza evitare sovrapposizioni. */
-export const defaultPositionFn: PositionFn = (graph, anchorId) => {
-  const anchor = cardById(graph, anchorId);
-  if (!anchor) return { x: 0, y: 0 };
-  return { x: anchor.x + 200, y: anchor.y };
-};
-
-function countOutputs(graph: Graph): number {
-  return Object.values(graph.cards).filter((c) => c.isOutput).length;
-}
-
-function countCombinedBoxes(graph: Graph): number {
-  return Object.values(graph.cards).filter((c) => c.kind === "op" && c.components.length > 1)
-    .length;
-}
-
-function ensureCardParams(card: Card): Params[] {
-  const next = card.params.slice();
-  while (next.length < card.components.length) {
-    next.push(defaultParams(card.components[next.length] as ComponentId));
-  }
-  return next;
-}
-
-/**
- * Prototipo, righe 1616-1635 (`renderOutputIcon`): qui solo la parte di
- * dominio (capacità/riempimento); il disegno delle "fette" è Fase 2.
- */
-export function isPartialOutput(card: Card): boolean {
-  return card.capacity !== undefined && card.capacity > 1 && (card.filled ?? 0) < card.capacity;
-}
-
-/**
- * Prototipo, righe 1875-1885 (`connect`) UNIFICATA con `linkRefusal`
- * (righe 1901-1915): qui `connect` è l'unico punto d'ingresso e rifiuta
- * cicli, duplicati, capienza superata e output non ancora completo — nel
- * prototipo il controllo dei cicli viveva solo in `linkRefusal`, invocata
- * dall'interazione UI prima di chiamare `connect`; qui le due
- * responsabilità sono unite perché la funzione pura è l'unica autorità
- * sulla validità di un collegamento.
- */
-export function connect(graph: Graph, sourceId: string, targetId: string): OperationResult {
-  const box = cardById(graph, targetId);
-  if (!box) return { ok: false, reason: "Il box di destinazione non esiste" };
-  const reason = linkRefusal(graph, sourceId, targetId);
-  if (reason) return { ok: false, reason };
-  return { ok: true, graph: addLink(graph, { from: sourceId, to: targetId }) };
-}
-
-/**
- * Prototipo, righe 1730-1772 (`spawnOutput`), senza l'animazione di
- * espulsione. Se il box ha già un output lo restituisce senza crearne un
- * altro. Restituisce `null` se il box non esiste.
- */
-export function spawnOutput(
-  graph: Graph,
-  boxId: string,
-  nextId: IdGenerator,
-  positionFn: PositionFn = defaultPositionFn,
-): { graph: Graph; outputId: string } | null {
-  const existing = outputOf(graph, boxId);
-  if (existing) return { graph, outputId: existing };
-  const box = cardById(graph, boxId);
-  if (!box) return null;
-  const outputId = nextId();
-  const pos = positionFn(graph, boxId);
-  const outputCard: Card = {
-    id: outputId,
-    kind: "dataset",
-    isOutput: true,
-    components: ["dataset"],
-    params: [defaultParams("dataset")],
-    name: `Output ${countOutputs(graph) + 1}`,
-    x: pos.x,
-    y: pos.y,
-  };
-  const withCard = setCard(graph, outputCard);
-  const withLink = addLink(withCard, { from: boxId, to: outputId });
-  return { graph: withLink, outputId };
-}
-
-/**
- * Prototipo, righe 1659-1672 (`refreshOutput`): crea l'output se manca e
- * aggiorna `capacity`/`filled`. Non fa nulla se il box non ha ingressi
- * (prototipo, riga 1663: `if (n === 0) return;`).
- */
-export function refreshOutput(
-  graph: Graph,
-  boxId: string,
-  nextId: IdGenerator,
-  positionFn: PositionFn = defaultPositionFn,
-): Graph {
-  const box = cardById(graph, boxId);
-  if (!box || box.kind !== "op") return graph;
-  const n = inputsOf(graph, boxId).length;
-  if (n === 0) return graph;
-  const spawned = spawnOutput(graph, boxId, nextId, positionFn);
-  if (!spawned) return graph;
-  const out = cardById(spawned.graph, spawned.outputId);
-  if (!out) return spawned.graph;
-  const capacity = boxCapacity(box);
-  const filled = Math.min(n, capacity);
-  return setCard(spawned.graph, patchCard(out, { capacity, filled }));
-}
-
-/**
- * Prototipo, righe 4414-4430 (`pruneOutputs`): un output senza produttore,
- * o il cui produttore ha perso tutti i suoi ingressi, non ha ragione di
- * esistere. A cascata.
- */
-export function pruneOutputs(graph: Graph): Graph {
-  let current = graph;
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const id of Object.keys(current.cards)) {
-      const c = current.cards[id];
-      if (!c?.isOutput) continue;
-      const prod = current.links.find((l) => l.to === id);
-      const alive =
-        !!prod && !!current.cards[prod.from] && current.links.some((l) => l.to === prod.from);
-      if (!alive) {
-        current = removeCard(current, id);
-        current = filterLinks(current, (l) => l.from !== id && l.to !== id);
-        changed = true;
-      }
-    }
-  }
-  return current;
-}
-
-/**
- * Prototipo, righe 1638-1648 (`enforceCapacity`): se un box perde
- * capienza (es. ha perso un join), gli ingressi in eccesso vengono
- * rimossi — restano i collegamenti più vecchi.
- */
-export function enforceCapacity(graph: Graph, boxId: string): Graph {
-  const box = cardById(graph, boxId);
-  if (!box || box.kind !== "op") return graph;
-  const cap = boxCapacity(box);
-  const ins = inputsOf(graph, boxId);
-  let next = graph;
-  if (ins.length > cap) {
-    const surplus = new Set(ins.slice(cap));
-    next = filterLinks(next, (l) => !surplus.has(l));
-  }
-  return pruneOutputs(next);
-}
-
-/**
- * Prototipo, righe 4432-4453 (`nodesRemovedBy`): quali nodi sparirebbero
- * davvero eliminando `ids` — il nodo stesso più gli output che restano
- * senza produttore vivo, a cascata.
- */
-export function nodesRemovedBy(graph: Graph, uidOrIds: string | readonly string[]): Set<string> {
-  const ids = Array.isArray(uidOrIds) ? uidOrIds : [uidOrIds];
-  let cards: Record<string, Card> = { ...graph.cards };
-  for (const id of ids) delete cards[id];
-  let links = graph.links.filter((l) => !ids.includes(l.from) && !ids.includes(l.to));
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const id of Object.keys(cards)) {
-      if (!cards[id]?.isOutput) continue;
-      const prod = links.find((l) => l.to === id);
-      const alive = !!prod && !!cards[prod.from] && links.some((l) => l.to === prod.from);
-      if (!alive) {
-        const rest = { ...cards };
-        delete rest[id];
-        cards = rest;
-        links = links.filter((l) => l.from !== id && l.to !== id);
-        changed = true;
-      }
-    }
-  }
-  const removed = new Set<string>(ids);
-  for (const id of Object.keys(graph.cards)) {
-    if (!(id in cards)) removed.add(id);
-  }
-  return removed;
-}
-
-/**
- * Prototipo, righe 4480-4506 (`commitDelete`), solo la parte di dominio
- * (senza l'animazione di rientro degli output): rimuove i nodi
- * effettivamente cancellati da `nodesRemovedBy` e i loro collegamenti.
- */
-export function deleteNodes(graph: Graph, uidOrIds: string | readonly string[]): Graph {
-  const removed = nodesRemovedBy(graph, uidOrIds);
-  const withoutCards = removeCards(graph, removed);
-  return filterLinks(withoutCards, (l) => !removed.has(l.from) && !removed.has(l.to));
-}
-
-/**
- * Prototipo, righe 4565-4570 (`deleteLink`): rimuove un collegamento e
- * poi gli output che ne dipendevano.
- */
-export function deleteLink(graph: Graph, link: Link): Graph {
-  const next = filterLinks(graph, (l) => !(l.from === link.from && l.to === link.to));
-  return pruneOutputs(next);
-}
-
-/**
- * Prototipo, righe 1774-1840 (`performMerge`), senza animazioni/DOM.
- * Fonde `draggedId` dentro `targetId` (entrambi lavorazioni): unisce
- * `components`/`params`, rimappa i collegamenti, rimuove auto-anelli e
- * duplicati, e aggiorna l'eventuale output del box risultante.
- */
-export function mergeBoxes(
-  graph: Graph,
-  draggedId: string,
-  targetId: string,
-  nextId: IdGenerator,
-): OperationResult {
-  const dragged = cardById(graph, draggedId);
-  const target = cardById(graph, targetId);
-  if (!dragged || !target || dragged.kind !== "op" || target.kind !== "op") {
-    return { ok: false, reason: "La fusione richiede due lavorazioni" };
-  }
-  const draggedParams = ensureCardParams(dragged);
-  const targetParams = ensureCardParams(target);
-  const merged = [...target.components, ...dragged.components];
-  const mergedParams = [...targetParams, ...draggedParams];
-
-  const wasCombined = target.components.length > 1;
-  const combinedCount = countCombinedBoxes(graph) + 1;
-  const name = wasCombined
-    ? target.name
-    : combinedCount === 1
-      ? "Combined Box"
-      : `Combined Box ${combinedCount}`;
-
-  let links: Link[] = graph.links.map((l) => {
-    let { from, to } = l;
-    if (to === draggedId) to = targetId;
-    if (from === draggedId) from = targetId;
-    return { from, to };
-  });
-  links = links.filter((l) => l.from !== l.to);
-  const produced = new Set(links.filter((l) => l.from === targetId).map((l) => l.to));
-  links = links.filter((l) => !(l.to === targetId && produced.has(l.from)));
-  links = links.filter(
-    (l, i, arr) => arr.findIndex((o) => o.from === l.from && o.to === l.to) === i,
-  );
-
-  const mergedCard: Card = { ...target, components: merged, params: mergedParams, name };
-  let next: Graph = { cards: { ...graph.cards }, links };
-  next = setCard(next, mergedCard);
-  next = removeCard(next, draggedId);
-
-  if (inputsOf(next, targetId).length > 0) {
-    next = refreshOutput(next, targetId, nextId);
-  }
-  return { ok: true, graph: next };
-}
-
-// --- Inserimento su un collegamento esistente (prototipo, righe 1846-1873) ---
-
-/** Prototipo, righe 1846-1852: solo su un collegamento dataset → lavorazione, con una lavorazione priva di collegamenti. */
-export function insertable(graph: Graph, link: Link, nodeId: string): boolean {
-  if (link.from === nodeId || link.to === nodeId) return false;
-  const a = cardById(graph, link.from);
-  const b = cardById(graph, link.to);
-  if (!a || !b || a.kind !== "dataset" || b.kind !== "op") return false;
-  return !graph.links.some((l) => l.from === nodeId || l.to === nodeId);
-}
-
-/**
- * Prototipo, righe 1853-1873 (`insertOnLink`), senza posizionamento
- * geometrico (Fase 2) né lo scioglimento hint testuale (UI). Restituisce
- * `null` se l'inserimento non è consentito (vedi `insertable`).
- */
-export function insertOnLink(
-  graph: Graph,
-  link: Link,
-  nodeId: string,
-  nextId: IdGenerator,
-  positionFn: PositionFn = defaultPositionFn,
-): Graph | null {
-  if (!insertable(graph, link, nodeId)) return null;
-  let next = filterLinks(graph, (l) => !(l.from === link.from && l.to === link.to));
-  next = addLink(next, { from: link.from, to: nodeId });
-  const spawned = spawnOutput(next, nodeId, nextId, positionFn);
-  if (spawned) {
-    next = addLink(spawned.graph, { from: spawned.outputId, to: link.to });
-  }
-  next = refreshOutput(next, nodeId, nextId, positionFn);
-  next = refreshOutput(next, link.to, nextId, positionFn);
-  return next;
-}
-
-// --- Passaggi di un box combinato (prototipo, righe 2137-2248) --------------
-
-/**
- * Prototipo, righe 2137-2203 (`detachStep`), senza animazioni/DOM/
- * posizionamento geometrico: sgancia il passaggio a `index` dal box
- * `boxId` e lo trasforma in una card autonoma. Restituisce `null` se il
- * box non è combinato (meno di 2 componenti).
- */
-export function detachStep(
-  graph: Graph,
-  boxId: string,
-  index: number,
-  nextId: IdGenerator,
-  positionFn: PositionFn = defaultPositionFn,
-): { graph: Graph; detachedId: string } | null {
-  const box = cardById(graph, boxId);
-  if (!box || box.kind !== "op" || box.components.length < 2) return null;
-  const compId = box.components[index];
-  if (compId === undefined) return null;
-  const params = ensureCardParams(box);
-  const detachedParams = params[index] ?? defaultParams(compId);
-  const nextComponents = box.components.filter((_, i) => i !== index);
-  const nextParams = params.filter((_, i) => i !== index);
-  const stillCombined = nextComponents.length > 1;
-
-  const updatedBox: Card = {
-    ...box,
-    components: nextComponents,
-    params: nextParams,
-    name: stillCombined ? box.name : metaLabelOf(nextComponents[0] as ComponentId),
-  };
-
-  const detachedId = nextId();
-  const pos = positionFn(graph, boxId);
-  const detachedCard: Card = {
-    id: detachedId,
-    kind: "op",
-    components: [compId],
-    params: [detachedParams],
-    name: metaLabelOf(compId),
-    x: pos.x,
-    y: pos.y,
-  };
-
-  let next = setCard(graph, updatedBox);
-  next = setCard(next, detachedCard);
-  next = enforceCapacity(next, boxId);
-  next = refreshOutput(next, boxId, nextId, positionFn);
-  return { graph: next, detachedId };
-}
-
-function metaLabelOf(component: ComponentId): string {
-  return META[component].label;
-}
-
-/**
- * Prototipo, righe 2205-2247 (`deleteStep`), senza animazioni/DOM.
- * Restituisce il grafo inalterato se il box non è combinato.
- */
-export function deleteStep(
-  graph: Graph,
-  boxId: string,
-  index: number,
-  nextId: IdGenerator,
-  positionFn: PositionFn = defaultPositionFn,
-): Graph {
-  const box = cardById(graph, boxId);
-  if (!box || box.kind !== "op" || box.components.length < 2) return graph;
-  const nextComponents = box.components.filter((_, i) => i !== index);
-  const params = ensureCardParams(box);
-  const nextParams = params.filter((_, i) => i !== index);
-  const stillCombined = nextComponents.length > 1;
-  const updatedBox: Card = {
-    ...box,
-    components: nextComponents,
-    params: nextParams,
-    name: stillCombined ? box.name : metaLabelOf(nextComponents[0] as ComponentId),
-  };
-  let next = setCard(graph, updatedBox);
-  next = enforceCapacity(next, boxId);
-  next = refreshOutput(next, boxId, nextId, positionFn);
-  return next;
-}
-
-/**
- * Prototipo, righe 2330-2338 (dentro il gestore di riordino): sposta il
- * passaggio a `fromIndex` in `toIndex`, spostando `components` e
- * `params` insieme.
- */
-export function reorderSteps(
-  graph: Graph,
-  boxId: string,
-  fromIndex: number,
-  toIndex: number,
-): Graph {
-  const box = cardById(graph, boxId);
-  if (!box) return graph;
-  const params = ensureCardParams(box);
-  const components = box.components.slice();
-  const [movedComponent] = components.splice(fromIndex, 1);
-  if (movedComponent === undefined) return graph;
-  components.splice(toIndex, 0, movedComponent);
-  const [movedParam] = params.splice(fromIndex, 1);
-  params.splice(toIndex, 0, movedParam ?? defaultParams(movedComponent));
-  return setCard(graph, { ...box, components, params });
-}
-
-// --- Duplicazione (prototipo, righe 4594-4618) ------------------------------
-
-/**
- * Prototipo, righe 4594-4618 (`duplicateSelection`): duplica i nodi
- * indicati senza collegamenti, escludendo gli output (che non hanno
- * senso senza il box che li produce). Restituisce gli id creati, nello
- * stesso ordine di `ids`.
- */
-export function duplicateNodes(
-  graph: Graph,
-  ids: readonly string[],
-  nextId: IdGenerator,
-  offset: { x: number; y: number } = { x: 52, y: 52 },
-): { graph: Graph; createdIds: string[] } {
-  let next = graph;
-  const createdIds: string[] = [];
-  for (const id of ids) {
-    const src = cardById(graph, id);
-    if (!src || src.isOutput) continue;
-    const newId = nextId();
-    const { slot, ...srcWithoutSlot } = src;
-    void slot;
-    const copy: Card = {
-      ...srcWithoutSlot,
-      id: newId,
-      name: `${src.name} copia`,
-      x: src.x + offset.x,
-      y: src.y + offset.y,
-    };
-    next = setCard(next, copy);
-    createdIds.push(newId);
-  }
-  return { graph: next, createdIds };
 }
 ```
 
