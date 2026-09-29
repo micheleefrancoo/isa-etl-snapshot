@@ -1,4 +1,4 @@
-# 05-app-pages.md
+# 05-app-pages-a.md
 
 File in questo blocco:
 
@@ -21,7 +21,6 @@ File in questo blocco:
 - `src/routes/trash.tsx`
 - `src/routes/users.tsx`
 - `src/server.ts`
-- `src/start.ts`
 
 ---
 
@@ -1035,12 +1034,12 @@ function DashboardModule() {
 
 ### `src/routes/solutions.$solutionId.etl.tsx`
 
-270 righe
+345 righe
 
 ```tsx
 import { createFileRoute } from "@tanstack/react-router";
 import { Check, Moon, Play, Redo2, SlidersHorizontal, Sun, Table2, Undo2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DataPreview } from "@/components/isa/etl/data-preview";
 import { Inspector } from "@/components/isa/etl/inspector";
 import { WorkflowCanvas } from "@/components/isa/etl/workflow-canvas";
@@ -1048,6 +1047,8 @@ import { DATASET_NAMES } from "@/lib/etl-catalog";
 import { pipelineOrder, useEtlWorkflow } from "@/lib/etl-workflow";
 import { useSolutions } from "@/lib/solutions-store";
 import { useTheme } from "@/lib/theme";
+import { EtlCanvas, prototypeScene } from "@/etl-canvas";
+import { usePersistentEtlStore } from "@/etl-store/react";
 
 export const Route = createFileRoute("/solutions/$solutionId/etl")({
   head: () => ({
@@ -1065,8 +1066,81 @@ export const Route = createFileRoute("/solutions/$solutionId/etl")({
       },
     ],
   }),
-  component: EtlWorkspace,
+  validateSearch: (search: Record<string, unknown>): { canvas?: "v2"; seed?: string } => {
+    const out: { canvas?: "v2"; seed?: string } = {};
+    if (search["canvas"] === "v2") out.canvas = "v2";
+    if (typeof search["seed"] === "string") out.seed = search["seed"];
+    return out;
+  },
+  component: EtlRoute,
 });
+
+/** Con `?canvas=v2` il nuovo canvas (Fase 4a); senza parametro resta quello vecchio. */
+function EtlRoute() {
+  const { canvas } = Route.useSearch();
+  return canvas === "v2" ? <EtlCanvasV2 /> : <EtlWorkspace />;
+}
+
+function EtlCanvasV2() {
+  const { solutionId } = Route.useParams();
+  const { seed } = Route.useSearch();
+  const { solutions } = useSolutions();
+  const { theme, toggle } = useTheme();
+  const isDark = theme === "dark";
+  const store = usePersistentEtlStore(solutionId);
+
+  // Solo in sviluppo: lo store è raggiungibile dalla console e dallo script delle schermate
+  // (scripts/visual-fase4.mjs). Assente in produzione.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    (window as unknown as { __etlStore?: typeof store }).__etlStore = store;
+    return () => {
+      delete (window as unknown as { __etlStore?: typeof store }).__etlStore;
+    };
+  }, [store]);
+
+  // Solo in sviluppo: scena iniziale del prototipo se il canvas è vuoto. In produzione `seed` è ignorato.
+  useEffect(() => {
+    if (!import.meta.env.DEV || seed !== "prototype") return;
+    if (Object.keys(store.getState().graph.cards).length === 0) {
+      store.replaceState(prototypeScene());
+    }
+  }, [store, seed]);
+
+  const solution = solutions.find((s) => s.id === solutionId);
+  if (!solution) return null;
+
+  return (
+    <div className="flex h-full min-h-[calc(100vh-8rem)] flex-col gap-3">
+      <div className="glass-panel flex flex-wrap items-center gap-2 rounded-3xl px-4 py-2.5">
+        <nav
+          aria-label="Breadcrumb"
+          className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
+        >
+          <span>isa</span>
+          <span>/</span>
+          <span className="truncate">{solution.name}</span>
+          <span>/</span>
+          <span className="text-foreground">ETL (canvas v2)</span>
+        </nav>
+        <button
+          type="button"
+          onClick={toggle}
+          role="switch"
+          aria-checked={isDark}
+          aria-label={isDark ? "Passa alla modalità chiara" : "Passa alla modalità scura"}
+          className="glass-chip ml-auto flex h-8 items-center gap-2 rounded-full px-3 text-[11px] text-muted-foreground transition hover:text-foreground"
+        >
+          {isDark ? <Moon className="size-3.5" /> : <Sun className="size-3.5" />}
+          {isDark ? "Scuro" : "Chiaro"}
+        </button>
+      </div>
+      <div className="relative flex min-h-[520px] min-w-0 flex-1 flex-col">
+        <EtlCanvas store={store} />
+      </div>
+    </div>
+  );
+}
 
 type RunState = "idle" | "running" | "succeeded";
 
@@ -1737,41 +1811,5 @@ export default {
     }
   },
 };
-```
-
-### `src/start.ts`
-
-30 righe
-
-```ts
-import { createStart, createCsrfMiddleware, createMiddleware } from "@tanstack/react-start";
-
-import { renderErrorPage } from "./lib/error-page";
-
-const errorMiddleware = createMiddleware().server(async ({ next }) => {
-  try {
-    return await next();
-  } catch (error) {
-    if (error != null && typeof error === "object" && "statusCode" in error) {
-      throw error;
-    }
-    console.error(error);
-    return new Response(renderErrorPage(), {
-      status: 500,
-      headers: { "content-type": "text/html; charset=utf-8" },
-    });
-  }
-});
-
-// Start installs this automatically when src/start.ts is absent; defining the
-// file opts out, so re-add it explicitly to keep server functions protected
-// from cross-site requests.
-const csrfMiddleware = createCsrfMiddleware({
-  filter: (ctx) => ctx.handlerType === "serverFn",
-});
-
-export const startInstance = createStart(() => ({
-  requestMiddleware: [errorMiddleware, csrfMiddleware],
-}));
 ```
 

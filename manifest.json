@@ -154,6 +154,37 @@
       ]
     },
     {
+      "name": "files/01e-etl-canvas-a.md",
+      "bytes": 55698,
+      "files": [
+        "src/etl-canvas/EtlCanvas.tsx",
+        "src/etl-canvas/Links.tsx",
+        "src/etl-canvas/Minimap.tsx",
+        "src/etl-canvas/Node.tsx",
+        "src/etl-canvas/README.md",
+        "src/etl-canvas/__tests__/helpers.ts",
+        "src/etl-canvas/__tests__/render.test.ts",
+        "src/etl-canvas/__tests__/ssr.test.tsx",
+        "src/etl-canvas/__tests__/tokens.test.ts",
+        "src/etl-canvas/__tests__/view.test.ts",
+        "src/etl-canvas/actions.ts",
+        "src/etl-canvas/canvas.css",
+        "src/etl-canvas/contrast.ts",
+        "src/etl-canvas/icons.tsx",
+        "src/etl-canvas/index.ts",
+        "src/etl-canvas/model.ts",
+        "src/etl-canvas/seed.ts"
+      ]
+    },
+    {
+      "name": "files/01e-etl-canvas-b.md",
+      "bytes": 9403,
+      "files": [
+        "src/etl-canvas/tokens.css",
+        "src/etl-canvas/view.ts"
+      ]
+    },
+    {
       "name": "files/02-isa-etl-a.md",
       "bytes": 52688,
       "files": [
@@ -294,8 +325,8 @@
       ]
     },
     {
-      "name": "files/05-app-pages.md",
-      "bytes": 57184,
+      "name": "files/05-app-pages-a.md",
+      "bytes": 59132,
       "files": [
         "src/routeTree.gen.ts",
         "src/router.tsx",
@@ -315,7 +346,13 @@
         "src/routes/templates.tsx",
         "src/routes/trash.tsx",
         "src/routes/users.tsx",
-        "src/server.ts",
+        "src/server.ts"
+      ]
+    },
+    {
+      "name": "files/05-app-pages-b.md",
+      "bytes": 1053,
+      "files": [
         "src/start.ts"
       ]
     },
@@ -327,8 +364,8 @@
       ]
     },
     {
-      "name": "files/08-scripts-config.md",
-      "bytes": 51464,
+      "name": "files/08-scripts-config-a.md",
+      "bytes": 49497,
       "files": [
         ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",
@@ -343,7 +380,14 @@
         "scripts/extract-golden.mjs",
         "scripts/generate-index.mjs",
         "scripts/generate-snapshot.mjs",
-        "scripts/sync-snapshot.sh",
+        "scripts/sync-snapshot.sh"
+      ]
+    },
+    {
+      "name": "files/08-scripts-config-b.md",
+      "bytes": 15471,
+      "files": [
+        "scripts/visual-fase4.mjs",
         "tsconfig.json",
         "vite.config.ts",
         "vitest.config.ts"
@@ -408,12 +452,104 @@
         "docs/inventory/INVENTARIO_2026-09-28T19-40-33Z.md",
         "docs/inventory/lovable-1e72955.diff"
       ]
+    },
+    {
+      "name": "files/12-docs-other.md",
+      "bytes": 25711,
+      "files": [
+        "docs/visual/fase4/console.txt",
+        "docs/visual/fase4/misure.json"
+      ]
     }
   ],
   "excluded": [
     {
       "file": ".claude/scheduled_tasks.lock",
       "reason": "out-of-scope-dir"
+    },
+    {
+      "file": "docs/visual/fase4/cavi-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/cavi-prototipo.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/cavi-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-combinato-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-combinato-prototipo.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-combinato-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-dataset-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-dataset-prototipo.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-dataset-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-lavorazione-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-lavorazione-prototipo.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-lavorazione-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-output-parziale-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-output-parziale-prototipo.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-output-parziale-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-output-pieno-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-output-pieno-prototipo.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/crop-output-pieno-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/prototipo.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/v2-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4/v2-scuro.png",
+      "reason": "binary"
     },
     {
       "file": "package-lock.json",
@@ -552,6 +688,33 @@
         "01d-etl-store-c.md"
       ]
     },
+    "01e-etl-canvas": {
+      "files": [
+        "src/etl-canvas/EtlCanvas.tsx",
+        "src/etl-canvas/Links.tsx",
+        "src/etl-canvas/Minimap.tsx",
+        "src/etl-canvas/Node.tsx",
+        "src/etl-canvas/README.md",
+        "src/etl-canvas/__tests__/helpers.ts",
+        "src/etl-canvas/__tests__/render.test.ts",
+        "src/etl-canvas/__tests__/ssr.test.tsx",
+        "src/etl-canvas/__tests__/tokens.test.ts",
+        "src/etl-canvas/__tests__/view.test.ts",
+        "src/etl-canvas/actions.ts",
+        "src/etl-canvas/canvas.css",
+        "src/etl-canvas/contrast.ts",
+        "src/etl-canvas/icons.tsx",
+        "src/etl-canvas/index.ts",
+        "src/etl-canvas/model.ts",
+        "src/etl-canvas/seed.ts",
+        "src/etl-canvas/tokens.css",
+        "src/etl-canvas/view.ts"
+      ],
+      "outFiles": [
+        "01e-etl-canvas-a.md",
+        "01e-etl-canvas-b.md"
+      ]
+    },
     "02-isa-etl": {
       "files": [
         "src/components/isa/etl/data-preview.tsx",
@@ -688,7 +851,8 @@
         "src/start.ts"
       ],
       "outFiles": [
-        "05-app-pages.md"
+        "05-app-pages-a.md",
+        "05-app-pages-b.md"
       ]
     },
     "06-styles": {
@@ -715,12 +879,14 @@
         "scripts/generate-index.mjs",
         "scripts/generate-snapshot.mjs",
         "scripts/sync-snapshot.sh",
+        "scripts/visual-fase4.mjs",
         "tsconfig.json",
         "vite.config.ts",
         "vitest.config.ts"
       ],
       "outFiles": [
-        "08-scripts-config.md"
+        "08-scripts-config-a.md",
+        "08-scripts-config-b.md"
       ]
     },
     "09-docs": {
@@ -755,6 +921,15 @@
       "outFiles": [
         "11-inventory.md"
       ]
+    },
+    "12-docs-other": {
+      "files": [
+        "docs/visual/fase4/console.txt",
+        "docs/visual/fase4/misure.json"
+      ],
+      "outFiles": [
+        "12-docs-other.md"
+      ]
     }
   },
   "reportFiles": [
@@ -768,8 +943,9 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T08-33-03Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T08-57-43Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T09-28-26Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T09-39-17Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T09-39-17Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T15-34-16Z.md"
   ],
-  "inScopeFileCount": 217,
-  "reportFileCount": 11
+  "inScopeFileCount": 239,
+  "reportFileCount": 12
 }

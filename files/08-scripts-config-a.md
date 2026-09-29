@@ -1,4 +1,4 @@
-# 08-scripts-config.md
+# 08-scripts-config-a.md
 
 File in questo blocco:
 
@@ -16,9 +16,6 @@ File in questo blocco:
 - `scripts/generate-index.mjs`
 - `scripts/generate-snapshot.mjs`
 - `scripts/sync-snapshot.sh`
-- `tsconfig.json`
-- `vite.config.ts`
-- `vitest.config.ts`
 
 ---
 
@@ -244,7 +241,7 @@ export default tseslint.config(
 
 ### `package.json`
 
-94 righe
+95 righe
 
 ```json
 {
@@ -265,6 +262,7 @@ export default tseslint.config(
     "rolldown": "1.2.1"
   },
   "dependencies": {
+    "@fontsource-variable/manrope": "^5.3.0",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -856,7 +854,7 @@ console.log(`INDEX.md written to ${outPath}`);
 
 ### `scripts/generate-snapshot.mjs`
 
-535 righe
+536 righe
 
 ```js
 #!/usr/bin/env node
@@ -1061,6 +1059,7 @@ function areaFor(rel) {
   if (rel.startsWith("src/etl-core/")) return "01b-etl-core";
   if (rel.startsWith("src/etl-layout/")) return "01c-etl-layout";
   if (rel.startsWith("src/etl-store/")) return "01d-etl-store";
+  if (rel.startsWith("src/etl-canvas/")) return "01e-etl-canvas";
   if (rel.startsWith("src/components/isa/etl/")) return "02-isa-etl";
   if (rel.startsWith("src/components/isa/") || rel.startsWith("src/components/ui/"))
     return "03-components";
@@ -1636,81 +1635,5 @@ echo "== Done =="
 echo "INDEX.md (branch $SNAPSHOT_BRANCH, moving target): https://raw.githubusercontent.com/$SNAPSHOT_REPO/$SNAPSHOT_BRANCH/INDEX.md"
 echo "INDEX.md (fissato al commit $FINAL_SHA di questo run) -- ultima riga, sempre stampata:"
 echo "https://raw.githubusercontent.com/$SNAPSHOT_REPO/$FINAL_SHA/INDEX.md"
-```
-
-### `tsconfig.json`
-
-31 righe
-
-```json
-{
-  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts", "eslint.config.js"],
-  "compilerOptions": {
-    "target": "ES2022",
-    "jsx": "react-jsx",
-    "module": "ESNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
-
-    "moduleResolution": "Bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": false,
-    "noEmit": true,
-
-    "skipLibCheck": true,
-    "strict": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": true,
-    "noImplicitOverride": true,
-    "noImplicitReturns": true,
-    "noPropertyAccessFromIndexSignature": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-    "noUncheckedSideEffectImports": true,
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  }
-}
-```
-
-### `vite.config.ts`
-
-16 righe
-
-```ts
-// @lovable.dev/vite-tanstack-config already includes the following — do NOT add them manually
-// or the app will break with duplicate plugins:
-//   - TanStack devtools (dev-only, first), tanstackStart, viteReact, tailwindcss, tsConfigPaths,
-//     nitro (build-only using cloudflare as a default target), VITE_* env injection, @ path alias,
-//     React/TanStack dedupe, error logger plugins, and sandbox detection (port/host/strictPort).
-// You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
-import { defineConfig } from "@lovable.dev/vite-tanstack-config";
-
-export default defineConfig({
-  tanstackStart: {
-    // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
-    // nitro/vite builds from this
-    server: { entry: "server" },
-  },
-});
-```
-
-### `vitest.config.ts`
-
-11 righe
-
-```ts
-import react from "@vitejs/plugin-react";
-import { defineConfig } from "vitest/config";
-import tsconfigPaths from "vite-tsconfig-paths";
-
-export default defineConfig({
-  plugins: [tsconfigPaths(), react()],
-  test: {
-    environment: "node",
-  },
-});
 ```
 
