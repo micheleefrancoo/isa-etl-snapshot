@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-09-29T09:05:22Z (UTC)
+Generato: 2026-09-29T09:29:13Z (UTC)
 
 ## Type check
 
@@ -87,10 +87,13 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
  RUN  v5.0.1 /workspaces/isa-glass-platform
 
 
- Test Files  16 passed (16)
-      Tests  210 passed (210)
-   Start at  09:05:43
-   Duration  34.38s (tests 97%, transform 1%, import 1%)
+ Test Files  20 passed (20)
+      Tests  275 passed (275)
+   Start at  09:29:34
+   Duration  35.21s (tests 96%, import 2%, transform 2%)
+
+    Isolate  20 workers spawned · ~119ms startup each (spawn + environment, per file)
+             at least ~2.27s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -99,7 +102,7 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 Comando: `npm run build`
 
 Esito: OK (exit 0)
-Durata: 6s
+Durata: 7s
 
 Ultime 60 righe di output:
 ```
@@ -135,7 +138,7 @@ Ultime 60 righe di output:
 .output/server/_libs/d3-format.mjs                                 10.56 kB │ gzip:   3.02 kB
 .output/server/_libs/tanstack__history.mjs                         12.09 kB │ gzip:   3.48 kB
 .output/server/_ssr/router-BP7XxGMH.mjs                            14.19 kB │ gzip:   3.57 kB
-.output/server/index.mjs                                           14.82 kB │ gzip:   4.32 kB
+.output/server/index.mjs                                           14.82 kB │ gzip:   4.31 kB
 .output/server/_libs/fast-equals.mjs                               15.91 kB │ gzip:   4.13 kB
 .output/server/_libs/h3+rou3+srvx.mjs                              17.30 kB │ gzip:   4.98 kB
 .output/server/_libs/react+tanstack__react-query.mjs               18.47 kB │ gzip:   4.82 kB
@@ -154,7 +157,7 @@ Ultime 60 righe di output:
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.15s
+✓ built in 1.08s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -168,6 +171,7 @@ Ultime 60 righe di output:
 ## Git log (ultimi 20 commit)
 
 ```
+c5696b6 Fase 3: stato dell'applicazione, cronologia e registro (src/etl-store/)
 951207c Report Fase 2.1: validazione ripetuta dopo npm ci pulito
 4ac5954 Report Fase 2.1: formattazione
 dca3b87 Fase 2.1: convergenza dei cavi e correzioni puntuali alla geometria
@@ -187,7 +191,6 @@ e6e4bfe Formattazione automatica, nessuna modifica funzionale
 3e40cd2 Fisso canvas con espansione
 c21caaa Changes
 3848fb4 Changes
-e7c251c Changes
 ```
 
 ## Branch
@@ -196,12 +199,14 @@ e7c251c Changes
   feat/etl-core
   feat/etl-layout
   feat/etl-layout-fix
+  feat/etl-store
 * main
   wip/stato-2026-09-28
   remotes/origin/HEAD -> origin/main
   remotes/origin/feat/etl-core
   remotes/origin/feat/etl-layout
   remotes/origin/feat/etl-layout-fix
+  remotes/origin/feat/etl-store
   remotes/origin/main
   remotes/origin/wip/stato-2026-09-28
 ```
@@ -235,6 +240,17 @@ Diff stat rispetto a main:
 Ultimo commit:
 ```
 951207c Report Fase 2.1: validazione ripetuta dopo npm ci pulito
+```
+
+Diff stat rispetto a main:
+```
+```
+
+### `feat/etl-store`
+
+Ultimo commit:
+```
+c5696b6 Fase 3: stato dell'applicazione, cronologia e registro (src/etl-store/)
 ```
 
 Diff stat rispetto a main:

@@ -294,7 +294,7 @@
     },
     {
       "name": "files/08-scripts-config.md",
-      "bytes": 51837,
+      "bytes": 51400,
       "files": [
         ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",
@@ -303,7 +303,6 @@
         ".prettierignore",
         ".prettierrc",
         ".vscode/settings.json",
-        "bunfig.toml",
         "components.json",
         "eslint.config.js",
         "package.json",
@@ -375,16 +374,45 @@
         "docs/inventory/INVENTARIO_2026-09-28T19-40-33Z.md",
         "docs/inventory/lovable-1e72955.diff"
       ]
+    },
+    {
+      "name": "files/13-misc-a.md",
+      "bytes": 56376,
+      "files": [
+        "src/etl-store/README.md",
+        "src/etl-store/__tests__/helpers.ts",
+        "src/etl-store/__tests__/persistence.test.ts",
+        "src/etl-store/__tests__/react.test.ts",
+        "src/etl-store/__tests__/reduce.test.ts"
+      ]
+    },
+    {
+      "name": "files/13-misc-b.md",
+      "bytes": 54433,
+      "files": [
+        "src/etl-store/__tests__/store.test.ts",
+        "src/etl-store/derived.ts",
+        "src/etl-store/index.ts",
+        "src/etl-store/persistence.ts",
+        "src/etl-store/react.ts",
+        "src/etl-store/reduce.ts",
+        "src/etl-store/serialize.ts",
+        "src/etl-store/state.ts"
+      ]
+    },
+    {
+      "name": "files/13-misc-c.md",
+      "bytes": 17680,
+      "files": [
+        "src/etl-store/store.ts",
+        "src/etl-store/types.ts"
+      ]
     }
   ],
   "excluded": [
     {
       "file": ".claude/scheduled_tasks.lock",
       "reason": "out-of-scope-dir"
-    },
-    {
-      "file": "bun.lock",
-      "reason": "lockfile"
     },
     {
       "file": "package-lock.json",
@@ -654,7 +682,6 @@
         ".prettierignore",
         ".prettierrc",
         ".vscode/settings.json",
-        "bunfig.toml",
         "components.json",
         "eslint.config.js",
         "package.json",
@@ -702,6 +729,30 @@
       "outFiles": [
         "11-inventory.md"
       ]
+    },
+    "13-misc": {
+      "files": [
+        "src/etl-store/README.md",
+        "src/etl-store/__tests__/helpers.ts",
+        "src/etl-store/__tests__/persistence.test.ts",
+        "src/etl-store/__tests__/react.test.ts",
+        "src/etl-store/__tests__/reduce.test.ts",
+        "src/etl-store/__tests__/store.test.ts",
+        "src/etl-store/derived.ts",
+        "src/etl-store/index.ts",
+        "src/etl-store/persistence.ts",
+        "src/etl-store/react.ts",
+        "src/etl-store/reduce.ts",
+        "src/etl-store/serialize.ts",
+        "src/etl-store/state.ts",
+        "src/etl-store/store.ts",
+        "src/etl-store/types.ts"
+      ],
+      "outFiles": [
+        "13-misc-a.md",
+        "13-misc-b.md",
+        "13-misc-c.md"
+      ]
     }
   },
   "reportFiles": [
@@ -713,8 +764,9 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-28T21-06-48Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T07-20-03Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T08-33-03Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T08-57-43Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T08-57-43Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T09-28-26Z.md"
   ],
-  "inScopeFileCount": 202,
-  "reportFileCount": 9
+  "inScopeFileCount": 216,
+  "reportFileCount": 10
 }

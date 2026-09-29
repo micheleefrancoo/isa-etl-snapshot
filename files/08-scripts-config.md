@@ -9,7 +9,6 @@ File in questo blocco:
 - `.prettierignore`
 - `.prettierrc`
 - `.vscode/settings.json`
-- `bunfig.toml`
 - `components.json`
 - `eslint.config.js`
 - `package.json`
@@ -165,20 +164,6 @@ routeTree.gen.ts
   "less.validate": false,
   "scss.validate": false
 }
-```
-
-### `bunfig.toml`
-
-8 righe
-
-```toml
-[install]
-saveTextLockfile = true
-# 24h supply-chain guard: skip package versions published less than a day ago.
-minimumReleaseAge = 86400
-# Each entry bypasses the 24h guard for one package — confirm with the user
-# before adding any.
-minimumReleaseAgeExcludes = ["@lovable.dev/vite-tanstack-config", "@lovable.dev/mcp-js", "@lovable.dev/email-js", "@lovable.dev/webhooks-js"]
 ```
 
 ### `components.json`
