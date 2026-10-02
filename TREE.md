@@ -53,11 +53,11 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `docs/visual/fase4b/v2-scuro-t0.png` — binary, 75478 B
 - `docs/visual/fase4b/v2-scuro-t250.png` — binary, 76615 B
 - `docs/visual/fase4b/v2-scuro-t500.png` — binary, 76978 B
-- `docs/visual/fase5/conferma-eliminazione.png` — binary, 127676 B
-- `docs/visual/fase5/riquadro-selezione.png` — binary, 100986 B
+- `docs/visual/fase5/conferma-eliminazione.png` — binary, 127616 B
+- `docs/visual/fase5/riquadro-selezione.png` — binary, 100996 B
 - `docs/visual/fase5/trascinamento-collegamento.png` — binary, 92713 B
 - `docs/visual/fase5/trascinamento-fusione.png` — binary, 94880 B
-- `docs/visual/fase5/trascinamento-porta.png` — binary, 98860 B
+- `docs/visual/fase5/trascinamento-porta.png` — binary, 98858 B
 - `docs/visual/temi/notte-chiaro-canvas.png` — binary, 71351 B
 - `docs/visual/temi/notte-chiaro-soluzioni.png` — binary, 312366 B
 - `docs/visual/temi/notte-scuro-canvas.png` — binary, 54177 B
@@ -79,7 +79,7 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `public/robots.txt` — 15 righe (160 B)
 - `roadmap.md` — 27 righe (1720 B)
 - `scripts/check-tokens.mjs` — 207 righe (7846 B)
-- `scripts/e2e-fase5.mjs` — 272 righe (10333 B)
+- `scripts/e2e-fase5.mjs` — 294 righe (11137 B)
 - `scripts/extract-golden.mjs` — 386 righe (13437 B)
 - `scripts/generate-index.mjs` — 114 righe (3872 B)
 - `scripts/generate-snapshot.mjs` — 528 righe (17668 B)
@@ -107,7 +107,7 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-29T17-13-50Z.md` — 93 righe (8498 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-29T19-51-32Z.md` — 41 righe (3859 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-10-02T12-35-11Z.md` — 275 righe (25910 B)
-- `src/canvas/.reports/VALIDATION_REPORT_2026-10-02T13-25-09Z.md` — 115 righe (8918 B)
+- `src/canvas/.reports/VALIDATION_REPORT_2026-10-02T13-25-09Z.md` — 120 righe (9803 B)
 - `src/canvas/FUNCTIONAL_CHECKS.md` — 75 righe (4054 B)
 - `src/canvas/README.md` — 143 righe (6702 B)
 - `src/canvas/__tests__/panelPositioning.test.ts` — 179 righe (5035 B)
@@ -196,14 +196,14 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `src/etl-canvas/Minimap.tsx` — 72 righe (2265 B)
 - `src/etl-canvas/NOTE_DIVERGENZE.md` — 70 righe (3387 B)
 - `src/etl-canvas/Node.tsx` — 57 righe (1858 B)
-- `src/etl-canvas/README.md` — 200 righe (17664 B)
+- `src/etl-canvas/README.md` — 200 righe (17958 B)
 - `src/etl-canvas/__tests__/drop.test.ts` — 84 righe (3964 B)
 - `src/etl-canvas/__tests__/engine.test.ts` — 354 righe (12327 B)
 - `src/etl-canvas/__tests__/fake-env.ts` — 57 righe (1312 B)
 - `src/etl-canvas/__tests__/flow.test.ts` — 163 righe (6029 B)
 - `src/etl-canvas/__tests__/gesture-render.test.ts` — 53 righe (2330 B)
 - `src/etl-canvas/__tests__/helpers.ts` — 26 righe (1008 B)
-- `src/etl-canvas/__tests__/interaction.test.ts` — 375 righe (15916 B)
+- `src/etl-canvas/__tests__/interaction.test.ts` — 428 righe (18088 B)
 - `src/etl-canvas/__tests__/keyboard.test.ts` — 171 righe (6926 B)
 - `src/etl-canvas/__tests__/loop.test.ts` — 165 righe (4397 B)
 - `src/etl-canvas/__tests__/no-reroute.test.ts` — 129 righe (4977 B)
@@ -219,8 +219,8 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `src/etl-canvas/engine.ts` — 335 righe (9816 B)
 - `src/etl-canvas/flow.ts` — 180 righe (6740 B)
 - `src/etl-canvas/icons.tsx` — 24 righe (710 B)
-- `src/etl-canvas/index.ts` — 21 righe (828 B)
-- `src/etl-canvas/interaction.ts` — 573 righe (20477 B)
+- `src/etl-canvas/index.ts` — 21 righe (812 B)
+- `src/etl-canvas/interaction.ts` — 593 righe (20934 B)
 - `src/etl-canvas/loop.ts` — 118 righe (3137 B)
 - `src/etl-canvas/model.ts` — 112 righe (3753 B)
 - `src/etl-canvas/motion.tsx` — 10 righe (357 B)
@@ -274,7 +274,7 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `src/etl-layout/__tests__/properties.test.ts` — 282 righe (10385 B)
 - `src/etl-layout/__tests__/unit.test.ts` — 317 righe (11177 B)
 - `src/etl-layout/autoLayout.ts` — 171 righe (6262 B)
-- `src/etl-layout/constants.ts` — 153 righe (6640 B)
+- `src/etl-layout/constants.ts` — 161 righe (6909 B)
 - `src/etl-layout/free.ts` — 265 righe (8532 B)
 - `src/etl-layout/hitTest.ts` — 85 righe (3029 B)
 - `src/etl-layout/index.ts` — 80 righe (1716 B)

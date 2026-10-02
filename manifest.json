@@ -96,7 +96,7 @@
     },
     {
       "name": "files/01c-etl-layout-c.md",
-      "bytes": 53939,
+      "bytes": 54208,
       "files": [
         "src/etl-layout/__tests__/unit.test.ts",
         "src/etl-layout/autoLayout.ts",
@@ -155,7 +155,7 @@
     },
     {
       "name": "files/01e-etl-canvas-a.md",
-      "bytes": 48013,
+      "bytes": 48307,
       "files": [
         "src/etl-canvas/EtlCanvas.tsx",
         "src/etl-canvas/Links.tsx",
@@ -168,7 +168,7 @@
     },
     {
       "name": "files/01e-etl-canvas-b.md",
-      "bytes": 56305,
+      "bytes": 58477,
       "files": [
         "src/etl-canvas/__tests__/engine.test.ts",
         "src/etl-canvas/__tests__/fake-env.ts",
@@ -199,7 +199,7 @@
     },
     {
       "name": "files/01e-etl-canvas-d.md",
-      "bytes": 53637,
+      "bytes": 54078,
       "files": [
         "src/etl-canvas/flow.ts",
         "src/etl-canvas/icons.tsx",
@@ -395,7 +395,7 @@
     },
     {
       "name": "files/08-scripts-config-a.md",
-      "bytes": 42658,
+      "bytes": 43462,
       "files": [
         ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",

@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-10-02T13:25:31Z (UTC)
+Generato: 2026-10-02T13:39:48Z (UTC)
 
 ## Type check
 
@@ -74,7 +74,7 @@ Ultime 60 righe di output:
 Comando: `npm test`
 
 Esito: OK (exit 0)
-Durata: 40s
+Durata: 41s
 
 Ultime 60 righe di output:
 ```
@@ -88,12 +88,12 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 
 
  Test Files  41 passed (41)
-      Tests  764 passed (764)
-   Start at  13:25:56
-   Duration  39.12s (tests 89%, import 6%, transform 4%, worker 1%)
+      Tests  768 passed (768)
+   Start at  13:40:13
+   Duration  39.88s (tests 89%, import 6%, transform 4%, worker 1%)
 
     Isolate  41 workers spawned · ~117ms startup each (spawn + environment, per file)
-             at least ~4.66s faster with isolate: false — reuses workers across files instead of one per file
+             at least ~4.67s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -102,7 +102,7 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 Comando: `npm run build`
 
 Esito: OK (exit 0)
-Durata: 7s
+Durata: 6s
 
 Ultime 60 righe di output:
 ```
@@ -113,7 +113,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/templates-BxgvM8qO.mjs                          0.61 kB │ gzip:   0.39 kB
 .output/server/_ssr/solutions._solutionId.dashboard-CujVFx5K.mjs    0.86 kB │ gzip:   0.47 kB
 .output/server/_ssr/solutions._solutionId.model-D5GqwrKQ.mjs        0.88 kB │ gzip:   0.47 kB
-.output/server/_ssr/solutions._solutionId.etl-DgHL2HDP.mjs          1.09 kB │ gzip:   0.58 kB
+.output/server/_ssr/solutions._solutionId.etl-s05v16lz.mjs          1.09 kB │ gzip:   0.58 kB
 .output/server/_libs/hookable.mjs                                   1.16 kB │ gzip:   0.51 kB
 .output/server/_ssr/start-RKGGYzjZ.mjs                              1.53 kB │ gzip:   0.70 kB
 .output/server/_runtime.mjs                                         1.61 kB │ gzip:   0.74 kB
@@ -122,7 +122,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/createCsrfMiddleware-B2To0gPJ.mjs               3.11 kB │ gzip:   1.01 kB
 .output/server/_libs/d3-path.mjs                                    3.25 kB │ gzip:   1.16 kB
 .output/server/_ssr/activity-C06WSQVD.mjs                           3.45 kB │ gzip:   0.97 kB
-.output/server/_tanstack-start-manifest_v-BWslIdIT.mjs              3.71 kB │ gzip:   0.87 kB
+.output/server/_tanstack-start-manifest_v-Dwc0LJWp.mjs              3.71 kB │ gzip:   0.86 kB
 .output/server/_ssr/solutions._solutionId.model-DN1m8FSz.mjs        4.05 kB │ gzip:   1.32 kB
 .output/server/_ssr/ssr.mjs                                         4.55 kB │ gzip:   1.92 kB
 .output/server/_libs/d3-interpolate.mjs                             5.02 kB │ gzip:   1.61 kB
@@ -135,11 +135,11 @@ Ultime 60 righe di output:
 .output/server/_libs/d3-color.mjs                                  10.38 kB │ gzip:   3.57 kB
 .output/server/_libs/d3-format.mjs                                 10.56 kB │ gzip:   3.02 kB
 .output/server/_libs/tanstack__history.mjs                         12.09 kB │ gzip:   3.48 kB
-.output/server/_ssr/router-Dja7wwpu.mjs                            14.47 kB │ gzip:   3.89 kB
+.output/server/_ssr/router-DvX5NTkY.mjs                            14.47 kB │ gzip:   3.90 kB
 .output/server/_ssr/theme-Dujx4GV7.mjs                             15.18 kB │ gzip:   6.06 kB
 .output/server/_libs/fast-equals.mjs                               15.91 kB │ gzip:   4.13 kB
 .output/server/_libs/h3-v2+rou3+srvx+unenv.mjs                     15.92 kB │ gzip:   4.39 kB
-.output/server/index.mjs                                           16.41 kB │ gzip:   4.69 kB
+.output/server/index.mjs                                           16.41 kB │ gzip:   4.70 kB
 .output/server/_libs/h3+rou3+srvx.mjs                              17.30 kB │ gzip:   4.98 kB
 .output/server/_libs/react+tanstack__react-query.mjs               18.47 kB │ gzip:   4.82 kB
 .output/server/_libs/decimal.js-light.mjs                          23.31 kB │ gzip:   6.89 kB
@@ -149,15 +149,15 @@ Ultime 60 righe di output:
 .output/server/_libs/lucide-react.mjs                              37.25 kB │ gzip:   7.17 kB
 .output/server/_libs/react-smooth.mjs                              37.83 kB │ gzip:   8.14 kB
 .output/server/_libs/tanstack__query-core.mjs                      49.84 kB │ gzip:  11.12 kB
-.output/server/_ssr/server-DhYdU0LE.mjs                            54.77 kB │ gzip:  14.39 kB
+.output/server/_ssr/server-Dg848Ebp.mjs                            54.77 kB │ gzip:  14.39 kB
 .output/server/_libs/d3-scale+[...].mjs                            58.22 kB │ gzip:  12.11 kB
 .output/server/_libs/@tanstack/router-core+[...].mjs              125.35 kB │ gzip:  26.53 kB
 .output/server/_libs/lodash.mjs                                   161.80 kB │ gzip:  29.45 kB
-.output/server/_ssr/solutions._solutionId.etl-CHnqCD5Y.mjs        359.71 kB │ gzip:  97.04 kB
+.output/server/_ssr/solutions._solutionId.etl-7PPycaSw.mjs        360.18 kB │ gzip:  97.14 kB
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.06s
+✓ built in 1.04s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -175,7 +175,7 @@ Colori, raggi e ombre letterali nei file controllati (scripts/check-tokens.mjs).
 Comando: `node scripts/check-tokens.mjs`
 
 Esito: OK (exit 0)
-Durata: 0s
+Durata: 1s
 
 Ultime 60 righe di output:
 ```
@@ -185,6 +185,8 @@ check-tokens: 0 violazioni nei file controllati; debito preesistente: 26 (6 ombr
 ## Git log (ultimi 20 commit)
 
 ```
+a2dd012 Clic su un cavo per eliminarlo (deleteLink), come nel prototipo
+199cdfe Soglia di trascinamento: DRAG_THRESHOLD_PX = 5 in etl-layout (prototipo, riga 1982)
 a4788a3 Fase 5: interazioni (trascinamento, fusione, collegamento, porte, selezione, tastiera)
 1ac7de4 Fase T: deroghe di contrasto allineate ai valori misurati (4,3153 e 2,1476), bidirezionali
 07a0a0e Fase T: sistema di temi (token a tre livelli, tema notte, accento derivato, contrasti garantiti)
@@ -203,8 +205,6 @@ c5696b6 Fase 3: stato dell'applicazione, cronologia e registro (src/etl-store/)
 dca3b87 Fase 2.1: convergenza dei cavi e correzioni puntuali alla geometria
 fad990a Fase 2: geometria del canvas in TypeScript puro (src/etl-layout/)
 b215503 etl-core: normalizeValuesField divide solo sul separatore registrato; esporta splitTokens
-46e0718 Fase 1.1: invariante output su tutte le mutazioni, separatori, test dei requisiti
-a70acf7 Fase 1.1: correzioni intenzionali al dominio ETL
 ```
 
 ## Branch
@@ -219,7 +219,9 @@ a70acf7 Fase 1.1: correzioni intenzionali al dominio ETL
   feat/etl-store
   feat/etl-store-fix
   feat/interactions
+  feat/link-click-delete
   feat/theme-system
+  fix/drag-threshold
 * main
   wip/stato-2026-09-28
   remotes/origin/HEAD -> origin/main
@@ -232,7 +234,9 @@ a70acf7 Fase 1.1: correzioni intenzionali al dominio ETL
   remotes/origin/feat/etl-store
   remotes/origin/feat/etl-store-fix
   remotes/origin/feat/interactions
+  remotes/origin/feat/link-click-delete
   remotes/origin/feat/theme-system
+  remotes/origin/fix/drag-threshold
   remotes/origin/main
   remotes/origin/wip/stato-2026-09-28
 ```
@@ -338,11 +342,33 @@ Diff stat rispetto a main:
 ```
 ```
 
+### `feat/link-click-delete`
+
+Ultimo commit:
+```
+a2dd012 Clic su un cavo per eliminarlo (deleteLink), come nel prototipo
+```
+
+Diff stat rispetto a main:
+```
+```
+
 ### `feat/theme-system`
 
 Ultimo commit:
 ```
 07a0a0e Fase T: sistema di temi (token a tre livelli, tema notte, accento derivato, contrasti garantiti)
+```
+
+Diff stat rispetto a main:
+```
+```
+
+### `fix/drag-threshold`
+
+Ultimo commit:
+```
+199cdfe Soglia di trascinamento: DRAG_THRESHOLD_PX = 5 in etl-layout (prototipo, riga 1982)
 ```
 
 Diff stat rispetto a main:

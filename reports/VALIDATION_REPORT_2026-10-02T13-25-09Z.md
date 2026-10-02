@@ -8,10 +8,10 @@
 | --- | --- |
 | `npx tsc --noEmit` | nessun errore |
 | `npm run lint` | 0 errori (14 avvisi preesistenti) |
-| `npm test` | 764/764 (41 file; prima della fase: 590 in 37 file) |
+| `npm test` | 768/768 (41 file; prima della fase: 590 in 37 file) |
 | `npm run build` | riuscita |
 | `node scripts/check-tokens.mjs` | 0 violazioni nei file controllati (nessun colore, raggio o ombra letterale nei file toccati); debito preesistente invariato: 26 |
-| `node scripts/e2e-fase5.mjs` | **32/32 prove** nel browser reale (Chromium, Pointer Events veri, tastiera, rotella), nessun errore in console |
+| `node scripts/e2e-fase5.mjs` | **34/34 prove** nel browser reale (Chromium, Pointer Events veri, tastiera, rotella), nessun errore in console |
 | `visual-fase4.mjs`, `visual-fase4b.mjs` | riusciti, «nessun errore né avviso in console» |
 
 ### Test per file
@@ -26,7 +26,7 @@
 | `src/etl-canvas/__tests__/engine.test.ts` | 20/20 |
 | `src/etl-canvas/__tests__/flow.test.ts` | 16/16 |
 | `src/etl-canvas/__tests__/gesture-render.test.ts` | 4/4 |
-| `src/etl-canvas/__tests__/interaction.test.ts` | 25/25 |
+| `src/etl-canvas/__tests__/interaction.test.ts` | 29/29 |
 | `src/etl-canvas/__tests__/keyboard.test.ts` | 15/15 |
 | `src/etl-canvas/__tests__/loop.test.ts` | 10/10 |
 | `src/etl-canvas/__tests__/no-reroute.test.ts` | 2/2 |
@@ -60,7 +60,7 @@
 | `src/theme/__tests__/runtime.test.ts` | 20/20 |
 | `src/theme/__tests__/themes.test.ts` | 14/14 |
 
-I nuovi: `interaction.test.ts` (25), `keyboard.test.ts` (15), `drop.test.ts` (6), `gesture-render.test.ts` (4), più i contrasti dei nuovi token (`src/theme/__tests__/contrast.test.ts`).
+I nuovi: `interaction.test.ts` (29), `keyboard.test.ts` (15), `drop.test.ts` (6), `gesture-render.test.ts` (4), più i contrasti dei nuovi token (`src/theme/__tests__/contrast.test.ts`).
 
 ## Gesto → funzione di dominio chiamata
 
@@ -102,13 +102,18 @@ Con le righe del prototipo, nel README di `src/etl-canvas/` (sezione «Fase 5 �
 
 1. **Una modifica fuori dal canvas, senza logica nuova**: `paletteRelation` (etl-store/reduce.ts) era privata; ora è esportata (una parola) per l'anteprima del rilascio. Il suo codice non è cambiato.
 2. **Selezione e Inspector**: `select` non tocca l'Inspector, quindi il livello dei gesti invia anche `inspect` (nodo = primo selezionato o quello già aperto, passaggio 0). I pannelli (`setPanel`) non si toccano: l'apertura dell'Inspector è della Fase 6.
-3. **Soglia**: `DRAG_THRESHOLD` = 4 px. Il prototipo usa 5, ma non è una costante di etl-layout: si usa la soglia già in uso nell'app (cassetta attuale, 4 px) e uguale a quella del riquadro del prototipo.
+3. **Soglia**: `DRAG_THRESHOLD_PX` = 5 px, costante di `etl-layout/constants.ts` con il riferimento alla riga 1982 del prototipo (`Math.hypot(...) < 5`): quella del prototipo, non più i 4 px della cassetta attuale. Il riquadro di selezione resta a 4 px (prototipo, riga 4064). Passare da 4 a 5 px non ha cambiato alcun esito: test (765/765, con un nuovo test «esattamente alla soglia il gesto parte») e prove nel browser (32/32) restano verdi.
 4. **Inserimento su cavo**: il nodo in mano è un ostacolo e fa scansare i cavi, quindi il puntatore sta spesso lontano dal cavo disegnato (anche nel prototipo). Il test si fa sui percorsi attuali e su quelli di prima del gesto.
 5. **Riquadro di selezione**: durante il trascinamento non scrive nello store (ogni `select` entra nel registro delle attività): lo mostra dallo stato dei gesti e seleziona al rilascio.
 6. **Differenze dal prototipo**: Esc annulla un trascinamento in corso; annulla/ripristina non agiscono con il fuoco in un campo di testo; Cmd/Ctrl+D con la sola selezione di output non fa nulla (come etl-core).
-7. **Non collegato (fuori dall'elenco della fase)**: il clic su un cavo che lo elimina (prototipo 4577) e i pulsanti di eliminazione/espansione sul nodo. `deleteLink` esiste; **decidi tu** se collegarlo ora o nella Fase 6.
+7. **Clic su un cavo** (aggiunto dopo la prima consegna): un click elimina il collegamento con il comando `deleteLink`, senza conferma, come nel prototipo (righe 4575-4580); un trascinamento che parte dal cavo non elimina, con lo spazio premuto non succede nulla, lontano dal cavo parte il riquadro. Tre test del controller e due prove nel browser (clic elimina, Ctrl+Z ripristina). **Ancora non collegati**: i pulsanti di eliminazione ed espansione sul nodo (Fase 6).
 8. **Nuovi token** (`--isa-drop-*`, `--isa-doomed`, `--isa-marquee-*`, `--isa-temp-link*`, `--isa-port-*`, `--isa-danger`, `--isa-shadow-drag/overlay`) in entrambi i temi, con i contrasti ≥ 3:1 (≥ 4,5:1 per il testo sul pulsante «Elimina») verificati per ogni tema e modo. Mappa aggiornata in `src/theme/README.md`.
 
 ## Schermate (`docs/visual/fase5/`)
 
 `trascinamento-collegamento.png`, `trascinamento-fusione.png`, `trascinamento-porta.png`, `riquadro-selezione.png`, `conferma-eliminazione.png` (tema predefinito, chiaro).
+
+## Aggiornamenti successivi
+
+- Soglia di trascinamento portata a `DRAG_THRESHOLD_PX` = 5 px (`etl-layout/constants.ts`, prototipo riga 1982): nessun esito è cambiato.
+- Clic sul cavo per eliminare (punto 7). Un solo giro di verifiche per entrambe: tsc, lint (0 errori), 768/768 test, build, `check-tokens` (0 violazioni), prove nel browser 34/34, schermate del tema predefinito a 0 pixel diversi.

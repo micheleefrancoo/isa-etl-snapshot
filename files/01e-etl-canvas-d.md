@@ -247,7 +247,7 @@ export { prototypeScene } from "./seed";
 export { fit, zoomIn, zoomOut, zoomReset, zoomAtPoint } from "./actions";
 export { fitView, zoomAt, minimapFrame, bounds } from "./view";
 export { nodeView, countClass, isPartial, slicesOf } from "./model";
-export { createInteractionController, DRAG_THRESHOLD } from "./interaction";
+export { createInteractionController } from "./interaction";
 export type {
   InteractionController,
   InteractionUi,
@@ -261,7 +261,7 @@ export type { CanvasDropPayload, DropPreview } from "./drop";
 
 ### `src/etl-canvas/interaction.ts`
 
-573 righe
+593 righe
 
 ```ts
 /**
@@ -282,21 +282,21 @@ export type { CanvasDropPayload, DropPreview } from "./drop";
  */
 import { boxCapacity, inputsOf, insertable, nodesRemovedBy, relation } from "../etl-core";
 import type { Graph, Link } from "../etl-core";
-import { GRID, linkAt, linkKey, nodeAt, nodePorts, nodeRect } from "../etl-layout";
+import {
+  DRAG_THRESHOLD_PX,
+  GRID,
+  linkAt,
+  linkKey,
+  nodeAt,
+  nodePorts,
+  nodeRect,
+} from "../etl-layout";
 import type { LinkRoutes, Point, Rect } from "../etl-layout";
 import type { CommandResult, EtlStore } from "../etl-store";
 import { handleCanvasDrop, previewCanvasDrop } from "./drop";
 import type { CanvasDropPayload, DropPreview } from "./drop";
 import { toWorld } from "./view";
 
-/**
- * Soglia di avvio del trascinamento, in pixel dello schermo. Il prototipo usa
- * 5 (riga 2000) ma la costante non è in etl-layout/constants.ts: si usa la
- * soglia già in uso nell'app (`RESOURCE_DRAG_THRESHOLD` della cassetta
- * attuale, 4 px), uguale a quella del riquadro di selezione del prototipo
- * (riga 4064). Sotto la soglia è un click.
- */
-export const DRAG_THRESHOLD = 4;
 /** Soglia del riquadro di selezione (prototipo, riga 4064). */
 export const MARQUEE_THRESHOLD = 4;
 /** Passo singolo delle frecce (prototipo, riga 4638: `GRID` con Maiusc, altrimenti 2). */
@@ -387,6 +387,13 @@ type Active =
       readonly from: Point;
       rel: "link" | "link-reverse" | null;
       target: string | null;
+    }
+  | {
+      /** Pressione su un cavo: un click lo elimina (prototipo, righe 4575-4580). */
+      readonly kind: "link";
+      readonly link: Link;
+      readonly start: Point;
+      moved: boolean;
     }
   | {
       readonly kind: "marquee";
@@ -494,7 +501,7 @@ export function createInteractionController(store: EtlStore): InteractionControl
     const sx = input.x - a.start.x;
     const sy = input.y - a.start.y;
     if (!a.moved) {
-      if (Math.hypot(sx, sy) < DRAG_THRESHOLD) return;
+      if (Math.hypot(sx, sy) < DRAG_THRESHOLD_PX) return;
       const ids = a.group ?? [a.id];
       if (a.canInsert) a.startRoutes = store.getRoutes();
       const r = store.beginGesture({ ids });
@@ -712,6 +719,14 @@ export function createInteractionController(store: EtlStore): InteractionControl
         return true;
       }
 
+      // su un cavo: niente riquadro, il click lo elimina (nel prototipo il cavo non è "sfondo", riga 4033)
+      const hit = linkAt(store.getRoutes(), worldOf(start));
+      const link = hit ? linkOfKey(hit) : null;
+      if (link) {
+        active = { kind: "link", link, start, moved: false };
+        return true;
+      }
+
       // sfondo: riquadro di selezione (Maiusc = si aggiunge alla selezione)
       const base = input.shiftKey ? [...store.getState().selection] : [];
       active = { kind: "marquee", start, base, moved: false, ids: base };
@@ -722,7 +737,10 @@ export function createInteractionController(store: EtlStore): InteractionControl
       const a = active;
       if (!a) return;
       if (a.kind === "node") moveNode(a, input);
-      else if (a.kind === "port") movePort(a, input);
+      else if (a.kind === "link") {
+        if (Math.hypot(input.x - a.start.x, input.y - a.start.y) >= DRAG_THRESHOLD_PX)
+          a.moved = true;
+      } else if (a.kind === "port") movePort(a, input);
       else {
         if (!a.moved && Math.hypot(input.x - a.start.x, input.y - a.start.y) < MARQUEE_THRESHOLD)
           return;
@@ -741,6 +759,8 @@ export function createInteractionController(store: EtlStore): InteractionControl
         releaseNode(a, input);
       } else if (a.kind === "port") {
         releasePort(a);
+      } else if (a.kind === "link") {
+        if (!a.moved) store.dispatch({ type: "deleteLink", payload: { link: a.link } });
       } else if (a.moved) {
         applySelection(a.ids);
       } else if (store.getState().selection.length || store.getState().inspector.nodeId) {

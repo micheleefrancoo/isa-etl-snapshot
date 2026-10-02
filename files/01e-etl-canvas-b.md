@@ -699,13 +699,13 @@ export function nodeHtml(markup: string, id: string): string {
 
 ### `src/etl-canvas/__tests__/interaction.test.ts`
 
-375 righe
+428 righe
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { CARD, nodeCenter } from "../../etl-layout";
+import { CARD, DRAG_THRESHOLD_PX, nodeCenter } from "../../etl-layout";
 import type { EtlStore } from "../../etl-store";
-import { createInteractionController, DRAG_THRESHOLD } from "../interaction";
+import { createInteractionController } from "../interaction";
 import type { InteractionController } from "../interaction";
 import { storeWith } from "./helpers";
 
@@ -742,13 +742,22 @@ describe("trascinamento di un nodo", () => {
     const { store, c } = setup();
     const p = center(store, "op-sort");
     c.down({ kind: "node", id: "op-sort" }, p);
-    c.move({ x: p.x + DRAG_THRESHOLD - 1, y: p.y });
+    c.move({ x: p.x + DRAG_THRESHOLD_PX - 1, y: p.y });
     expect(store.isGesturing()).toBe(false);
-    c.up({ x: p.x + DRAG_THRESHOLD - 1, y: p.y });
+    c.up({ x: p.x + DRAG_THRESHOLD_PX - 1, y: p.y });
     expect(store.getState().selection).toEqual(["op-sort"]);
     expect(store.getState().inspector.nodeId).toBe("op-sort");
     expect(store.getState().graph.cards["op-sort"]).toMatchObject({ x: 260, y: 338 });
     expect(steps(store)).toBe(0);
+  });
+
+  it("esattamente alla soglia (5 px) il gesto parte", () => {
+    const { store, c } = setup();
+    const p = center(store, "op-sort");
+    c.down({ kind: "node", id: "op-sort" }, p);
+    c.move({ x: p.x + DRAG_THRESHOLD_PX, y: p.y });
+    expect(store.isGesturing()).toBe(true);
+    c.cancel();
   });
 
   it("30 aggiornamenti e il rilascio fanno UN solo passo di cronologia", () => {
@@ -1074,6 +1083,50 @@ describe("barra spaziatrice", () => {
     const { c } = setup();
     expect(c.down({ kind: "background" }, { x: 0, y: 0, button: 1 })).toBe(false);
     expect(c.down({ kind: "ignore" }, { x: 0, y: 0 })).toBe(false);
+  });
+});
+
+describe("clic su un cavo", () => {
+  function withLink() {
+    const { store, c } = setup();
+    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
+    const pts = store.getRoutes()["ds1|op-join"]!.pts;
+    const mid = { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 };
+    return { store, c, mid };
+  }
+
+  it("un click elimina il collegamento (deleteLink) in un solo passo; l'output a valle sparisce con lui", () => {
+    const { store, c, mid } = withLink();
+    const before = steps(store);
+    expect(c.down({ kind: "background" }, mid)).toBe(true);
+    expect(c.getUi().marquee).toBeNull();
+    c.up(mid);
+    const links = store.getState().graph.links;
+    expect(links).not.toContainEqual({ from: "ds1", to: "op-join" });
+    expect(links.some((l) => l.from === "op-join")).toBe(false);
+    expect(steps(store)).toBe(before + 1);
+    store.undo();
+    expect(store.getState().graph.links).toContainEqual({ from: "ds1", to: "op-join" });
+  });
+
+  it("un trascinamento che parte dal cavo non lo elimina", () => {
+    const { store, c, mid } = withLink();
+    c.down({ kind: "background" }, mid);
+    c.move({ x: mid.x + 20, y: mid.y + 20 });
+    c.up({ x: mid.x + 20, y: mid.y + 20 });
+    expect(store.getState().graph.links).toContainEqual({ from: "ds1", to: "op-join" });
+  });
+
+  it("con lo spazio premuto non elimina; lontano dal cavo parte il riquadro", () => {
+    const { store, c, mid } = withLink();
+    c.setSpace(true);
+    expect(c.down({ kind: "background" }, mid)).toBe(false);
+    c.setSpace(false);
+    expect(c.down({ kind: "background" }, { x: mid.x, y: mid.y + 200 })).toBe(true);
+    c.move({ x: mid.x + 30, y: mid.y + 240 });
+    expect(c.getUi().marquee).not.toBeNull();
+    c.cancel();
+    expect(store.getState().graph.links).toContainEqual({ from: "ds1", to: "op-join" });
   });
 });
 ```

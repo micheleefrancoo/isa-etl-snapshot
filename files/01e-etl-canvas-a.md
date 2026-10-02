@@ -824,6 +824,7 @@ Pointer Events veri in Chromium.
 | Riquadro di selezione                                                   | 4058-4089                                                                                         | etl-layout `nodeRect`; comandi `select` + `inspect`                                                                                                          |
 | Trascinare il gruppo                                                    | 1969-2001, 2076-2081                                                                              | gesto di etl-store con più `ids` (`dropAt` ricompone i sovrapposti)                                                                                          |
 | Click sul vuoto                                                         | 4584                                                                                              | comandi `select` + `inspect` (vuoti)                                                                                                                         |
+| Click su un cavo                                                        | `linkHits` `click` 4575-4580, `deleteLink` 4565                                                   | comando `deleteLink` (senza conferma, come nel prototipo; un trascinamento che parte dal cavo non elimina)                                                   |
 | Canc / Backspace                                                        | `deleteMany` 4538, `deleteCard` 4558, `commitDelete` 4480, `nodesRemovedBy` 4432; tasto 4630-4634 | `nodesRemovedBy` (anteprima) e comando `deleteNodes`                                                                                                         |
 | Frecce (2 px, Maiusc = `GRID`)                                          | 4619-4627; tasto 4642-4644                                                                        | comando `moveNodes` (tenere premuto = un solo passo, Fase 3.1)                                                                                               |
 | Cmd/Ctrl+D                                                              | 4594-4618, 4645                                                                                   | comando `duplicate`                                                                                                                                          |
@@ -842,9 +843,9 @@ conferma è aperta.
 
 **Scelte e differenze dal prototipo**
 
-- _Soglia di avvio_: 4 px (la stessa della cassetta attuale e del riquadro del
-  prototipo). Il prototipo usa 5 per i nodi, ma non è una costante di
-  `etl-layout`. Sotto la soglia è un click.
+- _Soglia di avvio_: `DRAG_THRESHOLD_PX` = 5 px, in `etl-layout/constants.ts`
+  (prototipo, riga 1982). Sotto la soglia è un click. Il riquadro di
+  selezione usa 4 px (prototipo, riga 4064).
 - _Inserimento su cavo_: il nodo in mano è un ostacolo e fa scansare i cavi;
   il puntatore resta quindi spesso lontano dal cavo disegnato. Il test sul
   cavo si fa sui percorsi attuali **e** su quelli di prima del gesto
@@ -857,9 +858,8 @@ conferma è aperta.
   conferma; poi deseleziona.
 - _Scorciatoie di annulla/ripristina_ non agiscono con il fuoco in un campo di
   testo (il prototipo le applicava sempre): lì vale l'annulla del campo.
-- _Non collegati_ (fuori dall'elenco della fase): clic su un cavo per
-  eliminarlo (prototipo 4577), pulsanti di eliminazione ed espansione sul
-  nodo (4584, Fase 6).
+- _Non collegati_ (fuori dall'elenco della fase): i pulsanti di eliminazione ed
+  espansione sul nodo (prototipo 4584, Fase 6).
 
 ## Rendering lato server
 

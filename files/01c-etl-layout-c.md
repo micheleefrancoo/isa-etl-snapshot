@@ -516,7 +516,7 @@ export function autoLayout(graph: Graph, opts: AutoLayoutOptions): Graph {
 
 ### `src/etl-layout/constants.ts`
 
-153 righe
+161 righe
 
 ```ts
 /**
@@ -604,6 +604,14 @@ export const LANE_GAP = 14;
 export const LANE_NEAR = 12;
 /** Spessore dell'area sensibile di un cavo: `stroke-width="16"` (riga 1402). Tolleranza = metà. */
 export const LINK_HIT_WIDTH = 16;
+
+// --- Gesti ---------------------------------------------------------------------
+
+/**
+ * Soglia di avvio del trascinamento di un nodo, in pixel dello schermo
+ * (riga 1982: `Math.hypot(...) < 5`). Sotto la soglia è un click.
+ */
+export const DRAG_THRESHOLD_PX = 5;
 
 // --- Modalità Libero ----------------------------------------------------------
 

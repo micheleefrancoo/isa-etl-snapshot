@@ -544,7 +544,7 @@ if (strict.length) {
 
 ### `scripts/e2e-fase5.mjs`
 
-272 righe
+294 righe
 
 ```js
 #!/usr/bin/env node
@@ -696,6 +696,28 @@ try {
   check(
     "porta: la lavorazione non si è spostata",
     s.graph.cards["op-join"].x === joinBefore.x && s.graph.cards["op-join"].y === joinBefore.y,
+  );
+
+  // 5b. clic su un cavo: lo elimina; Ctrl+Z lo ripristina
+  const hit = await page.evaluate(() => {
+    const st = window.__etlStore;
+    const pts = st.getRoutes()["ds1|op-join"].pts;
+    const v = st.getState().view;
+    const r = document.querySelector(".ec-stage").getBoundingClientRect();
+    return {
+      x: r.left + v.x + ((pts[0].x + pts[1].x) / 2) * v.zoom,
+      y: r.top + v.y + ((pts[0].y + pts[1].y) / 2) * v.zoom,
+    };
+  });
+  await page.mouse.click(hit.x, hit.y);
+  check(
+    "clic sul cavo: collegamento eliminato",
+    !(await state()).graph.links.some((l) => l.from === "ds1" && l.to === "op-join"),
+  );
+  await page.keyboard.press("Control+z");
+  check(
+    "Ctrl+Z ripristina il cavo",
+    (await state()).graph.links.some((l) => l.from === "ds1" && l.to === "op-join"),
   );
 
   // 6. riquadro di selezione sul vuoto
