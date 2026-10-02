@@ -309,21 +309,21 @@ describe("rendering lato server", () => {
 
 ### `src/etl-canvas/__tests__/tokens.test.ts`
 
-90 righe
+105 righe
 
 ```ts
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { resolveTokens } from "../../theme/__tests__/support";
 import { PAIRS, measure, readTokens } from "../contrast";
 
 const css = readFileSync(new URL("../tokens.css", import.meta.url), "utf8");
-const appCss = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 const prototype = readFileSync(
   new URL("../../../docs/prototype/isa-fusion-prototype.html", import.meta.url),
   "utf8",
 );
-const light = readTokens(css, "light", appCss);
-const dark = readTokens(css, "dark", appCss);
+const light = readTokens(css, resolveTokens("prototipo", "light"));
+const dark = readTokens(css, resolveTokens("prototipo", "dark"));
 
 /** Il prototipo scrive i colori in forme diverse (`#E1DCF0`, `rgba(108,99,255,0.34)`): si confrontano normalizzati. */
 function norm(s: string): string {
@@ -382,14 +382,6 @@ describe("tema chiaro: valori del prototipo", () => {
 });
 
 describe("tema scuro: contrasto", () => {
-  it("definisce gli stessi token del tema chiaro", () => {
-    for (const name of Object.keys(light)) {
-      if (name === "--ec-font" || name.startsWith("--ec-r-") || name === "--ec-glass-blur")
-        continue;
-      expect(dark, name).toHaveProperty(name);
-    }
-  });
-
   for (const pair of PAIRS) {
     it(`${pair.role}: almeno ${pair.min}:1`, () => {
       expect(measure(dark, pair)).toBeGreaterThanOrEqual(pair.min);
@@ -400,6 +392,29 @@ describe("tema scuro: contrasto", () => {
     expect(dark["--ec-accent"]).toBe("#6c63ff");
     expect(dark["--ec-node-fill"]).toBe("#6c63ff");
   });
+});
+
+/**
+ * Deroga: l'avviso del tema «notte» chiaro è #F59E0B (richiesto dalla
+ * specifica), che su fondo chiaro dà 2,15:1. L'indicatore è un puntino con anello.
+ */
+const NOTTE_EXCEPTIONS = new Set(["light: Indicatore ambra"]);
+
+describe("tema notte: contrasto del canvas", () => {
+  for (const mode of ["light", "dark"] as const) {
+    const tokens = readTokens(css, resolveTokens("notte", mode));
+    for (const pair of PAIRS) {
+      if (NOTTE_EXCEPTIONS.has(`${mode}: ${pair.role}`)) {
+        it(`${mode}: ${pair.role}: deroga nota (resta sotto ${pair.min}:1)`, () => {
+          expect(measure(tokens, pair)).toBeLessThan(pair.min);
+        });
+        continue;
+      }
+      it(`${mode}: ${pair.role}: almeno ${pair.min}:1`, () => {
+        expect(measure(tokens, pair)).toBeGreaterThanOrEqual(pair.min);
+      });
+    }
+  }
 });
 ```
 
@@ -833,7 +848,7 @@ export function zoomAtPoint(store: EtlStore, px: number, py: number, zoom: numbe
   border-radius: var(--ec-r-op);
   background: var(--ec-node-op);
   color: var(--ec-node-op-ink);
-  box-shadow: inset 0 0 0 1.5px var(--ec-node-op-border);
+  box-shadow: var(--ec-node-op-outline);
   display: grid;
   place-content: center;
   justify-items: center;
@@ -851,7 +866,7 @@ export function zoomAtPoint(store: EtlStore, px: number, py: number, zoom: numbe
   opacity: var(--ec-output-opacity);
 }
 .etl-canvas .ec-selected .ec-icon-wrap {
-  box-shadow: 0 0 0 3px var(--ec-select);
+  box-shadow: var(--ec-select-ring);
 }
 .etl-canvas .ec-icon-wrap svg {
   display: block;
@@ -955,7 +970,7 @@ export function zoomAtPoint(store: EtlStore, px: number, py: number, zoom: numbe
   bottom: -4px;
   width: 13px;
   height: 13px;
-  border-radius: 999px;
+  border-radius: var(--ec-r-pill);
   background: var(--ec-warn);
   border: 2.5px solid var(--ec-warn-ring);
   z-index: 4;
@@ -1052,7 +1067,7 @@ export function zoomAtPoint(store: EtlStore, px: number, py: number, zoom: numbe
 }
 .etl-canvas .ec-mm-node {
   position: absolute;
-  border-radius: 2px;
+  border-radius: var(--ec-r-xs);
   background: var(--ec-mm-node);
 }
 .etl-canvas .ec-mm-node.ec-ds {
@@ -1061,7 +1076,7 @@ export function zoomAtPoint(store: EtlStore, px: number, py: number, zoom: numbe
 .etl-canvas .ec-mm-view {
   position: absolute;
   border: 1.5px solid var(--ec-mm-view-line);
-  border-radius: 4px;
+  border-radius: var(--ec-r-sm);
   background: var(--ec-mm-view-bg);
   pointer-events: none;
 }
@@ -1093,61 +1108,18 @@ export function zoomAtPoint(store: EtlStore, px: number, py: number, zoom: numbe
 
 ### `src/etl-canvas/contrast.ts`
 
-137 righe
+90 righe
 
 ```ts
 /**
- * Contrasto WCAG tra i token di `tokens.css`. Usato dai test e da
- * `scripts/contrast-fase4.mjs` per la tabella del report.
+ * Contrasto WCAG tra i token di `tokens.css`. Usato dai test. I colori e il
+ * calcolo del contrasto sono in src/theme/color.ts.
  */
-export type Rgba = readonly [number, number, number, number];
+import { contrast, over, parseColor } from "../theme/color";
+import type { Rgba } from "../theme/color";
 
-export function parseColor(value: string): Rgba {
-  const v = value.trim().toLowerCase();
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(v);
-  if (hex) {
-    const h = hex[1] as string;
-    const full = h.length === 3 ? [...h].map((c) => c + c).join("") : h;
-    return [
-      parseInt(full.slice(0, 2), 16),
-      parseInt(full.slice(2, 4), 16),
-      parseInt(full.slice(4, 6), 16),
-      1,
-    ];
-  }
-  const rgba = /^rgba?\(([^)]+)\)$/.exec(v);
-  if (rgba) {
-    const p = (rgba[1] as string).split(",").map((s) => parseFloat(s));
-    return [p[0] ?? 0, p[1] ?? 0, p[2] ?? 0, p[3] ?? 1];
-  }
-  throw new Error(`colore non riconosciuto: ${value}`);
-}
-
-/** Sovrappone `top` (con trasparenza) a `bottom` (opaco). */
-export function over(top: Rgba, bottom: Rgba): Rgba {
-  const a = top[3];
-  return [
-    top[0] * a + bottom[0] * (1 - a),
-    top[1] * a + bottom[1] * (1 - a),
-    top[2] * a + bottom[2] * (1 - a),
-    1,
-  ];
-}
-
-function lin(c: number): number {
-  const s = c / 255;
-  return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-}
-
-export function luminance(c: Rgba): number {
-  return 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
-}
-
-export function contrast(a: Rgba, b: Rgba): number {
-  const la = luminance(a);
-  const lb = luminance(b);
-  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
-}
+export { contrast, luminance, over, parseColor } from "../theme/color";
+export type { Rgba } from "../theme/color";
 
 function readBlock(css: string, selector: string, prefix: string): Record<string, string> {
   const start = css.indexOf(`\n${selector} {`);
@@ -1163,25 +1135,17 @@ function readBlock(css: string, selector: string, prefix: string): Record<string
 }
 
 /**
- * Legge i token di un tema da tokens.css: `dark` = blocco `.dark .etl-canvas`.
- * I `var(--isa-*)` sono risolti con le primitive di `styles.css` (`:root`,
- * `.dark`; nel tema scuro, per le primitive non ridefinite, vale il chiaro).
+ * Legge i token del canvas (`--ec-*`) da tokens.css e li risolve con i token
+ * semantici (`--isa-*`) di un tema e di un modo, già risolti in valori (vedi
+ * src/theme/__tests__/support.ts: `resolveTokens`).
  */
-export function readTokens(
-  css: string,
-  theme: "light" | "dark",
-  primitivesCss: string,
-): Record<string, string> {
-  const tokens = readBlock(css, theme === "dark" ? ".dark .etl-canvas" : ".etl-canvas", "--ec-");
-  const primitives = {
-    ...readBlock(primitivesCss, ":root", "--isa-"),
-    ...(theme === "dark" ? readBlock(primitivesCss, ".dark", "--isa-") : {}),
-  };
+export function readTokens(css: string, semantic: Record<string, string>): Record<string, string> {
+  const tokens = readBlock(css, ".etl-canvas", "--ec-");
   const out: Record<string, string> = {};
   for (const [name, value] of Object.entries(tokens)) {
     out[name] = value.replace(/var\((--isa-[a-z0-9-]+)\)/g, (_, ref: string) => {
-      const resolved = primitives[ref];
-      if (resolved === undefined) throw new Error(`primitiva non trovata: ${ref}`);
+      const resolved = semantic[ref];
+      if (resolved === undefined) throw new Error(`token semantico non trovato: ${ref}`);
       return resolved;
     });
   }
@@ -1224,7 +1188,11 @@ export const PAIRS: readonly ContrastPair[] = [
 ];
 
 export function measure(tokens: Record<string, string>, pair: ContrastPair): number {
-  const get = (name: string): Rgba => parseColor(tokens[name] ?? "#000");
+  const get = (name: string): Rgba => {
+    const value = tokens[name];
+    if (value === undefined) throw new Error(`token mancante: ${name}`);
+    return parseColor(value);
+  };
   const canvas = over(get("--ec-stage"), over(get("--ec-bg"), [255, 255, 255, 1]));
   const glass = over(get("--ec-surface-strong"), canvas);
   const bg =

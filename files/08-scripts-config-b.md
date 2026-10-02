@@ -2,14 +2,400 @@
 
 File in questo blocco:
 
+- `scripts/theme-map.mjs`
+- `scripts/token-legacy-files.txt`
+- `scripts/visual-compare.mjs`
 - `scripts/visual-fase4.mjs`
 - `scripts/visual-fase4b.mjs`
 - `scripts/visual-lib.mjs`
+- `scripts/visual-temi.mjs`
 - `tsconfig.json`
 - `vite.config.ts`
 - `vitest.config.ts`
 
 ---
+
+### `scripts/theme-map.mjs`
+
+96 righe
+
+```js
+#!/usr/bin/env node
+/**
+ * Mappa dei token dei temi: token semantico → valore, per ogni tema e modo.
+ * Legge src/theme/primitives.css e src/theme/themes/*.css e riscrive la
+ * sezione compresa tra i marcatori di src/theme/README.md.
+ *
+ *   node scripts/theme-map.mjs --write   aggiorna il README
+ *   node scripts/theme-map.mjs           stampa la mappa
+ * Il test src/theme/__tests__/readme.test.ts verifica che il README sia aggiornato.
+ */
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+export const README = resolve(ROOT, "src/theme/README.md");
+export const BEGIN =
+  "<!-- BEGIN token-map (generata da scripts/theme-map.mjs: non modificare a mano) -->";
+export const END = "<!-- END token-map -->";
+
+const read = (p) => readFileSync(resolve(ROOT, p), "utf8");
+
+function blocks(css) {
+  const clean = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const out = [];
+  for (const m of clean.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const decls = {};
+    for (const d of m[2].matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g))
+      decls[d[1]] = d[2].trim().replace(/\s+/g, " ");
+    out.push({ selector: m[1].trim().replace(/\s+/g, " "), decls });
+  }
+  return out;
+}
+
+const decls = (css, sel) =>
+  Object.assign(
+    {},
+    ...blocks(css)
+      .filter((b) => b.selector === sel)
+      .map((b) => b.decls),
+  );
+
+export function buildTokenMap() {
+  const primCss = read("src/theme/primitives.css");
+  const hexOf = {};
+  for (const m of primCss.matchAll(/(--isa-p-[a-z0-9-]+):[^;]+;\s*\/\*\s*(#[0-9a-f]{6})/g))
+    hexOf[m[1]] = m[2];
+  const proto = read("src/theme/themes/prototipo.css");
+  const notte = read("src/theme/themes/notte.css");
+  const cols = {
+    "prototipo chiaro": decls(proto, ":root"),
+    "prototipo scuro": { ...decls(proto, ":root"), ...decls(proto, ".dark") },
+    "notte chiaro": decls(notte, ':root[data-theme="notte"]'),
+    "notte scuro": {
+      ...decls(notte, ':root[data-theme="notte"]'),
+      ...decls(notte, ':root.dark[data-theme="notte"]'),
+    },
+  };
+  const names = Object.keys(decls(proto, ":root"));
+  const show = (v) => {
+    if (v === undefined) return "—";
+    const m = /^var\((--isa-p-[a-z0-9-]+)\)$/.exec(v);
+    const text = m && hexOf[m[1]] ? `${v} (${hexOf[m[1]]})` : v;
+    return "`" + text.replace(/\|/g, "\\|") + "`";
+  };
+  const groups = [
+    ["Token dell'app (livello semantico, famiglia shadcn)", (n) => !n.startsWith("--isa-")],
+    ["Token semantici condivisi (`--isa-*`)", (n) => n.startsWith("--isa-")],
+  ];
+  const head = Object.keys(cols);
+  let md = "";
+  for (const [title, pick] of groups) {
+    md += `#### ${title}\n\n| Token | ${head.join(" | ")} |\n|---|${head.map(() => "---").join("|")}|\n`;
+    for (const n of names.filter(pick))
+      md += `| \`${n}\` | ${head.map((h) => show(cols[h][n])).join(" | ")} |\n`;
+    md += "\n";
+  }
+  return { markdown: md.trimEnd() + "\n", count: names.length, columns: head };
+}
+
+export function renderReadmeSection() {
+  return `${BEGIN}\n\n${buildTokenMap().markdown}\n${END}`;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  if (process.argv.includes("--write")) {
+    const text = readFileSync(README, "utf8");
+    const a = text.indexOf(BEGIN);
+    const b = text.indexOf(END);
+    if (a < 0 || b < 0) throw new Error("marcatori non trovati in src/theme/README.md");
+    writeFileSync(README, text.slice(0, a) + renderReadmeSection() + text.slice(b + END.length));
+  } else {
+    console.log(buildTokenMap().markdown);
+  }
+}
+```
+
+### `scripts/token-legacy-files.txt`
+
+169 righe
+
+```
+src/canvas/__tests__/panelPositioning.test.ts
+src/canvas/components/CanvasContainer.tsx
+src/canvas/hooks/useCanvasBounds.ts
+src/canvas/hooks/usePanelState.ts
+src/canvas/layout/__tests__/canvasBounds.test.ts
+src/canvas/layout/__tests__/dropZones.test.ts
+src/canvas/layout/__tests__/panelRegistry.test.ts
+src/canvas/layout/canvasBounds.ts
+src/canvas/layout/dropZones.ts
+src/canvas/layout/panelRegistry.ts
+src/canvas/layout/surfacePanels.ts
+src/canvas/store/canvasStore.tsx
+src/components/isa/app-shell.tsx
+src/components/isa/back-button.tsx
+src/components/isa/etl/data-preview.tsx
+src/components/isa/etl/inspector.tsx
+src/components/isa/etl/isa-context-menu.tsx
+src/components/isa/etl/settings-panels/aggregate-panel.tsx
+src/components/isa/etl/settings-panels/combine-panel.tsx
+src/components/isa/etl/settings-panels/filter-panel.tsx
+src/components/isa/etl/settings-panels/panel-controls.tsx
+src/components/isa/etl/tool-palette.tsx
+src/components/isa/etl/workflow-canvas.tsx
+src/components/isa/header.tsx
+src/components/isa/logo.tsx
+src/components/isa/mini-chart.tsx
+src/components/isa/module-picker-modal.tsx
+src/components/isa/new-solution-modal.tsx
+src/components/isa/share-modal.tsx
+src/components/isa/sidebar.tsx
+src/components/isa/solution-card.tsx
+src/components/isa/solution-row.tsx
+src/components/isa/ui/isa-menu.tsx
+src/components/isa/ui/isa-modal.tsx
+src/components/isa/widget-panel.tsx
+src/components/ui/accordion.tsx
+src/components/ui/alert-dialog.tsx
+src/components/ui/alert.tsx
+src/components/ui/aspect-ratio.tsx
+src/components/ui/avatar.tsx
+src/components/ui/badge.tsx
+src/components/ui/breadcrumb.tsx
+src/components/ui/button.tsx
+src/components/ui/calendar.tsx
+src/components/ui/card.tsx
+src/components/ui/carousel.tsx
+src/components/ui/chart.tsx
+src/components/ui/checkbox.tsx
+src/components/ui/collapsible.tsx
+src/components/ui/command.tsx
+src/components/ui/context-menu.tsx
+src/components/ui/dialog.tsx
+src/components/ui/drawer.tsx
+src/components/ui/dropdown-menu.tsx
+src/components/ui/form.tsx
+src/components/ui/hover-card.tsx
+src/components/ui/input-otp.tsx
+src/components/ui/input.tsx
+src/components/ui/label.tsx
+src/components/ui/menubar.tsx
+src/components/ui/navigation-menu.tsx
+src/components/ui/pagination.tsx
+src/components/ui/popover.tsx
+src/components/ui/progress.tsx
+src/components/ui/radio-group.tsx
+src/components/ui/resizable.tsx
+src/components/ui/scroll-area.tsx
+src/components/ui/select.tsx
+src/components/ui/separator.tsx
+src/components/ui/sheet.tsx
+src/components/ui/sidebar.tsx
+src/components/ui/skeleton.tsx
+src/components/ui/slider.tsx
+src/components/ui/sonner.tsx
+src/components/ui/switch.tsx
+src/components/ui/table.tsx
+src/components/ui/tabs.tsx
+src/components/ui/textarea.tsx
+src/components/ui/toggle-group.tsx
+src/components/ui/toggle.tsx
+src/components/ui/tooltip.tsx
+src/etl-core/__tests__/csv.test.ts
+src/etl-core/__tests__/expressions.test.ts
+src/etl-core/__tests__/fase11-requisiti.test.ts
+src/etl-core/__tests__/fase11.test.ts
+src/etl-core/__tests__/helpers.ts
+src/etl-core/__tests__/mutations.test.ts
+src/etl-core/__tests__/params.test.ts
+src/etl-core/__tests__/relations.test.ts
+src/etl-core/__tests__/schema.test.ts
+src/etl-core/__tests__/state.test.ts
+src/etl-core/catalog/icons.ts
+src/etl-core/catalog/operations.ts
+src/etl-core/catalog/params.ts
+src/etl-core/data/csv.ts
+src/etl-core/index.ts
+src/etl-core/logic/expressions.ts
+src/etl-core/model/graph.ts
+src/etl-core/model/types.ts
+src/etl-core/rules/mutations.ts
+src/etl-core/rules/relations.ts
+src/etl-core/rules/state.ts
+src/etl-core/schema/schema.ts
+src/etl-layout/__tests__/golden.test.ts
+src/etl-layout/__tests__/properties.test.ts
+src/etl-layout/__tests__/unit.test.ts
+src/etl-layout/autoLayout.ts
+src/etl-layout/constants.ts
+src/etl-layout/free.ts
+src/etl-layout/hitTest.ts
+src/etl-layout/index.ts
+src/etl-layout/links.ts
+src/etl-layout/nodes.ts
+src/etl-layout/path.ts
+src/etl-layout/placement.ts
+src/etl-layout/routing.ts
+src/etl-layout/slots.ts
+src/etl-layout/types.ts
+src/etl-store/__tests__/grouping.test.ts
+src/etl-store/__tests__/helpers.ts
+src/etl-store/__tests__/persistence.test.ts
+src/etl-store/__tests__/react.test.ts
+src/etl-store/__tests__/reduce.test.ts
+src/etl-store/__tests__/store.test.ts
+src/etl-store/derived.ts
+src/etl-store/index.ts
+src/etl-store/persistence.ts
+src/etl-store/react.ts
+src/etl-store/reduce.ts
+src/etl-store/serialize.ts
+src/etl-store/state.ts
+src/etl-store/store.ts
+src/etl-store/types.ts
+src/hooks/use-mobile.tsx
+src/lib/error-capture.ts
+src/lib/error-page.ts
+src/lib/etl-bubble.ts
+src/lib/etl-catalog.ts
+src/lib/etl-display.ts
+src/lib/etl-motion.ts
+src/lib/etl-node-config.ts
+src/lib/etl-node-size.ts
+src/lib/etl-schema.ts
+src/lib/etl-workflow.tsx
+src/lib/modules.ts
+src/lib/solutions-store.tsx
+src/lib/theme.tsx
+src/lib/utils.ts
+src/routeTree.gen.ts
+src/router.tsx
+src/routes/__root.tsx
+src/routes/activity.tsx
+src/routes/favorites.tsx
+src/routes/index.tsx
+src/routes/settings.tsx
+src/routes/shared.tsx
+src/routes/solutions.$solutionId.dashboard.tsx
+src/routes/solutions.$solutionId.etl.tsx
+src/routes/solutions.$solutionId.index.tsx
+src/routes/solutions.$solutionId.model.tsx
+src/routes/solutions.$solutionId.tsx
+src/routes/teams.tsx
+src/routes/templates.tsx
+src/routes/trash.tsx
+src/routes/users.tsx
+src/server.ts
+src/start.ts
+src/styles.css
+```
+
+### `scripts/visual-compare.mjs`
+
+99 righe
+
+```js
+#!/usr/bin/env node
+/**
+ * Confronto pixel per pixel tra le schermate nel working tree e quelle
+ * committate in HEAD (o in un altro riferimento git). Nessuna dipendenza
+ * nuova: le immagini si decodificano in Chromium (Playwright) con un canvas.
+ *
+ * Uso: node scripts/visual-compare.mjs [--ref HEAD] <file.png>[@x,y,w,h] ...
+ *   `@x,y,w,h` limita il confronto a un rettangolo (per escludere il resto
+ *   della pagina, per esempio l'intestazione dell'app).
+ * Esce con codice 1 se una qualunque coppia differisce.
+ */
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { chromium } from "playwright";
+import { ROOT } from "./visual-lib.mjs";
+
+const args = process.argv.slice(2);
+let ref = "HEAD";
+const items = [];
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === "--ref") ref = args[++i];
+  else items.push(args[i]);
+}
+
+const dataUrl = (buf) => "data:image/png;base64," + buf.toString("base64");
+const browser = await chromium.launch();
+const page = await browser.newPage();
+let failed = 0;
+const rows = [];
+for (const item of items) {
+  const [file, clip] = item.split("@");
+  const now = readFileSync(resolve(ROOT, file));
+  let old;
+  try {
+    old = execFileSync("git", ["show", `${ref}:${file}`], { cwd: ROOT, maxBuffer: 1 << 28 });
+  } catch {
+    rows.push({ file, esito: "assente in " + ref });
+    failed++;
+    continue;
+  }
+  const r = await page.evaluate(
+    async ([a, b, clip]) => {
+      const load = (src) =>
+        new Promise((res, rej) => {
+          const img = new Image();
+          img.onload = () => res(img);
+          img.onerror = rej;
+          img.src = src;
+        });
+      const [ia, ib] = await Promise.all([load(a), load(b)]);
+      if (ia.width !== ib.width || ia.height !== ib.height)
+        return { size: [ia.width, ia.height, ib.width, ib.height] };
+      const [x, y, w, h] = clip ? clip.split(",").map(Number) : [0, 0, ia.width, ia.height];
+      const px = (img) => {
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext("2d");
+        ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+        return ctx.getImageData(0, 0, w, h).data;
+      };
+      const da = px(ia);
+      const db = px(ib);
+      let diff = 0;
+      let max = 0;
+      for (let i = 0; i < da.length; i += 4) {
+        const d = Math.max(
+          Math.abs(da[i] - db[i]),
+          Math.abs(da[i + 1] - db[i + 1]),
+          Math.abs(da[i + 2] - db[i + 2]),
+          Math.abs(da[i + 3] - db[i + 3]),
+        );
+        if (d > 0) diff++;
+        if (d > max) max = d;
+      }
+      return { pixels: w * h, diff, max };
+    },
+    [dataUrl(old), dataUrl(now), clip ?? null],
+  );
+  if (r.size) {
+    rows.push({ file, esito: `dimensioni diverse ${r.size.slice(0, 2)} → ${r.size.slice(2)}` });
+    failed++;
+  } else {
+    rows.push({
+      file,
+      regione: clip ?? "intera",
+      pixel: r.pixels,
+      differenti: r.diff,
+      scartoMax: r.max,
+    });
+    if (r.diff > 0) failed++;
+  }
+}
+await browser.close();
+console.table(rows);
+console.log(failed ? `DIFFERENZE in ${failed} file` : "TUTTE LE IMMAGINI COINCIDONO al pixel");
+process.exit(failed ? 1 : 0);
+```
 
 ### `scripts/visual-fase4.mjs`
 
@@ -806,6 +1192,112 @@ export const SOLUTION = {
   modules: { etl: "draft" },
   shares: [],
 };
+```
+
+### `scripts/visual-temi.mjs`
+
+100 righe
+
+```js
+#!/usr/bin/env node
+/**
+ * Verifica visiva del sistema di temi (Fase T). Schermate di due pagine
+ * (elenco soluzioni e canvas ETL, 1440 × 900) in chiaro e in scuro.
+ *
+ * Uso: node scripts/visual-temi.mjs <gruppo>
+ *   prototipo  tema predefinito → docs/visual/temi/prototipo-{chiaro,scuro}-{soluzioni,canvas}.png
+ *              (da confrontare al pixel con scripts/visual-compare.mjs)
+ *   notte      tema "notte"     → docs/visual/temi/notte-{chiaro,scuro}-{soluzioni,canvas}.png
+ *   tinte      deriveAccent     → docs/visual/temi/tinta-{0,140,280}-{chiaro,scuro}-canvas.png
+ *
+ * Il modo (chiaro/scuro) arriva da localStorage, come per un utente reale (nel
+ * canvas del tema predefinito, dalla classe `.dark`: vedi `shot`); il tema da
+ * `?theme=` e la tinta da `setAccentHue` (solo sviluppo).
+ */
+import { mkdirSync } from "node:fs";
+import { resolve } from "node:path";
+import { chromium } from "playwright";
+import { ROOT, SOLUTION, startServer } from "./visual-lib.mjs";
+
+const OUT = resolve(ROOT, "docs/visual/temi");
+const VIEWPORT = { width: 1440, height: 900 };
+const PORT = Number(process.env.PORT ?? 5198);
+const group = process.argv[2];
+if (!["prototipo", "notte", "tinte"].includes(group)) {
+  console.error("Uso: node scripts/visual-temi.mjs prototipo|notte|tinte");
+  process.exit(2);
+}
+mkdirSync(OUT, { recursive: true });
+
+const server = await startServer(PORT);
+const browser = await chromium.launch();
+
+/**
+ * `via`: come si imposta il modo. "archivio" = localStorage, letto dallo script
+ * di avvio (il meccanismo reale); "classe" = classe `.dark` dopo il caricamento,
+ * come nelle fasi precedenti (lo stato React non cambia: l'etichetta del
+ * pulsante resta quella di prima).
+ */
+async function shot(mode, path, file, { theme, hue, via = "archivio" } = {}) {
+  const ctx = await browser.newContext({
+    viewport: VIEWPORT,
+    deviceScaleFactor: 1,
+    reducedMotion: "reduce",
+  });
+  await ctx.addInitScript(
+    ([solution, m]) => {
+      localStorage.setItem("isa.solutions", JSON.stringify([solution]));
+      if (m) localStorage.setItem("isa-theme", m);
+    },
+    [SOLUTION, via === "archivio" ? (mode === "scuro" ? "dark" : "light") : null],
+  );
+  const page = await ctx.newPage();
+  const sep = path.includes("?") ? "&" : "?";
+  await page.goto(`${server.base}${path}${theme ? `${sep}theme=${theme}` : ""}`);
+  if (path.includes("/etl")) {
+    await page.waitForSelector('[data-node-id="ds1"]', { timeout: 60000 });
+  } else {
+    await page.waitForSelector("main, [data-slot], h1", { timeout: 60000 });
+  }
+  await page.evaluate(() => document.fonts.ready);
+  if (via === "classe")
+    await page.evaluate(
+      (dark) => document.documentElement.classList.toggle("dark", dark),
+      mode === "scuro",
+    );
+  if (hue !== undefined) {
+    await page.evaluate(async (h) => {
+      const m = await import("/src/theme/runtime.ts");
+      m.setAccentHue(h);
+    }, hue);
+  }
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: resolve(OUT, file), animations: "disabled" });
+  await ctx.close();
+  console.log("salvato", file);
+}
+
+const CANVAS = `/solutions/${SOLUTION.id}/etl?seed=prototype`;
+try {
+  if (group === "tinte") {
+    for (const hue of [0, 140, 280])
+      for (const mode of ["chiaro", "scuro"])
+        await shot(mode, CANVAS, `tinta-${hue}-${mode}-canvas.png`, { hue });
+  } else {
+    const theme = group === "notte" ? "notte" : undefined;
+    for (const mode of ["chiaro", "scuro"]) {
+      await shot(mode, "/", `${group}-${mode}-soluzioni.png`, { theme });
+      // per il tema predefinito il canvas segue il metodo delle fasi precedenti, per il confronto con i riferimenti
+      await shot(mode, CANVAS, `${group}-${mode}-canvas.png`, {
+        theme,
+        via: group === "prototipo" ? "classe" : "archivio",
+      });
+    }
+  }
+} finally {
+  await browser.close();
+  server.stop();
+}
 ```
 
 ### `tsconfig.json`

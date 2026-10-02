@@ -440,7 +440,7 @@ is `src/routes/__root.tsx`.
 
 ### `src/routes/__root.tsx`
 
-134 righe
+138 righe
 
 ```tsx
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -457,6 +457,7 @@ import type { ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { ThemeProvider } from "../lib/theme";
 import { SolutionsProvider } from "../lib/solutions-store";
+import { themeBootScript } from "../theme/boot";
 
 function NotFoundComponent() {
   return (
@@ -541,6 +542,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
+    // Applica tema, modo e tinta dell'accento prima del primo disegno (nessun lampo).
+    scripts: [{ children: themeBootScript(import.meta.env.DEV) }],
   }),
   shellComponent: RootShell,
   component: RootComponent,
@@ -550,7 +553,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    // Lo script di avvio imposta `class` e `data-theme` su <html> prima dell'idratazione.
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>

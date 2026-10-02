@@ -2,12 +2,76 @@
 
 File in questo blocco:
 
+- `docs/theme-debt.md`
 - `docs/visual/fase4/console.txt`
 - `docs/visual/fase4/misure.json`
 - `docs/visual/fase4b/console.txt`
 - `docs/visual/fase4b/misure.json`
 
 ---
+
+### `docs/theme-debt.md`
+
+57 righe
+
+```md
+# Debito dei token: [REDATTO] scritti a mano
+
+Generato da `node scripts/check-tokens.mjs --write-debt`. Elenca i colori, i raggi e le ombre letterali dei file di `src/` preesistenti alla Fase T (`scripts/token-legacy-files.txt`), da portare sui token semantici nel restyling. Il controllo non li fa fallire.
+
+**Totale: 26** (6 ombra, 7 raggio, 13 colore) in 8 file.
+
+## `src/components/isa/sidebar.tsx` (1)
+
+- riga 102 — ombra: `shadow-[inset_0_1px_0_var(--glass-border)]`
+
+## `src/components/isa/ui/isa-menu.tsx` (1)
+
+- riga 409 — raggio: `rounded-[5px]`
+
+## `src/components/ui/chart.tsx` (7)
+
+- riga 51 — colore: `#ccc`
+- riga 51 — colore: `#fff`
+- riga 51 — colore: `#ccc`
+- riga 51 — colore: `#ccc`
+- riga 51 — colore: `#fff`
+- riga 193 — raggio: `rounded-[2px]`
+- riga 283 — raggio: `rounded-[2px]`
+
+## `src/components/ui/drawer.tsx` (1)
+
+- riga 41 — raggio: `rounded-t-[10px]`
+
+## `src/components/ui/sidebar.tsx` (2)
+
+- riga 510 — ombra: `shadow-[0_0_0_1px_var(--sidebar-border)]`
+- riga 510 — ombra: `shadow-[0_0_0_1px_var(--sidebar-accent)]`
+
+## `src/lib/error-page.ts` (8)
+
+- riga 9 — colore: `#fafafa`
+- riga 9 — colore: `#111`
+- riga 12 — colore: `#4b5563`
+- riga 15 — colore: `#111`
+- riga 15 — colore: `#fff`
+- riga 16 — colore: `#fff`
+- riga 16 — colore: `#111`
+- riga 16 — colore: `#d1d5db`
+
+## `src/routes/solutions.$solutionId.dashboard.tsx` (1)
+
+- riga 62 — raggio: `borderRadius: 16`
+
+## `src/styles.css` (5)
+
+- riga 149 — raggio: `border-radius: 9999px`
+- riga 165 — raggio: `border-radius: 9999px`
+- riga 217 — ombra: `filter: drop-shadow(0 0 3px var(--brand-glow))`
+- riga 224 — ombra: `box-shadow: 0 0 0 1px color-mix(in oklab, var(--brand) 45%, transparent), 0 0 24px color-mix(in oklab, var(--brand) 28%, transparent)`
+- riga 233 — ombra: `box-shadow: 0 0 0 2px var(--brand), 0 0 26px color-mix(in oklab, var(--brand) 35%, transparent)`
+
+```
 
 ### `docs/visual/fase4/console.txt`
 

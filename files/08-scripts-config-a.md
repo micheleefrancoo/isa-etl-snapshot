@@ -11,11 +11,11 @@ File in questo blocco:
 - `components.json`
 - `eslint.config.js`
 - `package.json`
+- `scripts/check-tokens.mjs`
 - `scripts/extract-golden.mjs`
 - `scripts/generate-index.mjs`
 - `scripts/generate-snapshot.mjs`
 - `scripts/sync-snapshot.sh`
-- `scripts/visual-compare.mjs`
 
 ---
 
@@ -229,7 +229,7 @@ export default tseslint.config(
 
 ### `package.json`
 
-96 righe
+97 righe
 
 ```json
 {
@@ -244,7 +244,8 @@ export default tseslint.config(
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:tokens": "node scripts/check-tokens.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"
@@ -326,6 +327,219 @@ export default tseslint.config(
     "vite": "8.1.5",
     "vitest": "^5.0.1"
   }
+}
+```
+
+### `scripts/check-tokens.mjs`
+
+207 righe
+
+```js
+#!/usr/bin/env node
+/**
+ * Disciplina dei token (Fase T). Fallisce (exit 1) se trova valori scritti a
+ * mano fuori dai file dei token:
+ *   - colori letterali: #hex, rgb()/rgba(), hsl()/hsla(), oklch(), oklab(), lab(), lch(), hwb();
+ *   - raggi letterali (border-radius, borderRadius, rounded-[..]);
+ *   - ombre letterali (box-shadow, text-shadow, drop-shadow, boxShadow, shadow-[..]).
+ * Un raggio o un'ombra sono a norma solo se il valore è `0`/`none`/`inherit`
+ * oppure è composto soltanto da `var(--token)`.
+ *
+ * Dove si applica (CONTROLLATI, l'esito conta):
+ *   - tutto src/etl-canvas/;
+ *   - ogni file css/ts/tsx sotto src/ che NON è nell'elenco dei file preesistenti
+ *     (scripts/token-legacy-files.txt, congelato a Fase T).
+ * Esenti: i file dei token (src/theme/), i test (__tests__, *.test.*), i file
+ * generati (*.gen.ts) e i report.
+ *
+ * Il resto dell'app esistente NON viene corretto: i suoi valori scritti a mano
+ * sono il DEBITO da saldare nel restyling. Si elenca (file e riga) con
+ *   node scripts/check-tokens.mjs --debt            stampa l'elenco
+ *   node scripts/check-tokens.mjs --write-debt F.md salva l'elenco in Markdown
+ *   node scripts/check-tokens.mjs --check-file F    controlla solo F come file nuovo
+ * ma non fa fallire il controllo.
+ */
+import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const LEGACY = new Set(
+  readFileSync(resolve(ROOT, "scripts/token-legacy-files.txt"), "utf8").split("\n").filter(Boolean),
+);
+
+const COLOR =
+  /#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3,4}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb)\(/g;
+const SHADOW_PROPS = /(?:^|-)(?:box-shadow|text-shadow|boxShadow|textShadow)$|shadow$/i;
+const RADIUS_PROPS = /radius$/i;
+
+/** Il valore è fatto solo di `var(...)` (con eventuale fallback assente) o di parole neutre. */
+function isTokenOnly(value) {
+  const v = value.trim().replace(/\s*!important$/, "");
+  if (/^(?:0|none|inherit|initial|unset|revert|currentcolor|transparent)$/i.test(v)) return true;
+  const rest = v.replace(/var\(--[a-z0-9-]+\)/gi, "").trim();
+  return rest === "";
+}
+
+/** Toglie i commenti lasciando intatti i ritorni a capo (le righe restano quelle). */
+function stripCss(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+}
+
+function stripTs(src) {
+  let out = "";
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    const n = src[i + 1];
+    if (c === "/" && n === "/") {
+      while (i < src.length && src[i] !== "\n") ((out += " "), i++);
+    } else if (c === "/" && n === "*") {
+      while (i < src.length && !(src[i] === "*" && src[i + 1] === "/"))
+        ((out += src[i] === "\n" ? "\n" : " "), i++);
+      out += "  ";
+      i += 2;
+    } else if (c === '"' || c === "'" || c === "`") {
+      const q = c;
+      out += c;
+      i++;
+      while (i < src.length && src[i] !== q) {
+        if (src[i] === "\\") ((out += src[i]), i++);
+        out += src[i] ?? "";
+        i++;
+      }
+      out += q;
+      i++;
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+}
+
+const lineOf = (text, index) => text.slice(0, index).split("\n").length;
+
+function scanCss(text) {
+  const found = [];
+  for (const m of text.matchAll(/([a-zA-Z-]+)\s*:\s*([^;{}]+)/g)) {
+    const [, prop, value] = m;
+    const line = lineOf(text, m.index);
+    for (const c of value.matchAll(COLOR)) found.push({ line, kind: "colore", text: c[0] });
+    if (RADIUS_PROPS.test(prop) && !isTokenOnly(value))
+      found.push({ line, kind: "raggio", text: `${prop}: ${value.trim()}` });
+    if ((SHADOW_PROPS.test(prop) || /drop-shadow\(/.test(value)) && !isTokenOnly(value))
+      found.push({ line, kind: "ombra", text: `${prop}: ${value.trim().replace(/\s+/g, " ")}` });
+  }
+  // utility Tailwind in @apply
+  return found;
+}
+
+function scanTs(text) {
+  const found = [];
+  const lines = text.split("\n");
+  lines.forEach((ln, idx) => {
+    const line = idx + 1;
+    for (const c of ln.matchAll(COLOR)) {
+      // un `#` seguito da cifre/lettere esadecimali dentro una stringa; esclude i frammenti di URL non esadecimali
+      found.push({ line, kind: "colore", text: c[0] });
+    }
+    for (const m of ln.matchAll(/\b(borderRadius|boxShadow|textShadow)\s*:\s*([^,}]+)/g)) {
+      const value = m[2].trim().replace(/^["'`]|["'`]$/g, "");
+      if (!isTokenOnly(value))
+        found.push({
+          line,
+          kind: m[1] === "borderRadius" ? "raggio" : "ombra",
+          text: `${m[1]}: ${m[2].trim()}`,
+        });
+    }
+    for (const m of ln.matchAll(
+      /\b(rounded(?:-[a-z]{1,2})?|shadow(?:-[a-z]{1,2})?)-\[([^\]]+)\]/g,
+    )) {
+      if (!/^(?:var\(--[a-z0-9-]+\)|inherit|0)$/.test(m[2]))
+        found.push({ line, kind: m[1].startsWith("rounded") ? "raggio" : "ombra", text: m[0] });
+    }
+  });
+  return found;
+}
+
+function listFiles() {
+  const out = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "--", "src"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  return out.split("\n").filter((f) => /\.(css|ts|tsx)$/.test(f));
+}
+
+const isExempt = (f) =>
+  f.startsWith("src/theme/") ||
+  /(^|\/)__tests__\//.test(f) ||
+  /\.test\.[tj]sx?$/.test(f) ||
+  /\.gen\.ts$/.test(f) ||
+  f.includes("/.reports/");
+
+function scan(file) {
+  const raw = readFileSync(resolve(ROOT, file), "utf8");
+  return file.endsWith(".css") ? scanCss(stripCss(raw)) : scanTs(stripTs(raw));
+}
+
+const args = process.argv.slice(2);
+const strict = [];
+const debt = [];
+
+// `--check-file F`: controlla solo F, come file nuovo (usato dai test).
+const cf = args.indexOf("--check-file");
+if (cf >= 0) {
+  const target = resolve(args[cf + 1]);
+  const raw = readFileSync(target, "utf8");
+  const hits = target.endsWith(".css") ? scanCss(stripCss(raw)) : scanTs(stripTs(raw));
+  for (const h of hits) console.error(`${args[cf + 1]}:${h.line}  [${h.kind}] ${h.text}`);
+  process.exit(hits.length ? 1 : 0);
+}
+
+for (const file of listFiles()) {
+  if (isExempt(file)) continue;
+  const isStrict = file.startsWith("src/etl-canvas/") || !LEGACY.has(file);
+  const hits = scan(file).map((h) => ({ file, ...h }));
+  (isStrict ? strict : debt).push(...hits);
+}
+
+const fmt = (h) => `${h.file}:${h.line}  [${h.kind}] ${h.text}`;
+const count = (hits) => {
+  const by = {};
+  for (const h of hits) by[h.kind] = (by[h.kind] ?? 0) + 1;
+  return (
+    Object.entries(by)
+      .map(([k, n]) => `${n} ${k}`)
+      .join(", ") || "nessuno"
+  );
+};
+
+if (args.includes("--debt")) console.log(debt.map(fmt).join("\n"));
+
+const wi = args.indexOf("--write-debt");
+if (wi >= 0) {
+  const byFile = new Map();
+  for (const h of debt) byFile.set(h.file, [...(byFile.get(h.file) ?? []), h]);
+  let md = `# Debito dei token: [REDATTO] scritti a mano\n\n`;
+  md += `Generato da \`node scripts/check-tokens.mjs --write-debt\`. Elenca i colori, i raggi e le ombre letterali dei file di \`src/\` preesistenti alla Fase T (\`scripts/token-legacy-files.txt\`), da portare sui token semantici nel restyling. Il controllo non li fa fallire.\n\n`;
+  md += `**Totale: ${debt.length}** (${count(debt)}) in ${byFile.size} file.\n\n`;
+  for (const [file, hits] of [...byFile].sort()) {
+    md += `## \`${file}\` (${hits.length})\n\n`;
+    for (const h of hits) md += `- riga ${h.line} — ${h.kind}: \`${h.text.replace(/`/g, "'")}\`\n`;
+    md += "\n";
+  }
+  writeFileSync(resolve(ROOT, args[wi + 1]), md);
+}
+
+console.log(
+  `check-tokens: ${strict.length} violazioni nei file controllati; debito preesistente: ${debt.length} (${count(debt)}).`,
+);
+if (strict.length) {
+  console.error("\nValori scritti a mano nei file controllati (usare i token semantici --isa-*):");
+  console.error(strict.map(fmt).join("\n"));
+  process.exit(1);
 }
 ```
 
@@ -1377,7 +1591,7 @@ console.log(
 
 ### `scripts/sync-snapshot.sh`
 
-237 righe
+238 righe
 
 ```sh
 #!/usr/bin/env bash
@@ -1474,6 +1688,7 @@ run_check "Type check" "Nessuno script \"typecheck\" in package.json: eseguito i
 run_check "Lint (npm run lint)" "" npm run lint
 run_check "Test (npm test / vitest run)" "" npm test
 run_check "Build (npm run build)" "" npm run build
+run_check "Disciplina dei token" "Colori, raggi e ombre letterali nei file controllati (scripts/check-tokens.mjs)." node scripts/check-tokens.mjs
 
 {
   echo "## Git log (ultimi 20 commit)"
@@ -1616,110 +1831,5 @@ echo "== Done =="
 echo "INDEX.md (branch $SNAPSHOT_BRANCH, moving target): https://raw.githubusercontent.com/$SNAPSHOT_REPO/$SNAPSHOT_BRANCH/INDEX.md"
 echo "INDEX.md (fissato al commit $FINAL_SHA di questo run) -- ultima riga, sempre stampata:"
 echo "https://raw.githubusercontent.com/$SNAPSHOT_REPO/$FINAL_SHA/INDEX.md"
-```
-
-### `scripts/visual-compare.mjs`
-
-99 righe
-
-```js
-#!/usr/bin/env node
-/**
- * Confronto pixel per pixel tra le schermate nel working tree e quelle
- * committate in HEAD (o in un altro riferimento git). Nessuna dipendenza
- * nuova: le immagini si decodificano in Chromium (Playwright) con un canvas.
- *
- * Uso: node scripts/visual-compare.mjs [--ref HEAD] <file.png>[@x,y,w,h] ...
- *   `@x,y,w,h` limita il confronto a un rettangolo (per escludere il resto
- *   della pagina, per esempio l'intestazione dell'app).
- * Esce con codice 1 se una qualunque coppia differisce.
- */
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { chromium } from "playwright";
-import { ROOT } from "./visual-lib.mjs";
-
-const args = process.argv.slice(2);
-let ref = "HEAD";
-const items = [];
-for (let i = 0; i < args.length; i++) {
-  if (args[i] === "--ref") ref = args[++i];
-  else items.push(args[i]);
-}
-
-const dataUrl = (buf) => "data:image/png;base64," + buf.toString("base64");
-const browser = await chromium.launch();
-const page = await browser.newPage();
-let failed = 0;
-const rows = [];
-for (const item of items) {
-  const [file, clip] = item.split("@");
-  const now = readFileSync(resolve(ROOT, file));
-  let old;
-  try {
-    old = execFileSync("git", ["show", `${ref}:${file}`], { cwd: ROOT, maxBuffer: 1 << 28 });
-  } catch {
-    rows.push({ file, esito: "assente in " + ref });
-    failed++;
-    continue;
-  }
-  const r = await page.evaluate(
-    async ([a, b, clip]) => {
-      const load = (src) =>
-        new Promise((res, rej) => {
-          const img = new Image();
-          img.onload = () => res(img);
-          img.onerror = rej;
-          img.src = src;
-        });
-      const [ia, ib] = await Promise.all([load(a), load(b)]);
-      if (ia.width !== ib.width || ia.height !== ib.height)
-        return { size: [ia.width, ia.height, ib.width, ib.height] };
-      const [x, y, w, h] = clip ? clip.split(",").map(Number) : [0, 0, ia.width, ia.height];
-      const px = (img) => {
-        const c = document.createElement("canvas");
-        c.width = w;
-        c.height = h;
-        const ctx = c.getContext("2d");
-        ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
-        return ctx.getImageData(0, 0, w, h).data;
-      };
-      const da = px(ia);
-      const db = px(ib);
-      let diff = 0;
-      let max = 0;
-      for (let i = 0; i < da.length; i += 4) {
-        const d = Math.max(
-          Math.abs(da[i] - db[i]),
-          Math.abs(da[i + 1] - db[i + 1]),
-          Math.abs(da[i + 2] - db[i + 2]),
-          Math.abs(da[i + 3] - db[i + 3]),
-        );
-        if (d > 0) diff++;
-        if (d > max) max = d;
-      }
-      return { pixels: w * h, diff, max };
-    },
-    [dataUrl(old), dataUrl(now), clip ?? null],
-  );
-  if (r.size) {
-    rows.push({ file, esito: `dimensioni diverse ${r.size.slice(0, 2)} → ${r.size.slice(2)}` });
-    failed++;
-  } else {
-    rows.push({
-      file,
-      regione: clip ?? "intera",
-      pixel: r.pixels,
-      differenti: r.diff,
-      scartoMax: r.max,
-    });
-    if (r.diff > 0) failed++;
-  }
-}
-await browser.close();
-console.table(rows);
-console.log(failed ? `DIFFERENZE in ${failed} file` : "TUTTE LE IMMAGINI COINCIDONO al pixel");
-process.exit(failed ? 1 : 0);
 ```
 

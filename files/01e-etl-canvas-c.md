@@ -138,13 +138,14 @@ export function browserEnv(): LoopEnv {
 
 ### `src/etl-canvas/model.ts`
 
-76 righe
+97 righe
 
 ```ts
 /**
  * Dal grafo di etl-core a ciò che il canvas disegna: classi e icone di ogni
  * nodo, fette di un output parziale. Funzioni pure.
  */
+import { sectionOf } from "../etl-core";
 import type { Card, ComponentId } from "../etl-core";
 
 /** Classe di conteggio per la disposizione delle icone (prototipo `countClass`, righe 982-985). */
@@ -178,6 +179,24 @@ export function slicesOf(card: Card): Slice[] {
   return Array.from({ length: n }, (_, i) => ({ full: i < f }));
 }
 
+/** Famiglia di operazioni (colore del nodo): una per sezione della cassetta, tranne i dataset. */
+export type OpFamily = "filter" | "transform" | "merge" | "output";
+
+const FAMILY_OF_SECTION: Readonly<Record<string, OpFamily>> = {
+  rows: "filter",
+  xform: "transform",
+  merge: "merge",
+  out: "output",
+};
+
+/** La famiglia di un nodo lavorazione (quella della prima operazione); i dataset non ne hanno. */
+export function familyOf(card: Card): OpFamily | undefined {
+  if (card.kind !== "op") return undefined;
+  const first = card.components[0];
+  const section = first === undefined ? null : sectionOf(first);
+  return section ? FAMILY_OF_SECTION[section.id] : undefined;
+}
+
 export interface NodeView {
   readonly id: string;
   readonly card: Card;
@@ -186,6 +205,7 @@ export interface NodeView {
   readonly iconClass: string;
   readonly partial: boolean;
   readonly slices: readonly Slice[];
+  readonly family: OpFamily | undefined;
   readonly icons: readonly ComponentId[];
   readonly warn: string | null;
   readonly selected: boolean;
@@ -211,6 +231,7 @@ export function nodeView(card: Card, warn: string | null, selected: boolean): No
     iconClass: partial ? "ec-icon-wrap ec-split" : `ec-icon-wrap ec-${countClass(icons.length)}`,
     partial,
     slices: partial ? slicesOf(card) : [],
+    family: familyOf(card),
     icons,
     warn,
     selected,
@@ -310,34 +331,37 @@ export function prototypeScene(): EtlState {
 
 ### `src/etl-canvas/tokens.css`
 
-127 righe
+114 righe
 
 ```css
 /*
- * Token del canvas ETL (Fase 4a). Ambito: SOLO il contenitore `.etl-canvas`.
+ * Token del canvas ETL (livello 3 — di componente). Ambito: SOLO il
+ * contenitore `.etl-canvas`.
  *
- * Tema chiaro: valori IDENTICI al prototipo
+ * Usano SOLO token semantici (`--isa-*`, definiti per tema e per modo in
+ * src/theme/themes/*.css), mai colori o misure scritte a mano: il modo
+ * chiaro/scuro e il tema (`data-theme`) arrivano da `<html>` per eredità.
+ * Nel tema predefinito, chiaro: valori IDENTICI al prototipo
  * (docs/prototype/isa-fusion-prototype.html); ogni token riporta la riga da
- * cui viene. Tema scuro: progettato (il prototipo non lo definisce) a
- * partire dal tema scuro dell'app (src/styles.css, `.dark`), con la stessa
- * tinta d'accento #6C63FF. Il tema segue la classe `.dark` sull'elemento
- * radice, la stessa che imposta src/lib/theme.tsx.
+ * cui viene. Scuro: progettato (il prototipo non lo definisce) a partire dal
+ * tema scuro dell'app, con la stessa tinta d'accento #6C63FF; l'accento resta
+ * sui riempimenti, mentre testi ed elementi sottili usano una tinta più chiara.
  */
 .etl-canvas {
   /* sfondo della pagina dietro al canvas — riga 10 */
-  --ec-bg: var(--isa-bg);
+  --ec-bg: var(--isa-surface-base);
   /* superficie del canvas (stage) — riga 623 */
   --ec-stage: var(--isa-stage);
   /* vetro dei controlli e della minimappa — riga 11 */
-  --ec-surface-strong: var(--isa-surface-strong);
+  --ec-surface-strong: var(--isa-surface-raised);
   /* bordo del vetro — riga 12 */
-  --ec-panel-border: var(--isa-panel-border);
+  --ec-panel-border: var(--isa-border);
   /* testo — riga 13 */
-  --ec-ink: var(--isa-ink);
+  --ec-ink: var(--isa-text);
   /* testo secondario — riga 14 */
-  --ec-muted: var(--isa-muted);
+  --ec-muted: var(--isa-text-muted);
   /* stato vuoto (elemento nuovo, assente nel prototipo): testo con contrasto ≥ 4,5:1 */
-  --ec-empty-ink: var(--isa-empty-ink);
+  --ec-empty-ink: var(--isa-text-secondary);
   /* accento — riga 15 */
   --ec-accent: var(--isa-accent);
   /* accento come colore di testo (etichette, "Adatta") — righe 15, 149, 649: coincide con l'accento */
@@ -353,9 +377,9 @@ export function prototypeScene(): EtlState {
   /* bordo del nodo lavorazione: il prototipo non ne ha (trasparente) */
   --ec-node-op-border: var(--isa-tint-border);
   /* nodo dataset e output (chip pieno) — riga 634 */
-  --ec-node-fill: var(--isa-accent);
+  --ec-node-fill: var(--isa-dataset-fill);
   /* icona sul chip pieno — riga 634 */
-  --ec-node-fill-ink: var(--isa-on-accent);
+  --ec-node-fill-ink: var(--isa-text-on-accent);
   /* opacità dell'output — riga 637 */
   --ec-output-opacity: 0.92;
   /* output parziale: fondo del nodo — riga 658 */
@@ -366,10 +390,13 @@ export function prototypeScene(): EtlState {
   /* separatore tra le fette — riga 666 */
   --ec-split-line: var(--isa-split-line);
   /* indicatore ambra e suo bordo — riga 185 */
-  --ec-warn: var(--isa-amber);
-  --ec-warn-ring: var(--isa-amber-ring);
+  --ec-warn: var(--isa-warning);
+  --ec-warn-ring: var(--isa-warning-ring);
   /* contorno di selezione — riga 508 */
   --ec-select: var(--isa-select);
+  --ec-select-ring: var(--isa-ring-select);
+  /* contorno interno del nodo lavorazione (colore: --ec-node-op-border) */
+  --ec-node-op-outline: var(--isa-outline-node-op);
   /* cavo e suoi capi — righe 1404, 1047 */
   --ec-link: var(--isa-link);
   --ec-link-dot-fill: var(--isa-accent);
@@ -382,62 +409,43 @@ export function prototypeScene(): EtlState {
   --ec-mm-view-line: var(--isa-mm-view-line);
   --ec-mm-view-bg: var(--isa-mm-view-bg);
   /* raggi — righe 631 (nodo op), 634 (nodo pieno), 623 (stage), 154 (minimappa), 140 (controlli) */
-  --ec-r-op: var(--isa-r-node-op);
-  --ec-r-fill: var(--isa-r-node-fill);
-  /* derivati dal raggio dell'app (`--radius`, src/styles.css): stessi valori del prototipo, 20 e 14 px */
-  --ec-r-stage: calc(var(--radius) + 4px);
-  --ec-r-minimap: calc(var(--radius) - 2px);
-  --ec-r-pill: 999px;
+  --ec-r-op: var(--isa-radius-node-op);
+  --ec-r-fill: var(--isa-radius-node-fill);
+  /* derivati dal raggio del tema (`--radius`): nel tema predefinito 20 e 14 px, come nel prototipo */
+  --ec-r-stage: var(--isa-radius-panel);
+  --ec-r-minimap: var(--isa-radius-control);
+  --ec-r-pill: var(--isa-radius-pill);
+  /* minimappa: nodo (2 px) e riquadro visibile (4 px) */
+  --ec-r-xs: var(--isa-radius-xs);
+  --ec-r-sm: var(--isa-radius-sm);
   /* ombra del vetro — righe 141, 155 */
-  --ec-glass-shadow: var(--isa-glass-shadow);
+  --ec-glass-shadow: var(--isa-shadow-glass);
   /* sfocatura del vetro — righe 140, 154 */
-  --ec-glass-blur: var(--isa-glass-blur);
+  --ec-glass-blur: var(--isa-blur-glass);
   /* carattere — riga 6 (link) e 21 (body): quello dell'app (`--font-sans`, src/styles.css) */
   --ec-font: var(--font-sans);
 }
 
 /*
- * Tema scuro. Derivazione dai ruoli dell'app (`.dark` in src/styles.css):
- * sfondo oklch(0.19 0.008 260) ≈ #17181d; testo oklch(0.96 0.004 250) ≈
- * #f1f2f5; testo secondario oklch(0.75 0.008 260) ≈ #a9abb3; bordi
- * oklch(1 0 0 / 11%); ambra `--warning` oklch(0.8 0.12 80) ≈ #e8b34f.
- * L'accento resta #6c63ff sui riempimenti; per i testi e per gli elementi
- * sottili su fondo scuro si usa una tinta più chiara della stessa famiglia.
+ * Famiglie di operazioni: il nodo lavorazione prende il colore della propria
+ * famiglia (filtra-ordina, trasforma, merge-union, output). Nel tema
+ * predefinito le quattro famiglie coincidono con la tinta unica del prototipo.
  */
-.dark .etl-canvas {
-  --ec-bg: var(--isa-bg);
-  --ec-stage: var(--isa-stage);
-  --ec-surface-strong: var(--isa-surface-strong);
-  --ec-panel-border: var(--isa-panel-border);
-  --ec-ink: var(--isa-ink);
-  --ec-muted: var(--isa-muted);
-  --ec-empty-ink: var(--isa-empty-ink);
-  --ec-accent: var(--isa-accent);
-  --ec-accent-text: var(--isa-accent-text);
-  --ec-accent-soft: var(--isa-accent-soft);
-  --ec-accent-soft-2: var(--isa-accent-soft-2);
-  --ec-node-op: var(--isa-tint);
-  --ec-node-op-ink: var(--isa-tint-ink);
-  --ec-node-op-border: var(--isa-tint-border);
-  --ec-node-fill: var(--isa-accent);
-  --ec-node-fill-ink: var(--isa-on-accent);
-  --ec-output-opacity: 0.92;
-  --ec-split-bg: var(--isa-split-bg);
-  --ec-split-empty: var(--isa-split-empty);
-  --ec-split-empty-ink: var(--isa-split-empty-ink);
-  --ec-split-line: var(--isa-split-line);
-  --ec-warn: var(--isa-amber);
-  --ec-warn-ring: var(--isa-amber-ring);
-  --ec-select: var(--isa-select);
-  --ec-link: var(--isa-link);
-  --ec-link-dot-fill: var(--isa-accent);
-  --ec-link-dot-op: var(--isa-link-dot-tint);
-  --ec-flow: var(--isa-flow);
-  --ec-mm-node: var(--isa-mm-node);
-  --ec-mm-node-ds: var(--isa-mm-node-ds);
-  --ec-mm-view-line: var(--isa-mm-view-line);
-  --ec-mm-view-bg: var(--isa-mm-view-bg);
-  --ec-glass-shadow: var(--isa-glass-shadow);
+.etl-canvas [data-family="filter"] {
+  --ec-node-op: var(--isa-op-filter-soft);
+  --ec-node-op-ink: var(--isa-op-filter);
+}
+.etl-canvas [data-family="transform"] {
+  --ec-node-op: var(--isa-op-transform-soft);
+  --ec-node-op-ink: var(--isa-op-transform);
+}
+.etl-canvas [data-family="merge"] {
+  --ec-node-op: var(--isa-op-merge-soft);
+  --ec-node-op-ink: var(--isa-op-merge);
+}
+.etl-canvas [data-family="output"] {
+  --ec-node-op: var(--isa-op-output-soft);
+  --ec-node-op-ink: var(--isa-op-output);
 }
 ```
 

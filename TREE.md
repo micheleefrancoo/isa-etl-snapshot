@@ -15,6 +15,7 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `docs/inventory/INVENTARIO_2026-09-28T19-40-33Z.md` — 310 righe (50261 B)
 - `docs/inventory/lovable-1e72955.diff` — 43 righe (1992 B)
 - `docs/prototype/isa-fusion-prototype.html` — 5098 righe (259379 B)
+- `docs/theme-debt.md` — 57 righe (1912 B)
 - `docs/visual/fase4/cavi-chiaro.png` — binary, 90799 B
 - `docs/visual/fase4/cavi-prototipo.png` — binary, 97380 B
 - `docs/visual/fase4/cavi-scuro.png` — binary, 76564 B
@@ -52,20 +53,38 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `docs/visual/fase4b/v2-scuro-t0.png` — binary, 75478 B
 - `docs/visual/fase4b/v2-scuro-t250.png` — binary, 76615 B
 - `docs/visual/fase4b/v2-scuro-t500.png` — binary, 76978 B
+- `docs/visual/temi/notte-chiaro-canvas.png` — binary, 71351 B
+- `docs/visual/temi/notte-chiaro-soluzioni.png` — binary, 312366 B
+- `docs/visual/temi/notte-scuro-canvas.png` — binary, 54177 B
+- `docs/visual/temi/notte-scuro-soluzioni.png` — binary, 137019 B
+- `docs/visual/temi/prototipo-chiaro-canvas.png` — binary, 85085 B
+- `docs/visual/temi/prototipo-chiaro-soluzioni.png` — binary, 347821 B
+- `docs/visual/temi/prototipo-scuro-canvas.png` — binary, 70186 B
+- `docs/visual/temi/prototipo-scuro-soluzioni.png` — binary, 197920 B
+- `docs/visual/temi/tinta-0-chiaro-canvas.png` — binary, 85651 B
+- `docs/visual/temi/tinta-0-scuro-canvas.png` — binary, 70617 B
+- `docs/visual/temi/tinta-140-chiaro-canvas.png` — binary, 86253 B
+- `docs/visual/temi/tinta-140-scuro-canvas.png` — binary, 70011 B
+- `docs/visual/temi/tinta-280-chiaro-canvas.png` — binary, 85599 B
+- `docs/visual/temi/tinta-280-scuro-canvas.png` — binary, 70379 B
 - `eslint.config.js` — 41 righe (1250 B)
 - `package-lock.json` — lockfile, 283384 B
-- `package.json` — 96 righe (3087 B)
+- `package.json` — 97 righe (3140 B)
 - `public/favicon.ico` — binary, 20373 B
 - `public/robots.txt` — 15 righe (160 B)
 - `roadmap.md` — 27 righe (1720 B)
+- `scripts/check-tokens.mjs` — 207 righe (7846 B)
 - `scripts/extract-golden.mjs` — 386 righe (13437 B)
 - `scripts/generate-index.mjs` — 114 righe (3872 B)
 - `scripts/generate-snapshot.mjs` — 528 righe (17668 B)
-- `scripts/sync-snapshot.sh` — 237 righe (7051 B)
+- `scripts/sync-snapshot.sh` — 238 righe (7197 B)
+- `scripts/theme-map.mjs` — 96 righe (3623 B)
+- `scripts/token-legacy-files.txt` — 169 righe (5299 B)
 - `scripts/visual-compare.mjs` — 99 righe (3254 B)
 - `scripts/visual-fase4.mjs` — 374 righe (13241 B)
 - `scripts/visual-fase4b.mjs` — 318 righe (11921 B)
 - `scripts/visual-lib.mjs` — 87 righe (2695 B)
+- `scripts/visual-temi.mjs` — 100 righe (3871 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md` — 181 righe (8919 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-19T11-38-16Z.md` — 161 righe (9268 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-28T18-45-29Z.md` — 156 righe (6996 B)
@@ -81,6 +100,7 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-29T16-50-41Z.md` — 120 righe (9282 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-29T17-13-50Z.md` — 93 righe (8498 B)
 - `src/canvas/.reports/VALIDATION_REPORT_2026-09-29T19-51-32Z.md` — 41 righe (3859 B)
+- `src/canvas/.reports/VALIDATION_REPORT_2026-10-02T12-35-11Z.md` — 275 righe (25673 B)
 - `src/canvas/FUNCTIONAL_CHECKS.md` — 75 righe (4054 B)
 - `src/canvas/README.md` — 143 righe (6702 B)
 - `src/canvas/__tests__/panelPositioning.test.ts` — 179 righe (5035 B)
@@ -168,8 +188,8 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `src/etl-canvas/Links.tsx` — 72 righe (2089 B)
 - `src/etl-canvas/Minimap.tsx` — 72 righe (2265 B)
 - `src/etl-canvas/NOTE_DIVERGENZE.md` — 70 righe (3387 B)
-- `src/etl-canvas/Node.tsx` — 45 righe (1498 B)
-- `src/etl-canvas/README.md` — 136 righe (9170 B)
+- `src/etl-canvas/Node.tsx` — 46 righe (1530 B)
+- `src/etl-canvas/README.md` — 139 righe (9413 B)
 - `src/etl-canvas/__tests__/engine.test.ts` — 354 righe (12327 B)
 - `src/etl-canvas/__tests__/fake-env.ts` — 57 righe (1312 B)
 - `src/etl-canvas/__tests__/flow.test.ts` — 163 righe (6029 B)
@@ -178,21 +198,21 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `src/etl-canvas/__tests__/no-reroute.test.ts` — 129 righe (4977 B)
 - `src/etl-canvas/__tests__/render.test.ts` — 186 righe (7859 B)
 - `src/etl-canvas/__tests__/ssr.test.tsx` — 92 righe (3532 B)
-- `src/etl-canvas/__tests__/tokens.test.ts` — 90 righe (2980 B)
+- `src/etl-canvas/__tests__/tokens.test.ts` — 105 righe (3567 B)
 - `src/etl-canvas/__tests__/transitions.test.ts` — 142 righe (4778 B)
 - `src/etl-canvas/__tests__/view.test.ts` — 148 righe (5506 B)
 - `src/etl-canvas/actions.ts` — 41 righe (1290 B)
-- `src/etl-canvas/canvas.css` — 333 righe (7297 B)
-- `src/etl-canvas/contrast.ts` — 137 righe (5468 B)
+- `src/etl-canvas/canvas.css` — 333 righe (7308 B)
+- `src/etl-canvas/contrast.ts` — 90 righe (4143 B)
 - `src/etl-canvas/engine.ts` — 335 righe (9816 B)
 - `src/etl-canvas/flow.ts` — 180 righe (6740 B)
 - `src/etl-canvas/icons.tsx` — 24 righe (710 B)
 - `src/etl-canvas/index.ts` — 11 righe (505 B)
 - `src/etl-canvas/loop.ts` — 118 righe (3137 B)
-- `src/etl-canvas/model.ts` — 76 righe (2468 B)
+- `src/etl-canvas/model.ts` — 97 righe (3259 B)
 - `src/etl-canvas/motion.tsx` — 10 righe (357 B)
 - `src/etl-canvas/seed.ts` — 68 righe (2307 B)
-- `src/etl-canvas/tokens.css` — 127 righe (5452 B)
+- `src/etl-canvas/tokens.css` — 114 righe (4995 B)
 - `src/etl-canvas/transitions.ts` — 109 righe (3889 B)
 - `src/etl-canvas/view.ts` — 140 righe (4502 B)
 - `src/etl-core/NOTE_DIVERGENZE.md` — 89 righe (4397 B)
@@ -281,12 +301,13 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `src/lib/etl-workflow.tsx` — 476 righe (14647 B)
 - `src/lib/modules.ts` — 38 righe (927 B)
 - `src/lib/solutions-store.tsx` — 332 righe (9053 B)
-- `src/lib/theme.tsx` — 30 righe (956 B)
+- `src/lib/theme.test.tsx` — 21 righe (650 B)
+- `src/lib/theme.tsx` — 55 righe (1877 B)
 - `src/lib/utils.ts` — 7 righe (169 B)
 - `src/routeTree.gen.ts` — 357 righe (11795 B)
 - `src/router.tsx` — 17 righe (394 B)
 - `src/routes/README.md` — 22 righe (835 B)
-- `src/routes/__root.tsx` — 134 righe (4237 B)
+- `src/routes/__root.tsx` — 138 righe (4556 B)
 - `src/routes/activity.tsx` — 76 righe (2706 B)
 - `src/routes/favorites.tsx` — 24 righe (761 B)
 - `src/routes/index.tsx` — 131 righe (4334 B)
@@ -303,7 +324,25 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `src/routes/users.tsx` — 24 righe (745 B)
 - `src/server.ts` — 62 righe (2048 B)
 - `src/start.ts` — 30 righe (944 B)
-- `src/styles.css` — 441 righe (13870 B)
+- `src/styles.css` — 264 righe (7416 B)
+- `src/theme/README.md` — 207 righe (23308 B)
+- `src/theme/__tests__/check-tokens.test.ts` — 57 righe (2253 B)
+- `src/theme/__tests__/checks.ts` — 98 righe (4262 B)
+- `src/theme/__tests__/contrast.test.ts` — 53 righe (1953 B)
+- `src/theme/__tests__/derive.test.ts` — 79 righe (3111 B)
+- `src/theme/__tests__/readme.test.ts` — 15 righe (636 B)
+- `src/theme/__tests__/runtime.test.ts` — 257 righe (9448 B)
+- `src/theme/__tests__/support.ts` — 99 righe (3751 B)
+- `src/theme/__tests__/themes.test.ts` — 147 righe (4900 B)
+- `src/theme/boot.ts` — 29 righe (1522 B)
+- `src/theme/color.ts` — 115 righe (3930 B)
+- `src/theme/derive.ts` — 212 righe (7571 B)
+- `src/theme/index.css` — 9 righe (266 B)
+- `src/theme/index.ts` — 13 righe (322 B)
+- `src/theme/primitives.css` — 88 righe (4229 B)
+- `src/theme/runtime.ts` — 212 righe (7332 B)
+- `src/theme/themes/notte.css` — 243 righe (10175 B)
+- `src/theme/themes/prototipo.css` — 237 righe (9176 B)
 - `tsconfig.json` — 31 righe (820 B)
 - `vite.config.ts` — 93 righe (2809 B)
 - `vitest.config.ts` — 11 righe (251 B)

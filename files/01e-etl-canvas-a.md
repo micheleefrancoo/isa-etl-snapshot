@@ -510,7 +510,7 @@ contrasto ≥ 3:1 sul canvas, verificato da `tokens.test.ts`.
 
 ### `src/etl-canvas/Node.tsx`
 
-45 righe
+46 righe
 
 ```tsx
 import { memo } from "react";
@@ -528,6 +528,7 @@ export const Node = memo(function Node(props: { node: NodeView }) {
       className={node.className}
       data-node-id={node.id}
       data-kind={card.kind}
+      data-family={node.family}
       style={{ left: card.x, top: card.y }}
     >
       <div
@@ -561,7 +562,7 @@ export const Node = memo(function Node(props: { node: NodeView }) {
 
 ### `src/etl-canvas/README.md`
 
-136 righe
+139 righe
 
 ```md
 # etl-canvas — Fasi 4a e 4b: il canvas visibile e le sue animazioni
@@ -580,7 +581,7 @@ scrive solo attraverso `etl-store`.
 ## Moduli
 
 ```
-tokens.css       token --ec-* con ambito .etl-canvas, alias delle primitive --isa-* di src/styles.css (valori: tema chiaro = prototipo, scuro progettato)
+tokens.css       token --ec-* (livello 3) con ambito .etl-canvas: leggono solo i token semantici --isa-* dei temi (src/theme/); tema predefinito chiaro = prototipo, scuro progettato
 canvas.css       aspetto di nodi, cavi, controlli, minimappa; importa tokens.css
 EtlCanvas.tsx    EtlCanvas (solo browser, misura l'area) e CanvasSurface (la resa, rendibile anche in Node)
 Node.tsx         un nodo: chip, icone, fette, etichetta, indicatore ambra
@@ -626,12 +627,15 @@ stesso contenitore vuoto (`useSyncExternalStore` con snapshot server
   caricato da `src/styles.css`; `--ec-font` deriva da `--font-sans`. Nessuna
   richiesta a server esterni: i file sono serviti dall'app, e il browser
   scarica un sottoinsieme solo se il testo lo usa.
-- Raggi dello stage e della minimappa derivati da `--radius` dell'app (stessi
-  20 e 14 px del prototipo). Gli altri token restano del canvas: vedi il
+- Raggi dello stage e della minimappa derivati da `--radius` del tema (nel
+  tema predefinito, stessi 20 e 14 px del prototipo). Gli altri token restano del canvas: vedi il
   report della fase di fondazione per i ruoli che l'app definisce con valori
   diversi.
-- Il tema segue la classe `.dark` sull'elemento radice, quella già impostata
-  da `src/lib/theme.tsx`. Nessun meccanismo nuovo.
+- Modo e tema arrivano da `<html>` (classe `.dark` e `data-theme`, vedi
+  `src/theme/README.md`); `tokens.css` non ha blocchi per modo: i token
+  semantici variano da soli. Le famiglie di operazioni (`data-family` sul
+  nodo) leggono `--isa-op-*`; nel tema predefinito coincidono tutte con la
+  tinta unica del prototipo.
 - Tema chiaro = valori del prototipo, con la riga di provenienza accanto a
   ogni token (un test verifica che i colori chiari compaiano nel prototipo).
   Tema scuro = derivato dal tema scuro dell'app, con la stessa tinta

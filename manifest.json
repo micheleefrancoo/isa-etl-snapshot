@@ -155,7 +155,7 @@
     },
     {
       "name": "files/01e-etl-canvas-a.md",
-      "bytes": 58989,
+      "bytes": 59264,
       "files": [
         "src/etl-canvas/EtlCanvas.tsx",
         "src/etl-canvas/Links.tsx",
@@ -173,7 +173,7 @@
     },
     {
       "name": "files/01e-etl-canvas-b.md",
-      "bytes": 57682,
+      "bytes": 56955,
       "files": [
         "src/etl-canvas/__tests__/render.test.ts",
         "src/etl-canvas/__tests__/ssr.test.tsx",
@@ -191,7 +191,7 @@
     },
     {
       "name": "files/01e-etl-canvas-c.md",
-      "bytes": 22745,
+      "bytes": 23079,
       "files": [
         "src/etl-canvas/loop.ts",
         "src/etl-canvas/model.ts",
@@ -332,18 +332,19 @@
     },
     {
       "name": "files/04-lib-hooks-store-b.md",
-      "bytes": 26187,
+      "bytes": 27837,
       "files": [
         "src/lib/etl-workflow.tsx",
         "src/lib/modules.ts",
         "src/lib/solutions-store.tsx",
+        "src/lib/theme.test.tsx",
         "src/lib/theme.tsx",
         "src/lib/utils.ts"
       ]
     },
     {
       "name": "files/05-app-pages-a.md",
-      "bytes": 58632,
+      "bytes": 58951,
       "files": [
         "src/routeTree.gen.ts",
         "src/router.tsx",
@@ -375,14 +376,14 @@
     },
     {
       "name": "files/06-styles.md",
-      "bytes": 13980,
+      "bytes": 7526,
       "files": [
         "src/styles.css"
       ]
     },
     {
       "name": "files/08-scripts-config-a.md",
-      "bytes": 52498,
+      "bytes": 57289,
       "files": [
         ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",
@@ -393,20 +394,24 @@
         "components.json",
         "eslint.config.js",
         "package.json",
+        "scripts/check-tokens.mjs",
         "scripts/extract-golden.mjs",
         "scripts/generate-index.mjs",
         "scripts/generate-snapshot.mjs",
-        "scripts/sync-snapshot.sh",
-        "scripts/visual-compare.mjs"
+        "scripts/sync-snapshot.sh"
       ]
     },
     {
       "name": "files/08-scripts-config-b.md",
-      "bytes": 32229,
+      "bytes": 48612,
       "files": [
+        "scripts/theme-map.mjs",
+        "scripts/token-legacy-files.txt",
+        "scripts/visual-compare.mjs",
         "scripts/visual-fase4.mjs",
         "scripts/visual-fase4b.mjs",
         "scripts/visual-lib.mjs",
+        "scripts/visual-temi.mjs",
         "tsconfig.json",
         "vite.config.ts",
         "vitest.config.ts"
@@ -473,8 +478,9 @@
     },
     {
       "name": "files/12-docs-other-a.md",
-      "bytes": 32450,
+      "bytes": 34435,
       "files": [
+        "docs/theme-debt.md",
         "docs/visual/fase4/console.txt",
         "docs/visual/fase4/misure.json",
         "docs/visual/fase4b/console.txt",
@@ -655,6 +661,36 @@
       "files": [
         "docs/visual/fase4b/v2-chiaro.webm"
       ]
+    },
+    {
+      "name": "files/13-misc-a.md",
+      "bytes": 56152,
+      "files": [
+        "src/theme/README.md",
+        "src/theme/__tests__/check-tokens.test.ts",
+        "src/theme/__tests__/checks.ts",
+        "src/theme/__tests__/contrast.test.ts",
+        "src/theme/__tests__/derive.test.ts",
+        "src/theme/__tests__/readme.test.ts",
+        "src/theme/__tests__/runtime.test.ts",
+        "src/theme/__tests__/support.ts",
+        "src/theme/__tests__/themes.test.ts",
+        "src/theme/boot.ts"
+      ]
+    },
+    {
+      "name": "files/13-misc-b.md",
+      "bytes": 43678,
+      "files": [
+        "src/theme/color.ts",
+        "src/theme/derive.ts",
+        "src/theme/index.css",
+        "src/theme/index.ts",
+        "src/theme/primitives.css",
+        "src/theme/runtime.ts",
+        "src/theme/themes/notte.css",
+        "src/theme/themes/prototipo.css"
+      ]
     }
   ],
   "excluded": [
@@ -787,6 +823,62 @@
       "reason": "binary"
     },
     {
+      "file": "docs/visual/temi/notte-chiaro-canvas.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/temi/notte-chiaro-soluzioni.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/temi/notte-scuro-canvas.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/temi/notte-scuro-soluzioni.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/temi/prototipo-chiaro-canvas.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/temi/prototipo-chiaro-soluzioni.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/temi/prototipo-scuro-canvas.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/temi/prototipo-scuro-soluzioni.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/temi/tinta-0-chiaro-canvas.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/temi/tinta-0-scuro-canvas.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/temi/tinta-140-chiaro-canvas.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/temi/tinta-140-scuro-canvas.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/temi/tinta-280-chiaro-canvas.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/temi/tinta-280-scuro-canvas.png",
+      "reason": "binary"
+    },
+    {
       "file": "package-lock.json",
       "reason": "lockfile"
     },
@@ -800,6 +892,22 @@
     }
   ],
   "redactions": [
+    {
+      "file": "scripts/check-tokens.mjs",
+      "pattern": "secret-like assignment"
+    },
+    {
+      "file": "docs/theme-debt.md",
+      "pattern": "secret-like assignment"
+    },
+    {
+      "file": "src/theme/__tests__/support.ts",
+      "pattern": "secret-like assignment"
+    },
+    {
+      "file": "src/theme/color.ts",
+      "pattern": "secret-like assignment"
+    },
     {
       "file": "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T17-13-50Z.md",
       "pattern": "secret-like assignment"
@@ -1075,6 +1183,7 @@
         "src/lib/etl-workflow.tsx",
         "src/lib/modules.ts",
         "src/lib/solutions-store.tsx",
+        "src/lib/theme.test.tsx",
         "src/lib/theme.tsx",
         "src/lib/utils.ts"
       ],
@@ -1130,14 +1239,18 @@
         "components.json",
         "eslint.config.js",
         "package.json",
+        "scripts/check-tokens.mjs",
         "scripts/extract-golden.mjs",
         "scripts/generate-index.mjs",
         "scripts/generate-snapshot.mjs",
         "scripts/sync-snapshot.sh",
+        "scripts/theme-map.mjs",
+        "scripts/token-legacy-files.txt",
         "scripts/visual-compare.mjs",
         "scripts/visual-fase4.mjs",
         "scripts/visual-fase4b.mjs",
         "scripts/visual-lib.mjs",
+        "scripts/visual-temi.mjs",
         "tsconfig.json",
         "vite.config.ts",
         "vitest.config.ts"
@@ -1181,6 +1294,7 @@
     },
     "12-docs-other": {
       "files": [
+        "docs/theme-debt.md",
         "docs/visual/fase4/console.txt",
         "docs/visual/fase4/misure.json",
         "docs/visual/fase4b/console.txt",
@@ -1216,6 +1330,32 @@
         "12-docs-other-y.md",
         "12-docs-other-z.md"
       ]
+    },
+    "13-misc": {
+      "files": [
+        "src/theme/README.md",
+        "src/theme/__tests__/check-tokens.test.ts",
+        "src/theme/__tests__/checks.ts",
+        "src/theme/__tests__/contrast.test.ts",
+        "src/theme/__tests__/derive.test.ts",
+        "src/theme/__tests__/readme.test.ts",
+        "src/theme/__tests__/runtime.test.ts",
+        "src/theme/__tests__/support.ts",
+        "src/theme/__tests__/themes.test.ts",
+        "src/theme/boot.ts",
+        "src/theme/color.ts",
+        "src/theme/derive.ts",
+        "src/theme/index.css",
+        "src/theme/index.ts",
+        "src/theme/primitives.css",
+        "src/theme/runtime.ts",
+        "src/theme/themes/notte.css",
+        "src/theme/themes/prototipo.css"
+      ],
+      "outFiles": [
+        "13-misc-a.md",
+        "13-misc-b.md"
+      ]
     }
   },
   "reportFiles": [
@@ -1233,8 +1373,9 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T15-34-16Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T16-50-41Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T17-13-50Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T19-51-32Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T19-51-32Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-10-02T12-35-11Z.md"
   ],
-  "inScopeFileCount": 255,
-  "reportFileCount": 15
+  "inScopeFileCount": 279,
+  "reportFileCount": 16
 }

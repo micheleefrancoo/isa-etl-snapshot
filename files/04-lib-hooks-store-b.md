@@ -5,6 +5,7 @@ File in questo blocco:
 - `src/lib/etl-workflow.tsx`
 - `src/lib/modules.ts`
 - `src/lib/solutions-store.tsx`
+- `src/lib/theme.test.tsx`
 - `src/lib/theme.tsx`
 - `src/lib/utils.ts`
 
@@ -874,37 +875,89 @@ export function useSolutions() {
 }
 ```
 
-### `src/lib/theme.tsx`
+### `src/lib/theme.test.tsx`
 
-30 righe
+21 righe
 
 ```tsx
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { renderToString } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { ThemeProvider, useTheme } from "./theme";
 
-type Theme = "light" | "dark";
+function Probe() {
+  const { theme, themeName, accentHue } = useTheme();
+  return <span>{`${theme}|${themeName}|${accentHue}`}</span>;
+}
 
-const ThemeContext = createContext<{ theme: Theme; toggle: () => void }>({
-  theme: "dark",
+describe("ThemeProvider", () => {
+  it("renderizza sul server con il predefinito (scuro, prototipo, nessuna tinta) senza toccare localStorage", () => {
+    expect(typeof window).toBe("undefined");
+    const html = renderToString(
+      <ThemeProvider>
+        <Probe />
+      </ThemeProvider>,
+    );
+    expect(html).toContain("dark|prototipo|null");
+  });
+});
+```
+
+### `src/lib/theme.tsx`
+
+55 righe
+
+```tsx
+import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
+import { DEFAULT_PREFERENCE, themeStore } from "@/theme/runtime";
+import type { Mode, ThemeName } from "@/theme/runtime";
+
+interface ThemeContextValue {
+  /** Modo chiaro/scuro (nome storico, usato da header e pagina ETL). */
+  theme: Mode;
+  toggle: () => void;
+  /** Tema scelto (`data-theme`) e tinta dell'accento (null = quella del tema). */
+  themeName: ThemeName;
+  accentHue: number | null;
+  setThemeName: (name: ThemeName) => void;
+  setAccentHue: (hue: number | null) => void;
+}
+
+const ThemeContext = createContext<ThemeContextValue>({
+  theme: DEFAULT_PREFERENCE.mode,
   toggle: () => {},
+  themeName: DEFAULT_PREFERENCE.theme,
+  accentHue: DEFAULT_PREFERENCE.accentHue,
+  setThemeName: () => {},
+  setAccentHue: () => {},
 });
 
+/**
+ * Espone la preferenza di tema ai componenti. La preferenza vive in
+ * `themeStore` (src/theme/runtime.ts), già applicata a <html> dallo script di
+ * avvio prima del primo disegno: qui non si scrive nulla al montaggio, si
+ * legge soltanto. Il primo render sul server e in idratazione usa il
+ * predefinito; subito dopo React allinea il valore salvato (nessun avviso).
+ */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("dark");
+  const pref = useSyncExternalStore(themeStore.subscribe, themeStore.get, () => DEFAULT_PREFERENCE);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("isa-theme");
-    if (stored === "light" || stored === "dark") setTheme(stored);
+    themeStore.sync();
   }, []);
 
-  useEffect(() => {
-    const root = document.documentElement;
-    root.classList.toggle("dark", theme === "dark");
-    window.localStorage.setItem("isa-theme", theme);
-  }, [theme]);
+  const value = useMemo<ThemeContextValue>(
+    () => ({
+      theme: pref.mode,
+      toggle: themeStore.toggleMode,
+      themeName: pref.theme,
+      accentHue: pref.accentHue,
+      setThemeName: themeStore.setTheme,
+      setAccentHue: themeStore.setAccentHue,
+    }),
+    [pref],
+  );
 
-  const toggle = useCallback(() => setTheme((t) => (t === "dark" ? "light" : "dark")), []);
-
-  return <ThemeContext.Provider value={{ theme, toggle }}>{children}</ThemeContext.Provider>;
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export const useTheme = () => useContext(ThemeContext);
