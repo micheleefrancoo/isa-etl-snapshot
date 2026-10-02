@@ -309,7 +309,7 @@ describe("rendering lato server", () => {
 
 ### `src/etl-canvas/__tests__/tokens.test.ts`
 
-105 righe
+114 righe
 
 ```ts
 import { readFileSync } from "node:fs";
@@ -395,18 +395,27 @@ describe("tema scuro: contrasto", () => {
 });
 
 /**
- * Deroga: l'avviso del tema «notte» chiaro è #F59E0B (richiesto dalla
- * specifica), che su fondo chiaro dà 2,15:1. L'indicatore è un puntino con anello.
+ * Deroghe note del tema «notte». Stessa disciplina bidirezionale di
+ * KNOWN_EXCEPTIONS (src/theme/__tests__/checks.ts): `floor` è il rapporto
+ * misurato; il test fallisce se peggiora e fallisce anche se la coppia torna
+ * a rispettare la soglia senza che la deroga sia stata tolta a mano.
+ * Avviso #F59E0B (colore richiesto dalla specifica) sul fondo chiaro: 2,1476:1.
+ * NOTA: rivedere nella revisione di stile dopo la Fase 6.
  */
-const NOTTE_EXCEPTIONS = new Set(["light: Indicatore ambra"]);
+const NOTTE_EXCEPTIONS = new Map([["light: Indicatore ambra", { floor: 2.1476 }]]);
 
 describe("tema notte: contrasto del canvas", () => {
   for (const mode of ["light", "dark"] as const) {
     const tokens = readTokens(css, resolveTokens("notte", mode));
     for (const pair of PAIRS) {
-      if (NOTTE_EXCEPTIONS.has(`${mode}: ${pair.role}`)) {
-        it(`${mode}: ${pair.role}: deroga nota (resta sotto ${pair.min}:1)`, () => {
-          expect(measure(tokens, pair)).toBeLessThan(pair.min);
+      const exception = NOTTE_EXCEPTIONS.get(`${mode}: ${pair.role}`);
+      if (exception) {
+        it(`${mode}: ${pair.role}: deroga nota (rivedere dopo la Fase 6), non deve peggiorare`, () => {
+          const ratio = measure(tokens, pair);
+          expect(ratio, "la coppia ora rispetta la soglia: togliere la deroga").toBeLessThan(
+            pair.min,
+          );
+          expect(ratio).toBeGreaterThanOrEqual(exception.floor);
         });
         continue;
       }

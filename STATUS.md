@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-10-02T12:35:52Z (UTC)
+Generato: 2026-10-02T12:47:01Z (UTC)
 
 ## Type check
 
@@ -9,7 +9,7 @@ Nessuno script "typecheck" in package.json: eseguito il comando diretto.
 Comando: `npx tsc --noEmit`
 
 Esito: OK (exit 0)
-Durata: 13s
+Durata: 12s
 
 Ultime 60 righe di output:
 ```
@@ -20,7 +20,7 @@ Ultime 60 righe di output:
 Comando: `npm run lint`
 
 Esito: OK (exit 0)
-Durata: 13s
+Durata: 11s
 
 Ultime 60 righe di output:
 ```
@@ -74,7 +74,7 @@ Ultime 60 righe di output:
 Comando: `npm test`
 
 Esito: OK (exit 0)
-Durata: 43s
+Durata: 40s
 
 Ultime 60 righe di output:
 ```
@@ -89,11 +89,11 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 
  Test Files  37 passed (37)
       Tests  590 passed (590)
-   Start at  12:36:18
-   Duration  42.78s (tests 91%, import 5%, transform 4%, worker 1%)
+   Start at  12:47:25
+   Duration  39.38s (tests 90%, import 5%, transform 4%, worker 1%)
 
-    Isolate  37 workers spawned · ~127ms startup each (spawn + environment, per file)
-             at least ~4.56s faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  37 workers spawned · ~118ms startup each (spawn + environment, per file)
+             at least ~4.24s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -157,7 +157,7 @@ Ultime 60 righe di output:
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.13s
+✓ built in 1.31s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -175,7 +175,7 @@ Colori, raggi e ombre letterali nei file controllati (scripts/check-tokens.mjs).
 Comando: `node scripts/check-tokens.mjs`
 
 Esito: OK (exit 0)
-Durata: 1s
+Durata: 0s
 
 Ultime 60 righe di output:
 ```
@@ -185,6 +185,7 @@ check-tokens: 0 violazioni nei file controllati; debito preesistente: 26 (6 ombr
 ## Git log (ultimi 20 commit)
 
 ```
+1ac7de4 Fase T: deroghe di contrasto allineate ai valori misurati (4,3153 e 2,1476), bidirezionali
 07a0a0e Fase T: sistema di temi (token a tre livelli, tema notte, accento derivato, contrasti garantiti)
 1e3f6a1 Fase T: schermate di riferimento del tema predefinito (prima del sistema di temi)
 313a602 Fondazione: vite.config.ts esplicito (cloudflare-module) e primitive --isa-* condivise
@@ -204,7 +205,6 @@ b215503 etl-core: normalizeValuesField divide solo sul separatore registrato; es
 46e0718 Fase 1.1: invariante output su tutte le mutazioni, separatori, test dei requisiti
 a70acf7 Fase 1.1: correzioni intenzionali al dominio ETL
 1c7a964 Fase 1: dominio ETL puro (src/etl-core/)
-0098c85 sync-snapshot: stampa sempre come ultima riga il link INDEX.md fissato al commit
 ```
 
 ## Branch

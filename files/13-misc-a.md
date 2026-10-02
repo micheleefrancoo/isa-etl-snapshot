@@ -86,9 +86,9 @@ Per ogni tema e modo (`__tests__/contrast.test.ts`):
 
 Per `deriveAccent`, per ogni tinta 0–355 a passi di 5, in ogni modo e su ogni tema: testo su accento (`base` e `active`), accento, anello di focus, accento come testo (≥ 4,5:1), icona su chip tinto, selezione e icona sulla fetta vuota. Il test fallisce se anche una sola combinazione non rispetta la soglia.
 
-**Deroga nota, nel tema predefinito.** Il testo bianco su `#6c63ff` (l'accento del prototipo) dà 4,32:1, sotto 4,5:1, sia in chiaro sia in scuro. Il valore è quello storico e il vincolo «identico al pixel» impedisce di cambiarlo: è registrato in `KNOWN_EXCEPTIONS` (`__tests__/checks.ts`) con il rapporto attuale come soglia minima. Il test fallisce se peggiora e anche se la coppia torna a rispettare 4,5 (la deroga va tolta). Da risolvere nel restyling della palette; con `deriveAccent` e col tema `notte` la soglia è rispettata.
+**Deroga nota, nel tema predefinito.** Il testo bianco su `#6c63ff` (l'accento del prototipo) dà 4,3153:1 (4,32), sotto 4,5:1, sia in chiaro sia in scuro. Il valore è quello storico e il vincolo «identico al pixel» impedisce di cambiarlo: è registrato in `KNOWN_EXCEPTIONS` (`__tests__/checks.ts`) con 4,3153 come soglia minima. Il test fallisce se peggiora e anche se la coppia torna a rispettare 4,5 (la deroga va tolta). Da risolvere nel restyling della palette; con `deriveAccent` e col tema `notte` la soglia è rispettata.
 
-Un'altra deroga, solo nel tema `notte` chiaro: il puntino d'avviso del canvas (`#F59E0B`, richiesto dalla specifica) sul fondo dà 2,15:1 (`etl-canvas/__tests__/tokens.test.ts`).
+Un'altra deroga, solo nel tema `notte` chiaro: il puntino d'avviso del canvas (`#F59E0B`, richiesto dalla specifica) sul fondo dà 2,1476:1 (`etl-canvas/__tests__/tokens.test.ts`), con la stessa disciplina bidirezionale (soglia minima 2,1476; fallisce anche se torna a 3:1 senza toglierla). Nota: rivedere nella revisione di stile dopo la Fase 6.
 
 ## Disciplina dei token
 
@@ -322,12 +322,12 @@ export interface Check {
  * anche se la coppia torna a rispettare la soglia (la deroga va tolta).
  */
 const ON_ACCENT_WHY =
-  "Bianco su #6c63ff (l'accento del prototipo) dà 4,32:1, sotto 4,5:1. Il valore è quello del prototipo " +
+  "Bianco su #6c63ff (l'accento del prototipo) dà 4,3153:1 (4,32 arrotondato), sotto 4,5:1. Il valore è quello del prototipo " +
   "e del canvas attuale: cambiarlo altera i pixel (icona sui dataset, pulsanti). Da risolvere nel restyling " +
   "della palette; con deriveAccent o col tema «notte» la soglia è rispettata.";
 export const KNOWN_EXCEPTIONS: Record<string, { floor: number; why: string }> = {
-  "prototipo/light/text-on-accent su accent": { floor: 4.31, why: ON_ACCENT_WHY },
-  "prototipo/dark/text-on-accent su accent": { floor: 4.31, why: ON_ACCENT_WHY },
+  "prototipo/light/text-on-accent su accent": { floor: 4.3153, why: ON_ACCENT_WHY },
+  "prototipo/dark/text-on-accent su accent": { floor: 4.3153, why: ON_ACCENT_WHY },
 };
 
 const HUES = Array.from({ length: 72 }, (_, i) => i * 5);

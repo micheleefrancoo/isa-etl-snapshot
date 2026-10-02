@@ -173,7 +173,7 @@
     },
     {
       "name": "files/01e-etl-canvas-b.md",
-      "bytes": 56955,
+      "bytes": 57482,
       "files": [
         "src/etl-canvas/__tests__/render.test.ts",
         "src/etl-canvas/__tests__/ssr.test.tsx",
@@ -664,7 +664,7 @@
     },
     {
       "name": "files/13-misc-a.md",
-      "bytes": 56152,
+      "bytes": 56341,
       "files": [
         "src/theme/README.md",
         "src/theme/__tests__/check-tokens.test.ts",
