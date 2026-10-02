@@ -8,23 +8,18 @@ File in questo blocco:
 - `src/etl-canvas/NOTE_DIVERGENZE.md`
 - `src/etl-canvas/Node.tsx`
 - `src/etl-canvas/README.md`
-- `src/etl-canvas/__tests__/engine.test.ts`
-- `src/etl-canvas/__tests__/fake-env.ts`
-- `src/etl-canvas/__tests__/flow.test.ts`
-- `src/etl-canvas/__tests__/helpers.ts`
-- `src/etl-canvas/__tests__/loop.test.ts`
-- `src/etl-canvas/__tests__/no-reroute.test.ts`
+- `src/etl-canvas/__tests__/drop.test.ts`
 
 ---
 
 ### `src/etl-canvas/EtlCanvas.tsx`
 
-253 righe
+426 righe
 
 ```tsx
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { WORLD_H, WORLD_W } from "../etl-layout";
+import { CARD, WORLD_H, WORLD_W } from "../etl-layout";
 import type { Size } from "../etl-layout";
 import { linkKey } from "../etl-layout";
 import { linkLive, nodeStates } from "../etl-store";
@@ -32,6 +27,8 @@ import type { EtlStore } from "../etl-store";
 import { useEtlState } from "../etl-store/react";
 import { fit, zoomAtPoint, zoomIn, zoomOut, zoomReset } from "./actions";
 import { createMotionEngine } from "./engine";
+import { createInteractionController } from "./interaction";
+import type { DownTarget, PointerInput, PortSide } from "./interaction";
 import type { LinkInput } from "./engine";
 import { browserEnv } from "./loop";
 import type { LoopEnv } from "./loop";
@@ -42,6 +39,23 @@ import { Minimap } from "./Minimap";
 import { nodeView } from "./model";
 import { Node } from "./Node";
 import { WHEEL_ZOOM_RATE } from "./view";
+
+const PORT_SIDES: readonly string[] = ["r", "b", "l", "t"];
+
+/** Classifica il punto in cui è iniziato il gesto (unico punto in cui si legge il DOM). */
+function classify(t: EventTarget | null): DownTarget {
+  const el = t as HTMLElement | null;
+  if (!el || typeof el.closest !== "function") return { kind: "ignore" };
+  if (el.closest(".ec-zoom, .ec-minimap, .ec-confirm")) return { kind: "ignore" };
+  const nodeEl = el.closest<HTMLElement>("[data-node-id]");
+  const id = nodeEl?.dataset["nodeId"];
+  if (id) {
+    const port = el.closest<HTMLElement>("[data-port]")?.dataset["port"];
+    if (port && PORT_SIDES.includes(port)) return { kind: "port", id, side: port as PortSide };
+    return { kind: "node", id };
+  }
+  return { kind: "background" };
+}
 
 function isTyping(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null;
@@ -70,6 +84,8 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
   const maxBends = useEtlState((s) => s.options.maxBends, store);
   const flowOnlyIfValid = useEtlState((s) => s.options.flowOnlyIfValid, store);
   const [engine] = useState(createMotionEngine);
+  const [controller] = useState(() => createInteractionController(store));
+  const ui = useSyncExternalStore(controller.subscribe, controller.getUi, controller.getUi);
   const stageRef = useRef<HTMLDivElement>(null);
   const [spaceDown, setSpaceDown] = useState(false);
   const [panning, setPanning] = useState(false);
@@ -79,10 +95,20 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- i percorsi dipendono da grafo e limite di snodi, che sono nelle dipendenze
   const routes = useMemo(() => store.getRoutes(), [store, graph, maxBends]);
   const cards = useMemo(() => Object.values(graph.cards), [graph]);
-  const selected = useMemo(() => new Set(selection), [selection]);
+  // il riquadro di selezione mostra già i nodi che comprende; il resto della selezione è nello store
+  const marqueeIds = ui.marquee?.ids;
+  const selected = useMemo(() => new Set(marqueeIds ?? selection), [selection, marqueeIds]);
+  const doomed = useMemo(() => new Set(ui.confirm?.removed ?? []), [ui.confirm]);
   const nodes = useMemo(
-    () => cards.map((c) => nodeView(c, states[c.id] ?? null, selected.has(c.id))),
-    [cards, states, selected],
+    () =>
+      cards.map((c) =>
+        nodeView(c, states[c.id] ?? null, selected.has(c.id), {
+          dragging: ui.dragging.includes(c.id),
+          drop: ui.drop?.id === c.id ? ui.drop.outcome : null,
+          doomed: doomed.has(c.id),
+        }),
+      ),
+    [cards, states, selected, ui.dragging, ui.drop, doomed],
   );
 
   // animazioni: un solo ciclo condiviso, avviato solo nel browser (gli effetti non girano sul server)
@@ -112,21 +138,31 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
 
   // durante un gesto di trascinamento il flusso si ferma (prototipo, riga 1485)
   useEffect(() => {
-    engine.setGesturing(store.isGesturing());
-    return store.subscribe(() => engine.setGesturing(store.isGesturing()));
-  }, [engine, store]);
+    // anche il cavo tirato da una porta ferma il flusso (prototipo, riga 3984)
+    const sync = () =>
+      engine.setGesturing(store.isGesturing() || controller.getUi().tempLink !== null);
+    sync();
+    const offStore = store.subscribe(sync);
+    const offUi = controller.subscribe(sync);
+    return () => {
+      offStore();
+      offUi();
+    };
+  }, [engine, store, controller]);
 
   // barra spaziatrice: navigazione temporanea (prototipo, righe 4168-4177)
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.code !== "Space" || isTyping(e.target)) return;
       spaceRef.current = true;
+      controller.setSpace(true);
       setSpaceDown(true);
       e.preventDefault();
     };
     const up = (e: KeyboardEvent) => {
       if (e.code !== "Space") return;
       spaceRef.current = false;
+      controller.setSpace(false);
       setSpaceDown(false);
     };
     document.addEventListener("keydown", down);
@@ -135,7 +171,28 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
       document.removeEventListener("keydown", down);
       document.removeEventListener("keyup", up);
     };
-  }, []);
+  }, [controller]);
+
+  // tastiera: Canc, Cmd/Ctrl+D/A/Z/Maiusc+Z/Y, frecce, Esc (prototipo, righe 4629-4650)
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.code === "Space") return;
+      const handled = controller.key({
+        key: e.key,
+        metaKey: e.metaKey,
+        ctrlKey: e.ctrlKey,
+        shiftKey: e.shiftKey,
+        typing: isTyping(e.target),
+      });
+      if (handled) e.preventDefault();
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [controller]);
+
+  // un gesto in corso non sopravvive allo smontaggio
+  const cleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => cleanupRef.current?.(), []);
 
   // rotella: Cmd/Ctrl = zoom attorno al puntatore; altrimenti sposta la vista (righe 4092-4102)
   useEffect(() => {
@@ -160,26 +217,57 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
     return () => el.removeEventListener("wheel", wheel);
   }, [store]);
 
-  // pan: barra spaziatrice + trascinamento, o tasto centrale (righe 4036-4054)
+  // pan (barra spaziatrice + trascinamento, o tasto centrale: righe 4036-4054) e gesti (nodi, porte, sfondo)
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!(spaceRef.current || e.button === 1)) return;
+    if (spaceRef.current || e.button === 1) {
+      e.preventDefault();
+      const sx = e.clientX;
+      const sy = e.clientY;
+      const { x: ox, y: oy } = store.getState().view;
+      setPanning(true);
+      const move = (ev: PointerEvent) =>
+        store.dispatch({
+          type: "setView",
+          payload: { x: ox + (ev.clientX - sx), y: oy + (ev.clientY - sy) },
+        });
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        setPanning(false);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      return;
+    }
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const input = (ev: { clientX: number; clientY: number; shiftKey: boolean }): PointerInput => ({
+      x: ev.clientX - rect.left,
+      y: ev.clientY - rect.top,
+      shiftKey: ev.shiftKey,
+    });
+    if (!controller.down(classify(e.target), input(e))) return;
     e.preventDefault();
-    const sx = e.clientX;
-    const sy = e.clientY;
-    const { x: ox, y: oy } = store.getState().view;
-    setPanning(true);
-    const move = (ev: PointerEvent) =>
-      store.dispatch({
-        type: "setView",
-        payload: { x: ox + (ev.clientX - sx), y: oy + (ev.clientY - sy) },
-      });
-    const up = () => {
+    const move = (ev: PointerEvent) => controller.move(input(ev));
+    const stop = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      setPanning(false);
+      window.removeEventListener("pointercancel", cancel);
+      cleanupRef.current = null;
     };
+    const up = (ev: PointerEvent) => {
+      stop();
+      controller.up(input(ev));
+    };
+    const cancel = () => {
+      stop();
+      controller.cancel();
+    };
+    cleanupRef.current = cancel;
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
   };
 
   const stageClass = "ec-stage" + (panning ? " ec-panning" : spaceDown ? " ec-pannable" : "");
@@ -197,11 +285,72 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
               transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`,
             }}
           >
-            <Links graph={graph} routes={routes} />
+            <Links graph={graph} routes={routes} hot={ui.insertLink} />
             {nodes.map((n) => (
               <Node key={n.id} node={n} />
             ))}
+            {ui.tempLink ? (
+              <svg
+                className={"ec-temp-link" + (ui.tempLink.valid ? " ec-valid" : "")}
+                data-testid="ec-temp-link"
+                aria-hidden="true"
+              >
+                <path
+                  d={`M ${ui.tempLink.from.x} ${ui.tempLink.from.y} L ${ui.tempLink.to.x} ${ui.tempLink.to.y}`}
+                />
+                <circle cx={ui.tempLink.to.x} cy={ui.tempLink.to.y} r={4} />
+              </svg>
+            ) : null}
           </div>
+          {ui.marquee ? (
+            <div
+              className="ec-marquee"
+              data-testid="ec-marquee"
+              style={{
+                left: ui.marquee.rect.x,
+                top: ui.marquee.rect.y,
+                width: ui.marquee.rect.w,
+                height: ui.marquee.rect.h,
+              }}
+            />
+          ) : null}
+          {ui.hint ? (
+            <div className="ec-hint" role="status">
+              {ui.hint}
+            </div>
+          ) : null}
+          {ui.confirm ? (
+            <div
+              className="ec-confirm"
+              role="alertdialog"
+              aria-labelledby="ec-confirm-title"
+              aria-describedby="ec-confirm-text"
+              data-testid="ec-confirm"
+              style={confirmPosition(graph.cards[ui.confirm.ids[0] ?? ""], view, size)}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div>
+                <div className="ec-confirm-title" id="ec-confirm-title">
+                  {ui.confirm.title}
+                </div>
+                <div className="ec-confirm-text" id="ec-confirm-text">
+                  {ui.confirm.text}
+                </div>
+              </div>
+              <div className="ec-confirm-actions">
+                <button
+                  type="button"
+                  className="ec-confirm-cancel"
+                  onClick={controller.cancelConfirm}
+                >
+                  Annulla
+                </button>
+                <button type="button" className="ec-confirm-ok" onClick={controller.confirmDelete}>
+                  Elimina
+                </button>
+              </div>
+            </div>
+          ) : null}
           {cards.length === 0 ? (
             <div className="ec-empty" data-testid="ec-empty">
               <div className="ec-empty-title">Il canvas è vuoto</div>
@@ -232,6 +381,25 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
       </div>
     </MotionContext.Provider>
   );
+}
+
+const CONFIRM_W = 246;
+const CONFIRM_H = 168;
+
+/** La conferma sta sopra il nodo (o sotto, se non c'è posto), dentro l'area: prototipo, righe 4515-4522. */
+function confirmPosition(
+  card: { x: number; y: number } | undefined,
+  view: { x: number; y: number; zoom: number },
+  size: Size,
+): { left: number; top: number } {
+  if (!card) return { left: 8, top: 8 };
+  const cx = (card.x + CARD / 2) * view.zoom + view.x;
+  const top = card.y * view.zoom + view.y - CONFIRM_H - 10;
+  const bottom = (card.y + CARD) * view.zoom + view.y + 10;
+  return {
+    left: Math.max(8, Math.min(size.w - CONFIRM_W - 8, cx - CONFIRM_W / 2)),
+    top: top < 8 ? bottom : top,
+  };
 }
 
 const noopSubscribe = () => () => {};
@@ -278,7 +446,7 @@ export function EtlCanvas(props: { store: EtlStore }) {
 
 ### `src/etl-canvas/Links.tsx`
 
-72 righe
+79 righe
 
 ```tsx
 import { memo, useCallback } from "react";
@@ -298,6 +466,7 @@ const LinkView = memo(function LinkView(props: {
   route: LinkRoute;
   fromDataset: boolean;
   toDataset: boolean;
+  hot: boolean;
 }) {
   const { k, route } = props;
   const motion = useMotion();
@@ -310,7 +479,7 @@ const LinkView = memo(function LinkView(props: {
   return (
     <g ref={ref} data-link={k}>
       <path className="ec-link-ghost" d="" opacity={0} />
-      <path className="ec-link" d={route.d} />
+      <path className={props.hot ? "ec-link ec-link-hot" : "ec-link"} d={route.d} />
       <circle
         data-dot="a"
         className={props.fromDataset ? "ec-link-dot-ds" : "ec-link-dot-op"}
@@ -331,8 +500,13 @@ const LinkView = memo(function LinkView(props: {
 });
 
 /** I cavi (prototipo `drawLinks`, righe 1399-1409). */
-export const Links = memo(function Links(props: { graph: Graph; routes: LinkRoutes }) {
-  const { graph, routes } = props;
+export const Links = memo(function Links(props: {
+  graph: Graph;
+  routes: LinkRoutes;
+  /** Chiave del cavo in cui si inserirebbe la lavorazione trascinata. */
+  hot?: string | null;
+}) {
+  const { graph, routes, hot = null } = props;
   return (
     <svg className="ec-links" width="100%" height="100%" aria-hidden="true">
       {graph.links.map((l: Link) => {
@@ -346,6 +520,7 @@ export const Links = memo(function Links(props: { graph: Graph; routes: LinkRout
             route={route}
             fromDataset={graph.cards[l.from]?.kind === "dataset"}
             toDataset={graph.cards[l.to]?.kind === "dataset"}
+            hot={k === hot}
           />
         );
       })}
@@ -510,13 +685,16 @@ contrasto ≥ 3:1 sul canvas, verificato da `tokens.test.ts`.
 
 ### `src/etl-canvas/Node.tsx`
 
-46 righe
+57 righe
 
 ```tsx
 import { memo } from "react";
 import { Icon } from "./icons";
 import { useMotion } from "./motion";
 import type { NodeView } from "./model";
+
+/** Le quattro porte da cui si tira un collegamento (prototipo, righe 168-181). */
+const PORT_SIDES = ["t", "b", "l", "r"] as const;
 
 /** Un nodo: quadrato con icone, etichetta, indicatore ambra (prototipo `createCardEl`, righe 1000-1015). */
 export const Node = memo(function Node(props: { node: NodeView }) {
@@ -555,6 +733,14 @@ export const Node = memo(function Node(props: { node: NodeView }) {
         ) : null}
       </div>
       <div className="ec-label">{card.name}</div>
+      {PORT_SIDES.map((side) => (
+        <span
+          key={side}
+          className={`ec-port ec-port-${side}`}
+          data-port={side}
+          aria-hidden="true"
+        />
+      ))}
     </div>
   );
 });
@@ -562,17 +748,17 @@ export const Node = memo(function Node(props: { node: NodeView }) {
 
 ### `src/etl-canvas/README.md`
 
-139 righe
+200 righe
 
 ```md
-# etl-canvas — Fasi 4a e 4b: il canvas visibile e le sue animazioni
+# etl-canvas — Fasi 4a, 4b e 5: il canvas, le sue animazioni e i gesti
 
 Resa visiva del canvas ETL in React, fedele al prototipo
 `docs/prototype/isa-fusion-prototype.html`. Solo **vista**: token, nodi,
 cavi, pan, zoom, controlli di zoom, minimappa (4a) e animazioni: flusso nei
-cavi, attesa delle fette vuote, transizione dei percorsi (4b).
-Trascinamento, fusione, collegamento, selezione, tastiera (Fase 5), cassetta
-e Inspector (Fase 6) non ci sono ancora.
+cavi, attesa delle fette vuote, transizione dei percorsi (4b), e i gesti (Fase 5): trascinamento, fusione,
+collegamento, porte, selezione, tastiera. La cassetta degli strumenti e
+l'Inspector (Fase 6) non ci sono ancora.
 
 Importa da `etl-core`, `etl-layout` ed `etl-store`; nessuno di questi importa
 da qui. Non usa il vecchio stato (`src/lib/etl-workflow.tsx`): legge e
@@ -598,6 +784,8 @@ transitions.ts   4b, puro: interpolazione dei punti, dissolvenza incrociata, pia
 loop.ts          4b: UN ciclo requestAnimationFrame condiviso (+ ambiente del browser)
 engine.ts        4b: livello sottile che applica lo stato visivo agli attributi SVG
 motion.tsx       4b: contesto con cui cavi e nodi registrano i propri elementi
+interaction.ts   5: controller dei gesti (puntatore, tastiera) → comandi di etl-store. Puro, senza DOM
+drop.ts          5: handleCanvasDrop / previewCanvasDrop, il rilascio di un nuovo elemento (per la Fase 6)
 ```
 
 ## Uso
@@ -613,6 +801,65 @@ vecchio (codice invariato) si raggiunge solo con `?canvas=v1`. Solo in
 sviluppo, `?seed=prototype` carica la scena del prototipo se il canvas è
 vuoto (in produzione `seed` è ignorato) e `window.__etlStore` espone lo
 store alla console e allo script delle schermate.
+
+## Fase 5 — Gesti
+
+Questo livello **non contiene logica di dominio**: `interaction.ts` traduce
+eventi già classificati (coordinate dell'area, bersaglio del gesto) in
+chiamate a funzioni che esistevano. `EtlCanvas.tsx` è l'unico punto che
+legge il DOM (`classify`) e registra gli ascoltatori (Pointer Events su
+`window` durante il gesto, `keydown` sul documento). Il controller si prova
+con eventi simulati (`__tests__/interaction.test.ts`, `keyboard.test.ts`,
+`drop.test.ts`); `scripts/e2e-fase5.mjs` prova gli stessi gesti con
+Pointer Events veri in Chromium.
+
+| Gesto                                                                   | Prototipo (righe)                                                                                 | Funzione chiamata oggi                                                                                                                                       |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Trascinare un nodo                                                      | `stage` `pointerdown` 1959-2107 (`onMove` 1978-2056, `onUp` 2058-2105)                            | `store.beginGesture` / `updateGesture` / `commitGesture` / `cancelGesture` (Fase 3); il rilascio è `dropAt` di etl-store (un passo di cronologia)            |
+| Esito sopra un altro nodo (fusione, collegamento, inverso, spostamento) | 2034-2056                                                                                         | etl-core `relation` (1917-1936); `performMerge`/`connect` al rilascio: `dropAt` → `mergeBoxes`/`connect`; lo spostamento è `displace` dentro `updateGesture` |
+| Trascinare su un cavo (inserimento)                                     | 2015-2030, 2092                                                                                   | etl-layout `linkAt`; etl-core `insertable`; al rilascio `dropAt` → `insertOnLink`                                                                            |
+| Tirare un cavo da una porta                                             | 3974-4024                                                                                         | etl-layout `nodePorts` (punto di partenza); comando `connect`                                                                                                |
+| Rilasciare dalla cassetta o dalla libreria                              | `paletteEl` `pointerdown` 4939-5067                                                               | comando `addNode` (con `paletteRelation` per l'anteprima): `handleCanvasDrop` / `previewCanvasDrop` in `drop.ts`                                             |
+| Click, Maiusc+click                                                     | 2063-2071, `selectCard` 2713, `toggleInSelection` 2693                                            | comandi `select` + `inspect`                                                                                                                                 |
+| Riquadro di selezione                                                   | 4058-4089                                                                                         | etl-layout `nodeRect`; comandi `select` + `inspect`                                                                                                          |
+| Trascinare il gruppo                                                    | 1969-2001, 2076-2081                                                                              | gesto di etl-store con più `ids` (`dropAt` ricompone i sovrapposti)                                                                                          |
+| Click sul vuoto                                                         | 4584                                                                                              | comandi `select` + `inspect` (vuoti)                                                                                                                         |
+| Canc / Backspace                                                        | `deleteMany` 4538, `deleteCard` 4558, `commitDelete` 4480, `nodesRemovedBy` 4432; tasto 4630-4634 | `nodesRemovedBy` (anteprima) e comando `deleteNodes`                                                                                                         |
+| Frecce (2 px, Maiusc = `GRID`)                                          | 4619-4627; tasto 4642-4644                                                                        | comando `moveNodes` (tenere premuto = un solo passo, Fase 3.1)                                                                                               |
+| Cmd/Ctrl+D                                                              | 4594-4618, 4645                                                                                   | comando `duplicate`                                                                                                                                          |
+| Cmd/Ctrl+A, Esc                                                         | 4646; Esc 4636                                                                                    | comandi `select` + `inspect`                                                                                                                                 |
+| Cmd/Ctrl+Z, +Maiusc+Z, Ctrl+Y                                           | `undo` 4389, `redo` 4395; tasti 4650-4653                                                         | `store.undo()` / `store.redo()`                                                                                                                              |
+| Pan: spazio o tasto centrale; zoom Cmd/Ctrl+rotella                     | 4036-4054, 4166-4180, 4092-4102                                                                   | già collegati nella 4a (`setView`); la 5 verifica che convivano con la selezione                                                                             |
+
+**Esiti mostrati durante il trascinamento** (`InteractionUi.drop`), ciascuno
+con colore e stile di contorno propri, tutti da token semantici
+(`--isa-drop-*`): `merge` (anello pieno), `link` (anello pieno), `link-reverse`
+(tratteggio), `displace` (punteggiato, col motivo di etl-core nel
+suggerimento), `reject` (continuo). Il cavo in cui si inserirebbe la
+lavorazione prende `ec-link-hot`; i nodi che l'eliminazione porterebbe via
+(`nodesRemovedBy`: scelti + output a valle) prendono `ec-doomed` mentre la
+conferma è aperta.
+
+**Scelte e differenze dal prototipo**
+
+- _Soglia di avvio_: 4 px (la stessa della cassetta attuale e del riquadro del
+  prototipo). Il prototipo usa 5 per i nodi, ma non è una costante di
+  `etl-layout`. Sotto la soglia è un click.
+- _Inserimento su cavo_: il nodo in mano è un ostacolo e fa scansare i cavi;
+  il puntatore resta quindi spesso lontano dal cavo disegnato. Il test sul
+  cavo si fa sui percorsi attuali **e** su quelli di prima del gesto
+  (`startRoutes`).
+- _Selezione_: `select` e `inspect` insieme; i pannelli (`setPanel`) non si
+  toccano (l'apertura dell'Inspector è della Fase 6). Il riquadro non
+  scrive nello store mentre si trascina (il registro delle attività si
+  riempirebbe): lo mostra con `InteractionUi.marquee` e seleziona al rilascio.
+- _Esc_ durante un trascinamento lo annulla (`cancelGesture`); poi chiude la
+  conferma; poi deseleziona.
+- _Scorciatoie di annulla/ripristina_ non agiscono con il fuoco in un campo di
+  testo (il prototipo le applicava sempre): lì vale l'annulla del campo.
+- _Non collegati_ (fuori dall'elenco della fase): clic su un cavo per
+  eliminarlo (prototipo 4577), pulsanti di eliminazione ed espansione sul
+  nodo (4584, Fase 6).
 
 ## Rendering lato server
 
@@ -705,932 +952,92 @@ periodo. Le differenze e le scelte nuove sono in `NOTE_DIVERGENZE.md`.
   `document`: il motore si avvia in un effetto, con l'ambiente del browser.
 ```
 
-### `src/etl-canvas/__tests__/engine.test.ts`
+### `src/etl-canvas/__tests__/drop.test.ts`
 
-354 righe
-
-```ts
-import { describe, expect, it } from "vitest";
-import { ELBOW_R, roundedPath } from "../../etl-layout";
-import { createMotionEngine } from "../engine";
-import type { AttrEl, GroupLike, LinkInput, PathEl } from "../engine";
-import { waitingOpacity } from "../flow";
-import { TRANSITION_MS } from "../transitions";
-import type { Pt } from "../transitions";
-import { fakeEnv } from "./fake-env";
-
-interface FakeEl extends PathEl {
-  attrs: Record<string, string>;
-}
-
-function el(len = 200): FakeEl {
-  const attrs: Record<string, string> = {};
-  return {
-    attrs,
-    style: { opacity: "" },
-    setAttribute: (n, v) => void (attrs[n] = v),
-    getTotalLength: () => len,
-    getPointAtLength: (s) => ({ x: s, y: 0 }),
-  };
-}
-
-function group() {
-  const els = {
-    path: el(),
-    ghost: el(),
-    flow: el(),
-    a: el(),
-    b: el(),
-  };
-  const map: Record<string, unknown> = {
-    ".ec-link": els.path,
-    ".ec-link-ghost": els.ghost,
-    ".ec-flow": els.flow,
-    '[data-dot="a"]': els.a,
-    '[data-dot="b"]': els.b,
-  };
-  const g: GroupLike = { querySelector: (s) => map[s] ?? null };
-  return { g, ...els };
-}
-
-const P1: Pt[] = [
-  { x: 0, y: 0 },
-  { x: 100, y: 0 },
-  { x: 100, y: 80 },
-];
-const P2: Pt[] = [
-  { x: 0, y: 20 },
-  { x: 140, y: 20 },
-  { x: 140, y: 100 },
-];
-const P3: Pt[] = [
-  { x: 0, y: 0 },
-  { x: 140, y: 100 },
-];
-
-function link(key: string, pts: Pt[], live = true): LinkInput {
-  const d = roundedPath(pts, ELBOW_R);
-  return { key, live, pts, d, pa: pts[0] as Pt, pb: pts[pts.length - 1] as Pt };
-}
-
-function setup() {
-  const f = fakeEnv();
-  const engine = createMotionEngine();
-  const g = group();
-  engine.registerLink("a|b", g.g);
-  engine.start(f.env);
-  return { f, engine, ...g };
-}
-
-describe("flusso", () => {
-  it("un cavo attivo disegna il tubo a ogni frame; il ciclo gira", () => {
-    const { f, engine, flow } = setup();
-    engine.update({ links: [link("a|b", P1)], gesturing: false });
-    expect(engine.debug().running).toBe(true);
-    f.step(16);
-    const d1 = flow.attrs["d"] as string;
-    expect(d1.startsWith("M ")).toBe(true);
-    f.step(400);
-    expect(flow.attrs["d"]).not.toBe(d1);
-    expect(engine.debug().running).toBe(true);
-  });
-
-  it("un cavo non attivo non ha flusso e non tiene acceso il ciclo", () => {
-    const { f, engine, flow } = setup();
-    engine.update({ links: [link("a|b", P1, false)], gesturing: false });
-    f.step(16);
-    expect(flow.attrs["d"] ?? "").toBe("");
-    expect(engine.debug().running).toBe(false);
-    expect(f.pending()).toBe(0);
-  });
-
-  it("nessun cavo e nessuna fetta: il ciclo si ferma da solo", () => {
-    const { f, engine } = setup();
-    engine.update({ links: [link("a|b", P1)], gesturing: false });
-    f.step();
-    expect(engine.debug().running).toBe(true);
-    engine.update({ links: [], gesturing: false });
-    f.step();
-    expect(engine.debug().running).toBe(false);
-    expect(f.pending()).toBe(0);
-  });
-
-  it("durante un gesto di trascinamento il flusso si ferma, e riprende dopo", () => {
-    const { f, engine, flow } = setup();
-    engine.update({ links: [link("a|b", P1)], gesturing: false });
-    f.step(100);
-    expect((flow.attrs["d"] as string).length).toBeGreaterThan(0);
-    engine.setGesturing(true);
-    expect(flow.attrs["d"]).toBe("");
-    f.step(16);
-    expect(engine.debug().running).toBe(false);
-    engine.setGesturing(false);
-    expect(engine.debug().running).toBe(true);
-    f.step(16);
-    expect((flow.attrs["d"] as string).length).toBeGreaterThan(0);
-  });
-
-  it("il flusso parte da 0 quando il cavo compare (t0 del cavo)", () => {
-    const { f, engine, flow } = setup();
-    f.step(5000);
-    engine.update({ links: [link("a|b", P1)], gesturing: false });
-    f.step(0);
-    const w = flow.attrs["d"] as string;
-    expect(w.startsWith("M ")).toBe(true);
-    // a 0 ms dal cavo: tratto corto vicino alla porta di uscita (s tra 0 e ~3 px)
-    const xs = w
-      .slice(2, -2)
-      .split(" L ")
-      .map((p) => parseFloat(p.split(" ")[0] as string));
-    expect(Math.max(...xs)).toBeLessThan(4);
-  });
-});
-
-describe("attesa delle fette vuote", () => {
-  it("la opacità segue la funzione pura a partire dalla registrazione", () => {
-    const f = fakeEnv();
-    const engine = createMotionEngine();
-    engine.start(f.env);
-    const s = el();
-    engine.registerSlice("out-0:1", s);
-    f.step(0);
-    expect(parseFloat(s.style.opacity)).toBeCloseTo(waitingOpacity(0), 9);
-    f.step(475);
-    expect(parseFloat(s.style.opacity)).toBeCloseTo(waitingOpacity(475), 9);
-    f.step(475);
-    expect(parseFloat(s.style.opacity)).toBeCloseTo(waitingOpacity(950), 9);
-    expect(engine.debug().running).toBe(true);
-  });
-
-  it("la fase si conserva quando React ri-registra lo stesso elemento", () => {
-    const f = fakeEnv();
-    const engine = createMotionEngine();
-    engine.start(f.env);
-    const s = el();
-    engine.registerSlice("x:1", s);
-    f.step(300);
-    engine.registerSlice("x:1", null);
-    engine.registerSlice("x:1", s);
-    f.step(0);
-    expect(parseFloat(s.style.opacity)).toBeCloseTo(waitingOpacity(300), 9);
-  });
-
-  it("senza fette e senza cavi il ciclo si ferma", () => {
-    const f = fakeEnv();
-    const engine = createMotionEngine();
-    engine.start(f.env);
-    const s = el();
-    engine.registerSlice("x:1", s);
-    expect(engine.debug().running).toBe(true);
-    engine.registerSlice("x:1", null);
-    engine.update({ links: [], gesturing: false });
-    f.step();
-    expect(engine.debug().running).toBe(false);
-    expect(engine.debug().slices).toBe(0);
-  });
-});
-
-describe("transizione dei percorsi", () => {
-  it("stesso numero di punti: si interpola e alla fine si ripristina il percorso calcolato", () => {
-    const { f, engine, path, a, b } = setup();
-    engine.update({ links: [link("a|b", P1, false)], gesturing: false });
-    expect(path.attrs["d"]).toBeUndefined(); // primo percorso: nessuna transizione
-    const next = link("a|b", P2, false);
-    engine.update({ links: [next], gesturing: false });
-    expect(path.attrs["d"]).toBe(roundedPath(P1, ELBOW_R)); // parte dal vecchio: niente scatto
-    f.step(TRANSITION_MS / 2);
-    const mid = P1.map((p, i) => ({
-      x: (p.x + (P2[i] as Pt).x) / 2,
-      y: (p.y + (P2[i] as Pt).y) / 2,
-    }));
-    expect(path.attrs["d"]).toBe(roundedPath(mid, ELBOW_R));
-    expect(a.attrs["cy"]).toBe(String(mid[0]?.y));
-    expect(engine.debug().running).toBe(true);
-    f.step(TRANSITION_MS);
-    expect(path.attrs["d"]).toBe(next.d);
-    expect(a.attrs["cy"]).toBe(String(next.pa.y));
-    expect(b.attrs["cx"]).toBe(String(next.pb.x));
-    expect(engine.debug().running).toBe(false);
-  });
-
-  it("numero di punti diverso: dissolvenza incrociata, senza interpolare la geometria", () => {
-    const { f, engine, path, ghost } = setup();
-    engine.update({ links: [link("a|b", P1, false)], gesturing: false });
-    const next = link("a|b", P3, false);
-    engine.update({ links: [next], gesturing: false });
-    expect(ghost.attrs["d"]).toBe(roundedPath(P1, ELBOW_R));
-    f.step(TRANSITION_MS / 2);
-    const o = parseFloat(ghost.style.opacity);
-    const n = parseFloat(path.style.opacity);
-    expect(o).toBeCloseTo(0.5, 9);
-    expect(n).toBeCloseTo(0.5, 9);
-    expect(o + n).toBeCloseTo(1, 9);
-    expect(path.attrs["d"]).toBeUndefined(); // il tracciato nuovo non viene mai deformato
-    f.step(TRANSITION_MS);
-    expect(ghost.style.opacity).toBe("0");
-    expect(ghost.attrs["d"]).toBe("");
-    expect(path.style.opacity).toBe("");
-    expect(engine.debug().running).toBe(false);
-  });
-
-  it("durante un gesto di trascinamento non c'è transizione", () => {
-    const { f, engine, path, ghost } = setup();
-    engine.update({ links: [link("a|b", P1, false)], gesturing: true });
-    engine.update({ links: [link("a|b", P2, false)], gesturing: true });
-    engine.update({ links: [link("a|b", P3, false)], gesturing: true });
-    f.step(100);
-    expect(path.attrs["d"]).toBeUndefined();
-    expect(ghost.attrs["d"]).toBeUndefined();
-    expect(engine.debug().running).toBe(false);
-  });
-
-  it("dopo il gesto, un cambio discreto si anima dall'ultimo percorso mostrato", () => {
-    const { f, engine, path } = setup();
-    engine.update({ links: [link("a|b", P1, false)], gesturing: true });
-    engine.update({ links: [link("a|b", P2, false)], gesturing: false });
-    expect(path.attrs["d"]).toBe(roundedPath(P1, ELBOW_R));
-    f.step(TRANSITION_MS + 1);
-    expect(path.attrs["d"]).toBe(roundedPath(P2, ELBOW_R));
-  });
-
-  it("un secondo cambio a metà transizione riparte da ciò che si vede", () => {
-    const { f, engine, path } = setup();
-    engine.update({ links: [link("a|b", P1, false)], gesturing: false });
-    engine.update({ links: [link("a|b", P2, false)], gesturing: false });
-    f.step(TRANSITION_MS / 2);
-    const shown = path.attrs["d"];
-    engine.update({ links: [link("a|b", P1, false)], gesturing: false });
-    expect(path.attrs["d"]).toBe(shown);
-  });
-
-  it("percorso identico: nessuna transizione", () => {
-    const { f, engine, path } = setup();
-    engine.update({ links: [link("a|b", P1, false)], gesturing: false });
-    engine.update({
-      links: [
-        link(
-          "a|b",
-          P1.map((p) => ({ ...p })),
-          false,
-        ),
-      ],
-      gesturing: false,
-    });
-    expect(path.attrs["d"]).toBeUndefined();
-    f.step(16);
-    expect(engine.debug().running).toBe(false);
-  });
-});
-
-describe("movimento ridotto", () => {
-  it("nessun ciclo, transizioni istantanee, flusso fermo a metà cavo, attesa a riposo", () => {
-    const f = fakeEnv();
-    f.setReduced(true);
-    const engine = createMotionEngine();
-    const g = group();
-    engine.registerLink("a|b", g.g);
-    const slice = el();
-    engine.registerSlice("x:1", slice);
-    engine.start(f.env);
-    engine.update({ links: [link("a|b", P1)], gesturing: false });
-    engine.update({ links: [link("a|b", P2)], gesturing: false });
-    expect(f.rafCalls()).toBe(0);
-    expect(engine.debug().running).toBe(false);
-    expect(g.path.attrs["d"]).toBeUndefined(); // nessuna interpolazione: resta il percorso calcolato
-    expect(g.ghost.attrs["d"]).toBeUndefined();
-    const still = g.flow.attrs["d"] as string;
-    expect(still.startsWith("M ")).toBe(true); // indicazione statica
-    engine.update({ links: [link("a|b", P2)], gesturing: false });
-    expect(g.flow.attrs["d"]).toBe(still); // identica a ogni aggiornamento: nessun movimento
-    expect(slice.style.opacity).toBe("");
-  });
-
-  it("l'attivazione a ciclo acceso ferma tutto e lascia lo stato finale", () => {
-    const { f, engine, flow, path } = setup();
-    engine.update({ links: [link("a|b", P1)], gesturing: false });
-    engine.update({ links: [link("a|b", P2)], gesturing: false });
-    f.step(50);
-    f.setReduced(true);
-    expect(engine.debug().running).toBe(false);
-    expect(path.attrs["d"]).toBe(roundedPath(P2, ELBOW_R));
-    expect(flow.attrs["d"]).toBeTruthy();
-  });
-});
-
-describe("scheda nascosta", () => {
-  it("con la scheda nascosta il motore non consuma frame; al ritorno riparte", () => {
-    const { f, engine } = setup();
-    engine.update({ links: [link("a|b", P1)], gesturing: false });
-    f.step();
-    f.setHidden(true);
-    const calls = f.rafCalls();
-    f.step();
-    f.step();
-    expect(f.rafCalls()).toBe(calls);
-    expect(engine.debug().running).toBe(false);
-    f.setHidden(false);
-    expect(engine.debug().running).toBe(true);
-  });
-});
-
-describe("robustezza", () => {
-  it("un cavo il cui gruppo non è ancora montato non rompe nulla", () => {
-    const f = fakeEnv();
-    const engine = createMotionEngine();
-    engine.start(f.env);
-    expect(() => {
-      engine.update({ links: [link("x|y", P1)], gesturing: false });
-      f.step();
-    }).not.toThrow();
-  });
-
-  it("gli aggiornamenti prima dell'avvio si applicano all'avvio", () => {
-    const f = fakeEnv();
-    const engine = createMotionEngine();
-    const g = group();
-    engine.registerLink("a|b", g.g);
-    engine.update({ links: [link("a|b", P1)], gesturing: false });
-    engine.start(f.env);
-    f.step(16);
-    expect(g.flow.attrs["d"]).toBeTruthy();
-  });
-
-  it("stop ferma il ciclo", () => {
-    const { f, engine } = setup();
-    engine.update({ links: [link("a|b", P1)], gesturing: false });
-    engine.stop();
-    expect(f.pending()).toBe(0);
-    void ({} as AttrEl);
-  });
-});
-```
-
-### `src/etl-canvas/__tests__/fake-env.ts`
-
-57 righe
-
-```ts
-import type { LoopEnv } from "../loop";
-
-/** Ambiente finto: orologio, rAF e i due eventi si controllano a mano. */
-export function fakeEnv() {
-  let t = 0;
-  let hidden = false;
-  let reduced = false;
-  let nextId = 1;
-  const queue = new Map<number, () => void>();
-  const vis = new Set<() => void>();
-  const mot = new Set<() => void>();
-  let rafCalls = 0;
-  const env: LoopEnv = {
-    raf(cb) {
-      rafCalls++;
-      const id = nextId++;
-      queue.set(id, cb);
-      return id;
-    },
-    caf(id) {
-      queue.delete(id);
-    },
-    now: () => t,
-    hidden: () => hidden,
-    reducedMotion: () => reduced,
-    onVisibilityChange(cb) {
-      vis.add(cb);
-      return () => vis.delete(cb);
-    },
-    onReducedMotionChange(cb) {
-      mot.add(cb);
-      return () => mot.delete(cb);
-    },
-  };
-  return {
-    env,
-    /** Avanza l'orologio e fa girare i frame in coda. */
-    step(dt = 16) {
-      t += dt;
-      const run = [...queue.values()];
-      queue.clear();
-      run.forEach((cb) => cb());
-    },
-    setHidden(h: boolean) {
-      hidden = h;
-      [...vis].forEach((cb) => cb());
-    },
-    setReduced(r: boolean) {
-      reduced = r;
-      [...mot].forEach((cb) => cb());
-    },
-    pending: () => queue.size,
-    rafCalls: () => rafCalls,
-    listeners: () => vis.size + mot.size,
-  };
-}
-```
-
-### `src/etl-canvas/__tests__/flow.test.ts`
-
-163 righe
+84 righe
 
 ```ts
 import { describe, expect, it } from "vitest";
-import {
-  BACK,
-  BALL,
-  BASE_W,
-  FRONT,
-  SPEED,
-  WAIT_HIGH,
-  WAIT_LOW,
-  WAIT_PERIOD,
-  WAIT_REST,
-  cubicBezier,
-  easeInOut,
-  flowWindow,
-  flowWindowFor,
-  smooth01,
-  staticFlowWindow,
-  tubeOutline,
-  tubeProfile,
-  waitingOpacity,
-  waitingOpacityFor,
-} from "../flow";
-
-const LEN = 300;
-/** Il ciclo del prototipo (riga 1489): lunghezza del cavo + BACK * 3.2. */
-const CYCLE = LEN + BACK * 3.2;
-
-describe("costanti del prototipo (righe 1415-1418)", () => {
-  it("valgono quelle del prototipo", () => {
-    expect([BASE_W, SPEED, BALL, FRONT, BACK]).toEqual([2.1, 0.16, 4.4, 7.5, 19]);
-  });
-});
-
-describe("profilo del tubo", () => {
-  it("è 1 sul punto che avanza; davanti si chiude più in fretta che dietro", () => {
-    expect(tubeProfile(0)).toBe(1);
-    expect(tubeProfile(FRONT)).toBeCloseTo(Math.exp(-1), 12);
-    expect(tubeProfile(-BACK)).toBeCloseTo(Math.exp(-1), 12);
-    expect(tubeProfile(FRONT)).toBeCloseTo(tubeProfile(-BACK), 12);
-    expect(tubeProfile(10)).toBeLessThan(tubeProfile(-10));
-  });
-
-  it("smooth01 come nel prototipo (riga 1478)", () => {
-    expect(smooth01(-1)).toBe(0);
-    expect(smooth01(0.5)).toBe(0.5);
-    expect(smooth01(2)).toBe(1);
-    expect(smooth01(0.25)).toBeCloseTo(0.15625, 12);
-  });
-});
-
-describe("finestra del flusso (righe 1488-1497)", () => {
-  it("a 0 ms: la pallina entra dalla porta di uscita", () => {
-    const w = flowWindow(LEN, 0)!;
-    expect(w.cycle).toBeCloseTo(CYCLE, 9);
-    expect(w.sb).toBeCloseTo(-BACK * 1.1, 9);
-    expect(w.s0).toBe(0);
-    expect(w.s1).toBeCloseTo(-BACK * 1.1 + FRONT * 3.2, 9);
-  });
-
-  it("a metà ciclo: nel mezzo del cavo, con coda BACK*3 e testa FRONT*3.2", () => {
-    const elapsed = CYCLE / 2 / SPEED;
-    const w = flowWindow(LEN, elapsed)!;
-    const sb = CYCLE / 2 - BACK * 1.1;
-    expect(w.sb).toBeCloseTo(sb, 9);
-    expect(w.s0).toBeCloseTo(sb - BACK * 3, 9);
-    expect(w.s1).toBeCloseTo(sb + FRONT * 3.2, 9);
-  });
-
-  it("a fine ciclo: la testa esce dal cavo e la coda è ancora dentro; poi riparte", () => {
-    const before = flowWindow(LEN, (CYCLE - 1) / SPEED)!;
-    expect(before.s1).toBe(LEN);
-    expect(before.s0).toBeGreaterThan(LEN - 2 * BACK * 3);
-    const after = flowWindow(LEN, (CYCLE + 1) / SPEED)!;
-    expect(after.s0).toBe(0);
-    expect(after.s1).toBeCloseTo(1 - BACK * 1.1 + FRONT * 3.2, 9);
-  });
-
-  it("è deterministico e periodico", () => {
-    expect(flowWindow(LEN, 700)).toEqual(flowWindow(LEN, 700));
-    const a = flowWindow(LEN, 500)!;
-    const b = flowWindow(LEN, 500 + CYCLE / SPEED)!;
-    expect(b.sb).toBeCloseTo(a.sb, 6);
-  });
-
-  it("niente da disegnare su un cavo di lunghezza nulla o troppo corto", () => {
-    expect(flowWindow(0, 100)).toBeNull();
-    expect(flowWindow(1, 0)).toBeNull();
-  });
-
-  it("con movimento ridotto è fermo a metà cavo, uguale a ogni istante", () => {
-    const s = staticFlowWindow(LEN)!;
-    expect(s.sb).toBe(LEN / 2);
-    expect(flowWindowFor(LEN, 0, true)).toEqual(s);
-    expect(flowWindowFor(LEN, 12345, true)).toEqual(s);
-    expect(flowWindowFor(LEN, 12345, false)).toEqual(flowWindow(LEN, 12345));
-  });
-});
-
-describe("contorno del tubo (righe 1500-1516)", () => {
-  const sample = (s: number) => ({ x: s, y: 0 });
-  const win = flowWindow(LEN, CYCLE / 2 / SPEED)!;
-  const d = tubeOutline(sample, LEN, win);
-  const parts = d.slice(2, -2).split(" L ");
-
-  it("è un contorno chiuso con due lati campionati ogni ~1,6 px", () => {
-    expect(d.startsWith("M ")).toBe(true);
-    expect(d.endsWith(" Z")).toBe(true);
-    const n = Math.max(10, Math.ceil((win.s1 - win.s0) / 1.6));
-    expect(parts).toHaveLength(2 * (n + 1));
-  });
-
-  it("al punto che avanza lo spessore è BASE_W/2 + BALL per lato; ai capi è BASE_W/2", () => {
-    const ys = parts.map((p) => Math.abs(parseFloat(p.split(" ")[1] as string)));
-    expect(Math.max(...ys)).toBeGreaterThan(BASE_W / 2 + BALL - 0.15);
-    expect(Math.max(...ys)).toBeLessThanOrEqual(BASE_W / 2 + BALL + 0.01);
-    const tail = flowWindow(LEN, 0)!; // testa vicino alla porta: il tubo emerge dal bordo
-    const y0 = tubeOutline(sample, LEN, tail).slice(2, -2).split(" L ");
-    expect(Math.abs(parseFloat((y0[0] as string).split(" ")[1] as string))).toBeCloseTo(
-      BASE_W / 2,
-      6,
-    );
-  });
-
-  it("segue il percorso dato: non lo modifica né lo ricalcola", () => {
-    const calls: number[] = [];
-    tubeOutline((s) => (calls.push(s), { x: s, y: 0 }), LEN, win);
-    expect(calls.every((s) => s >= win.s0 - 1e-9 && s <= win.s1 + 1e-9)).toBe(true);
-  });
-});
-
-describe("attesa delle fette vuote (righe 669-670)", () => {
-  it("cubic-bezier: estremi, simmetria e valore noto di ease-in-out", () => {
-    expect(easeInOut(0)).toBe(0);
-    expect(easeInOut(1)).toBe(1);
-    expect(easeInOut(0.5)).toBeCloseTo(0.5, 6);
-    expect(easeInOut(0.25)).toBeCloseTo(0.1291, 3);
-    expect(cubicBezier(0, 0, 1, 1)(0.3)).toBeCloseTo(0.3, 6);
-  });
-
-  it("0 ms → 0,45; un quarto → a metà; metà periodo → 0,95; fine periodo → 0,45", () => {
-    expect(waitingOpacity(0)).toBeCloseTo(WAIT_LOW, 9);
-    expect(waitingOpacity(WAIT_PERIOD / 4)).toBeCloseTo((WAIT_LOW + WAIT_HIGH) / 2, 5);
-    expect(waitingOpacity(WAIT_PERIOD / 2)).toBeCloseTo(WAIT_HIGH, 9);
-    expect(waitingOpacity((WAIT_PERIOD * 3) / 4)).toBeCloseTo((WAIT_LOW + WAIT_HIGH) / 2, 5);
-    expect(waitingOpacity(WAIT_PERIOD)).toBeCloseTo(WAIT_LOW, 9);
-    expect(waitingOpacity(WAIT_PERIOD * 7 + 100)).toBeCloseTo(waitingOpacity(100), 9);
-  });
-
-  it("resta sempre tra 0,45 e 0,95", () => {
-    for (let t = 0; t < 4000; t += 37) {
-      const o = waitingOpacity(t);
-      expect(o).toBeGreaterThanOrEqual(WAIT_LOW - 1e-9);
-      expect(o).toBeLessThanOrEqual(WAIT_HIGH + 1e-9);
-    }
-  });
-
-  it("con movimento ridotto è ferma a riposo (0,85), a ogni istante", () => {
-    expect(waitingOpacityFor(0, true)).toBe(WAIT_REST);
-    expect(waitingOpacityFor(777, true)).toBe(WAIT_REST);
-    expect(waitingOpacityFor(777, false)).toBe(waitingOpacity(777));
-  });
-});
-```
-
-### `src/etl-canvas/__tests__/helpers.ts`
-
-26 righe
-
-```ts
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { createEtlStore } from "../../etl-store";
+import { nodeCenter } from "../../etl-layout";
 import type { EtlStore } from "../../etl-store";
-import { CanvasSurface } from "../EtlCanvas";
-import { prototypeScene } from "../seed";
-
-export const SIZE = { w: 1000, h: 640 };
-
-export function storeWith(state = prototypeScene()): EtlStore {
-  return createEtlStore({ initial: state });
-}
-
-export function html(store: EtlStore, size = SIZE): string {
-  return renderToStaticMarkup(createElement(CanvasSurface, { store, size }));
-}
-
-/** Il frammento di HTML di un nodo, dal suo `<div class="ec-card ...">` al successivo. */
-export function nodeHtml(markup: string, id: string): string {
-  const at = markup.indexOf(`data-node-id="${id}"`);
-  if (at < 0) throw new Error(`nodo ${id} non reso`);
-  const start = markup.lastIndexOf("<div", at);
-  const next = markup.indexOf('<div class="ec-card', at);
-  return markup.slice(start, next < 0 ? undefined : next);
-}
-```
-
-### `src/etl-canvas/__tests__/loop.test.ts`
-
-165 righe
-
-```ts
-import { describe, expect, it, vi } from "vitest";
-import { createLoop } from "../loop";
-import type { Task } from "../loop";
-import { fakeEnv } from "./fake-env";
-
-function task(busy: () => boolean): Task & { frames: number[]; settled: number } {
-  const t = {
-    frames: [] as number[],
-    settled: 0,
-    frame(now: number) {
-      t.frames.push(now);
-      return busy();
-    },
-    settle() {
-      t.settled++;
-    },
-  };
-  return t;
-}
-
-describe("ciclo condiviso", () => {
-  it("un solo rAF alla volta, con qualunque numero di compiti", () => {
-    const f = fakeEnv();
-    const loop = createLoop(f.env);
-    const a = task(() => true);
-    const b = task(() => true);
-    loop.add(a);
-    loop.add(b);
-    expect(f.pending()).toBe(1);
-    f.step();
-    expect(f.pending()).toBe(1);
-    expect(a.frames).toHaveLength(1);
-    expect(b.frames).toHaveLength(1);
-    loop.dispose();
-  });
-
-  it("si ferma da solo quando nessun compito ha nulla da animare, e riparte con wake", () => {
-    const f = fakeEnv();
-    let busy = true;
-    const loop = createLoop(f.env);
-    loop.add(task(() => busy));
-    f.step();
-    f.step();
-    expect(loop.running()).toBe(true);
-    busy = false;
-    f.step();
-    expect(loop.running()).toBe(false);
-    expect(f.pending()).toBe(0);
-    const calls = f.rafCalls();
-    f.step();
-    expect(f.rafCalls()).toBe(calls);
-    busy = true;
-    loop.wake();
-    expect(loop.running()).toBe(true);
-    loop.dispose();
-  });
-
-  it("senza compiti non parte", () => {
-    const f = fakeEnv();
-    const loop = createLoop(f.env);
-    loop.wake();
-    expect(f.rafCalls()).toBe(0);
-    const off = loop.add(task(() => true));
-    off();
-    expect(f.pending()).toBe(0);
-    loop.dispose();
-  });
-
-  it("si ferma quando la scheda è nascosta e riparte quando torna visibile", () => {
-    const f = fakeEnv();
-    const t = task(() => true);
-    const loop = createLoop(f.env);
-    loop.add(t);
-    f.step();
-    expect(loop.running()).toBe(true);
-    f.setHidden(true);
-    expect(loop.running()).toBe(false);
-    expect(f.pending()).toBe(0);
-    const frames = t.frames.length;
-    f.step();
-    f.step();
-    expect(t.frames).toHaveLength(frames);
-    f.setHidden(false);
-    expect(loop.running()).toBe(true);
-    f.step();
-    expect(t.frames.length).toBe(frames + 1);
-    loop.dispose();
-  });
-
-  it("con la scheda già nascosta non parte affatto", () => {
-    const f = fakeEnv();
-    f.setHidden(true);
-    const loop = createLoop(f.env);
-    loop.add(task(() => true));
-    expect(f.rafCalls()).toBe(0);
-    loop.dispose();
-  });
-
-  it("non riprogramma un frame se la scheda si nasconde durante il frame", () => {
-    const f = fakeEnv();
-    const loop = createLoop(f.env);
-    loop.add({
-      frame: () => {
-        f.setHidden(true);
-        return true;
-      },
-      settle: () => {},
-    });
-    f.step();
-    expect(loop.running()).toBe(false);
-    loop.dispose();
-  });
-
-  it("movimento ridotto: il ciclo non parte mai, i compiti mostrano lo stato finale", () => {
-    const f = fakeEnv();
-    f.setReduced(true);
-    const t = task(() => true);
-    const loop = createLoop(f.env);
-    loop.add(t);
-    loop.wake();
-    expect(f.rafCalls()).toBe(0);
-    expect(loop.running()).toBe(false);
-    expect(t.frames).toHaveLength(0);
-    expect(t.settled).toBeGreaterThanOrEqual(1);
-    loop.dispose();
-  });
-
-  it("se il movimento ridotto si attiva mentre gira, si ferma e mostra lo stato finale; se si disattiva, riparte", () => {
-    const f = fakeEnv();
-    const t = task(() => true);
-    const loop = createLoop(f.env);
-    loop.add(t);
-    f.step();
-    expect(loop.running()).toBe(true);
-    f.setReduced(true);
-    expect(loop.running()).toBe(false);
-    expect(t.settled).toBe(1);
-    f.setReduced(false);
-    expect(loop.running()).toBe(true);
-    loop.dispose();
-  });
-
-  it("dispose ferma il ciclo e toglie gli ascoltatori", () => {
-    const f = fakeEnv();
-    const loop = createLoop(f.env);
-    loop.add(task(() => true));
-    expect(f.listeners()).toBe(2);
-    loop.dispose();
-    expect(f.pending()).toBe(0);
-    expect(f.listeners()).toBe(0);
-  });
-
-  it("i frame ricevono l'orologio dell'ambiente", () => {
-    const f = fakeEnv();
-    const t = task(() => true);
-    const loop = createLoop(f.env);
-    loop.add(t);
-    f.step(100);
-    f.step(50);
-    expect(t.frames).toEqual([100, 150]);
-    loop.dispose();
-    void vi;
-  });
-});
-```
-
-### `src/etl-canvas/__tests__/no-reroute.test.ts`
-
-129 righe
-
-```ts
-/**
- * Vincolo della Fase 4b: le animazioni sono un effetto visivo sopra
- * percorsi già calcolati. Nessuna animazione richiama settleLinks (né alcuna
- * funzione di etl-layout che instradi) e nessuna altera i percorsi di
- * getRoutes.
- */
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("../../etl-layout", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../etl-layout")>();
-  return {
-    ...actual,
-    settleLinks: vi.fn(actual.settleLinks),
-    layoutLinks: vi.fn(actual.layoutLinks),
-    chooseRoute: vi.fn(actual.chooseRoute),
-    buildRoute: vi.fn(actual.buildRoute),
-    routeCandidates: vi.fn(actual.routeCandidates),
-    shapeCandidates: vi.fn(actual.shapeCandidates),
-    autoLayout: vi.fn(actual.autoLayout),
-  };
-});
-
-import * as layout from "../../etl-layout";
-import { linkKey } from "../../etl-layout";
-import { createMotionEngine } from "../engine";
-import type { LinkInput } from "../engine";
-import { fakeEnv } from "./fake-env";
+import { createInteractionController } from "../interaction";
+import { handleCanvasDrop, previewCanvasDrop } from "../drop";
 import { storeWith } from "./helpers";
 
-const ROUTING = [
-  "settleLinks",
-  "layoutLinks",
-  "chooseRoute",
-  "buildRoute",
-  "routeCandidates",
-  "shapeCandidates",
-  "autoLayout",
-] as const;
+const cardCount = (s: EtlStore) => Object.keys(s.getState().graph.cards).length;
 
-function el() {
-  const attrs: Record<string, string> = {};
-  return {
-    attrs,
-    style: { opacity: "" },
-    setAttribute: (n: string, v: string) => void (attrs[n] = v),
-    getTotalLength: () => 300,
-    getPointAtLength: (s: number) => ({ x: s, y: 0 }),
-  };
-}
-
-function inputs(store: ReturnType<typeof storeWith>): LinkInput[] {
-  const routes = store.getRoutes();
-  return store.getState().graph.links.flatMap((l) => {
-    const r = routes[linkKey(l)];
-    return r ? [{ key: linkKey(l), live: true, pts: r.pts, d: r.d, pa: r.pa, pb: r.pb }] : [];
+describe("handleCanvasDrop (rilascio dalla cassetta, per la Fase 6)", () => {
+  it("nel vuoto crea il nodo, un solo passo di cronologia", () => {
+    const store = storeWith();
+    const n = cardCount(store);
+    const r = handleCanvasDrop(store, { component: "filter" }, { x: 1000, y: 700 });
+    expect(r.ok).toBe(true);
+    expect(cardCount(store)).toBe(n + 1);
+    expect(store.historySize().past).toBe(1);
+    expect(
+      previewCanvasDrop(store, { component: "filter" }, { x: 1500, y: 900 }).outcome,
+    ).toBeNull();
   });
-}
 
-describe("le animazioni non ricalcolano né alterano i percorsi", () => {
-  it("nessuna funzione di instradamento viene chiamata mentre girano flusso, attesa e transizioni", () => {
+  it("una lavorazione su una lavorazione si fonde", () => {
+    const store = storeWith();
+    const p = nodeCenter(store.getState().graph.cards["op-sort"]!);
+    expect(previewCanvasDrop(store, { component: "filter" }, p)).toMatchObject({
+      outcome: "merge",
+      nodeId: "op-sort",
+    });
+    const n = cardCount(store);
+    expect(handleCanvasDrop(store, { component: "filter" }, p).ok).toBe(true);
+    expect(cardCount(store)).toBe(n); // assorbita: non compare da sola
+    expect(store.getState().graph.cards["op-sort"]!.components).toHaveLength(2);
+    expect(store.historySize().past).toBe(1);
+  });
+
+  it("un dataset su una lavorazione si collega; una lavorazione su un dataset si collega al contrario", () => {
+    const a = storeWith();
+    const onOp = nodeCenter(a.getState().graph.cards["op-join"]!);
+    expect(previewCanvasDrop(a, { component: "dataset" }, onOp).outcome).toBe("link");
+    handleCanvasDrop(a, { component: "dataset" }, onOp);
+    expect(a.getState().graph.links.some((l) => l.to === "op-join")).toBe(true);
+
+    const b = storeWith();
+    const onDs = nodeCenter(b.getState().graph.cards["ds1"]!);
+    expect(previewCanvasDrop(b, { component: "sort" }, onDs).outcome).toBe("link-reverse");
+    handleCanvasDrop(b, { component: "sort" }, onDs);
+    expect(b.getState().graph.links.some((l) => l.from === "ds1")).toBe(true);
+  });
+
+  it("una lavorazione su un cavo dataset→lavorazione vi si inserisce; un dataset no", () => {
     const store = storeWith();
     store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
-    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-filter" } });
-    const before = inputs(store);
-    expect(before.length).toBeGreaterThan(1);
-    const routesBefore = JSON.stringify(store.getRoutes());
-
-    // da qui in poi il calcolo dei percorsi è già avvenuto: si azzerano i contatori
-    for (const name of ROUTING) (layout[name] as unknown as ReturnType<typeof vi.fn>).mockClear();
-
-    const f = fakeEnv();
-    const engine = createMotionEngine();
-    const groups = new Map<string, ReturnType<typeof el>[]>();
-    for (const l of before) {
-      const els = [el(), el(), el(), el(), el()];
-      groups.set(l.key, els);
-      const map: Record<string, unknown> = {
-        ".ec-link": els[0],
-        ".ec-link-ghost": els[1],
-        ".ec-flow": els[2],
-        '[data-dot="a"]': els[3],
-        '[data-dot="b"]': els[4],
-      };
-      engine.registerLink(l.key, { querySelector: (s) => map[s] ?? null });
-    }
-    engine.registerSlice("out-0:1", el());
-    engine.start(f.env);
-    engine.update({ links: before, gesturing: false });
-    for (let i = 0; i < 40; i++) f.step(16);
-
-    // un cambio discreto dei percorsi (spostato a mano per simulare autoLayout): si anima
-    const moved = before.map((l) => {
-      const pts = l.pts.map((p) => ({ x: p.x + 30, y: p.y + 10 }));
-      return { ...l, pts, pa: pts[0]!, pb: pts[pts.length - 1]! };
+    const key = "ds1|op-join";
+    const pts = store.getRoutes()[key]!.pts;
+    const p = { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 };
+    expect(previewCanvasDrop(store, { component: "sort" }, p)).toMatchObject({
+      outcome: "insert",
+      linkKey: key,
     });
-    engine.update({ links: moved, gesturing: false });
-    for (let i = 0; i < 40; i++) f.step(16);
-    engine.update({ links: before, gesturing: true });
-    for (let i = 0; i < 10; i++) f.step(16);
-    engine.update({ links: before, gesturing: false });
-    for (let i = 0; i < 40; i++) f.step(16);
-
-    for (const name of ROUTING) {
-      expect(layout[name], name).not.toHaveBeenCalled();
-    }
-    // e i percorsi restituiti da getRoutes sono rimasti identici
-    expect(JSON.stringify(store.getRoutes())).toBe(routesBefore);
-    expect(JSON.stringify(inputs(store))).toBe(JSON.stringify(before));
+    expect(previewCanvasDrop(store, { component: "dataset" }, p).outcome).toBeNull();
+    expect(handleCanvasDrop(store, { component: "sort" }, p).ok).toBe(true);
+    expect(store.getState().graph.links).not.toContainEqual({ from: "ds1", to: "op-join" });
   });
 
-  it("con lo store reale: una modifica del grafo ricalcola i percorsi solo tramite lo store, non le animazioni", () => {
+  it("su un cavo lavorazione→output non si inserisce: cade nel vuoto", () => {
     const store = storeWith();
-    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-filter" } });
-    store.getRoutes();
-    (layout.settleLinks as unknown as ReturnType<typeof vi.fn>).mockClear();
-    const f = fakeEnv();
-    const engine = createMotionEngine();
-    engine.start(f.env);
-    engine.update({ links: inputs(store), gesturing: false });
-    for (let i = 0; i < 30; i++) f.step(16);
-    // le animazioni hanno girato e settleLinks non è stato invocato da loro
-    expect(layout.settleLinks).not.toHaveBeenCalled();
-    // lo store invece ricalcola quando cambia il grafo (controllo di sanità dello spy)
-    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-sort" } });
-    store.getRoutes();
-    expect(layout.settleLinks).toHaveBeenCalled();
+    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
+    const pts = store.getRoutes()["op-join|out-0"]!.pts;
+    const p = { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 };
+    expect(previewCanvasDrop(store, { component: "sort" }, p).outcome).toBeNull();
+  });
+
+  it("è raggiungibile dal controller, con il punto dell'area convertito in mondo", () => {
+    const store = storeWith();
+    store.dispatch({ type: "setView", payload: { x: 50, y: 20, zoom: 2 } });
+    const c = createInteractionController(store);
+    expect(c.toWorld(250, 220)).toEqual({ x: 100, y: 100 });
+    const n = cardCount(store);
+    expect(c.handleCanvasDrop({ component: "limit" }, c.toWorld(1200, 900)).ok).toBe(true);
+    expect(cardCount(store)).toBe(n + 1);
   });
 });
 ```

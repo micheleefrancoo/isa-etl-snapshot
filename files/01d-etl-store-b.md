@@ -780,7 +780,7 @@ export {
   ZOOM_MIN,
   ZOOM_MAX,
 } from "./state";
-export { reduce, dropAt } from "./reduce";
+export { reduce, dropAt, paletteRelation } from "./reduce";
 export {
   createEtlStore,
   HISTORY_LIMIT,

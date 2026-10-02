@@ -2,6 +2,7 @@
 
 File in questo blocco:
 
+- `src/theme/boot.ts`
 - `src/theme/color.ts`
 - `src/theme/derive.ts`
 - `src/theme/index.css`
@@ -12,6 +13,41 @@ File in questo blocco:
 - `src/theme/themes/prototipo.css`
 
 ---
+
+### `src/theme/boot.ts`
+
+29 righe
+
+```ts
+/**
+ * Script di avvio, inserito nella testa della pagina (src/routes/__root.tsx):
+ * applica tema, modo e tinta dell'accento PRIMA del primo disegno, così non c'è
+ * alcun lampo. Non importa nulla: è testo eseguito prima di qualunque modulo.
+ * Legge la stessa preferenza di runtime.ts (`isa.theme.v1`, con ripiego sul
+ * vecchio `isa-theme` per il modo) e applica i token d'accento già derivati e
+ * salvati da `setAccentHue`. Tutto in try/catch: se l'archivio non è
+ * disponibile resta il predefinito (tema "prototipo", scuro).
+ *
+ * Solo in sviluppo, `?theme=<nome>` forza il tema.
+ */
+import { LEGACY_MODE_KEY, THEME_NAMES, THEME_STORAGE_KEY } from "./runtime";
+
+export function themeBootScript(allowQueryTheme: boolean): string {
+  return `(function(){try{
+var d=document.documentElement,p=null,m=null,t="prototipo",N=${JSON.stringify(THEME_NAMES)};
+try{p=JSON.parse(localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)})||"null")}catch(e){}
+if(p&&typeof p==="object"){if(p.mode==="light"||p.mode==="dark")m=p.mode;if(N.indexOf(p.theme)>=0)t=p.theme}else p=null;
+if(!m){try{m=localStorage.getItem(${JSON.stringify(LEGACY_MODE_KEY)})}catch(e){}if(m!=="light"&&m!=="dark")m="dark"}
+${
+  allowQueryTheme
+    ? `try{var q=new URLSearchParams(location.search).get("theme");if(N.indexOf(q)>=0)t=q}catch(e){}`
+    : ""
+}
+d.classList.toggle("dark",m==="dark");d.setAttribute("data-theme",t);
+var a=p&&p.accent&&p.accent[m];if(a&&typeof a==="object")for(var k in a)d.style.setProperty(k,a[k]);
+}catch(e){}})();`;
+}
+```
 
 ### `src/theme/color.ts`
 
@@ -700,7 +736,7 @@ export const setAccentHue = (hue: number | null) => themeStore.setAccentHue(hue)
 
 ### `src/theme/themes/notte.css`
 
-243 righe
+273 righe
 
 ```css
 /*
@@ -820,7 +856,27 @@ export const setAccentHue = (hue: number | null) => themeStore.setAccentHue(hue)
   --isa-duration-slow: 260ms;
 
   /* ── Semantici del canvas ETL ── */
+  /* ── Gesti (Fase 5) ── */
+  --isa-drop-merge: var(--isa-select);
+  --isa-drop-link: var(--isa-p-green-600);
+  --isa-drop-link-reverse: var(--isa-drop-link);
+  --isa-drop-displace: var(--isa-p-orange-600);
+  --isa-drop-reject: var(--isa-p-red-600);
+  --isa-drop-insert: var(--isa-select);
+  --isa-doomed: var(--isa-drop-reject);
+  --isa-marquee-line: var(--isa-select);
+  --isa-marquee-fill: var(--isa-mm-view-bg);
+  --isa-temp-link: var(--isa-accent);
+  --isa-temp-link-muted: var(--isa-accent-soft-2);
+  --isa-port-fill: var(--isa-p-white);
+  --isa-port-line: var(--isa-accent);
+  --isa-danger: var(--isa-p-red-600);
+  --isa-text-on-danger: var(--isa-p-white);
+  --isa-shadow-drag: 0 12px 24px -12px var(--isa-p-slate-900-a14);
+  --isa-shadow-overlay: 0 24px 48px -24px var(--isa-p-slate-900-a14);
   --isa-ring-select: 0 0 0 3px var(--isa-select);
+  --isa-ring-drop-merge: 0 0 0 3px var(--isa-drop-merge);
+  --isa-ring-drop-link: 0 0 0 3px var(--isa-drop-link);
   --isa-outline-node-op: inset 0 0 0 1.5px var(--isa-tint-border);
   --isa-stage: var(--isa-p-white);
   --isa-accent-soft-2: var(--isa-p-navy-700-a16);
@@ -944,12 +1000,22 @@ export const setAccentHue = (hue: number | null) => themeStore.setAccentHue(hue)
   --isa-mm-node-ds: var(--isa-p-accent-300);
   --isa-mm-view-line: var(--isa-p-blue-400);
   --isa-mm-view-bg: var(--isa-p-blue-400-a16);
+
+  /* ── Gesti (Fase 5), modo scuro ── */
+  --isa-drop-link: var(--isa-p-green-400);
+  --isa-drop-displace: var(--isa-p-orange-400);
+  --isa-drop-reject: var(--isa-p-red-400);
+  --isa-port-fill: var(--isa-p-night-800);
+  --isa-danger: var(--isa-p-red-600);
+  --isa-text-on-danger: var(--isa-p-white);
+  --isa-shadow-drag: 0 12px 24px -12px var(--isa-p-black-a40);
+  --isa-shadow-overlay: 0 24px 48px -24px var(--isa-p-black-a40);
 }
 ```
 
 ### `src/theme/themes/prototipo.css`
 
-237 righe
+267 righe
 
 ```css
 /*
@@ -1072,7 +1138,27 @@ export const setAccentHue = (hue: number | null) => themeStore.setAccentHue(hue)
   --isa-duration-slow: 320ms;
 
   /* ── Semantici del canvas ETL ── */
+  /* ── Gesti (Fase 5): esiti del trascinamento, riquadro, cavo provvisorio, porte, conferma ── */
+  --isa-drop-merge: var(--isa-select);
+  --isa-drop-link: oklch(0.5 0.12 155);
+  --isa-drop-link-reverse: var(--isa-drop-link);
+  --isa-drop-displace: oklch(0.52 0.12 65);
+  --isa-drop-reject: oklch(0.52 0.19 25);
+  --isa-drop-insert: var(--isa-select);
+  --isa-doomed: var(--isa-drop-reject);
+  --isa-marquee-line: var(--isa-select);
+  --isa-marquee-fill: var(--isa-mm-view-bg);
+  --isa-temp-link: var(--isa-accent);
+  --isa-temp-link-muted: var(--isa-accent-soft-2);
+  --isa-port-fill: #ffffff;
+  --isa-port-line: var(--isa-accent);
+  --isa-danger: #b23a3a;
+  --isa-text-on-danger: #ffffff;
+  --isa-shadow-drag: 0 18px 30px -14px rgba(38, 36, 32, 0.4);
+  --isa-shadow-overlay: 0 40px 80px -30px rgba(38, 36, 32, 0.4);
   --isa-ring-select: 0 0 0 3px var(--isa-select);
+  --isa-ring-drop-merge: 0 0 0 3px var(--isa-drop-merge);
+  --isa-ring-drop-link: 0 0 0 3px var(--isa-drop-link);
   --isa-outline-node-op: inset 0 0 0 1.5px var(--isa-tint-border);
   --isa-stage: rgba(255, 255, 255, 0.32);
   --isa-accent-soft-2: rgba(108, 99, 255, 0.34);
@@ -1187,6 +1273,16 @@ export const setAccentHue = (hue: number | null) => themeStore.setAccentHue(hue)
   --isa-mm-node-ds: #a8a3ff;
   --isa-mm-view-line: #a8a3ff;
   --isa-mm-view-bg: rgba(168, 163, 255, 0.12);
+
+  /* ── Gesti (Fase 5), modo scuro ── */
+  --isa-drop-link: oklch(0.74 0.12 155);
+  --isa-drop-displace: var(--isa-warning);
+  --isa-drop-reject: oklch(0.72 0.16 22);
+  --isa-port-fill: var(--isa-surface-overlay);
+  --isa-danger: #b23a3a;
+  --isa-text-on-danger: #ffffff;
+  --isa-shadow-drag: 0 18px 30px -14px rgba(0, 0, 0, 0.6);
+  --isa-shadow-overlay: 0 40px 80px -30px rgba(0, 0, 0, 0.6);
 }
 ```
 

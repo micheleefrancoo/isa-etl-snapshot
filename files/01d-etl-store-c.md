@@ -223,7 +223,7 @@ function insertSettled(
 }
 
 /** Prototipo, righe 4710-4723 (`paletteRelation`): cosa succede rilasciando un nuovo elemento su un nodo. */
-function paletteRelation(
+export function paletteRelation(
   graph: Graph,
   kind: Card["kind"],
   targetId: string,

@@ -11,13 +11,12 @@ File in questo blocco:
 - `src/theme/__tests__/runtime.test.ts`
 - `src/theme/__tests__/support.ts`
 - `src/theme/__tests__/themes.test.ts`
-- `src/theme/boot.ts`
 
 ---
 
 ### `src/theme/README.md`
 
-207 righe
+226 righe
 
 ```md
 # Sistema di temi
@@ -205,7 +204,26 @@ Token semantico → valore assegnato, per tema e modo. Dove il valore è una pri
 | `--isa-duration-fast` | `120ms` | `120ms` | `100ms` | `100ms` |
 | `--isa-duration-base` | `200ms` | `200ms` | `160ms` | `160ms` |
 | `--isa-duration-slow` | `320ms` | `320ms` | `260ms` | `260ms` |
+| `--isa-drop-merge` | `var(--isa-select)` | `var(--isa-select)` | `var(--isa-select)` | `var(--isa-select)` |
+| `--isa-drop-link` | `oklch(0.5 0.12 155)` | `oklch(0.74 0.12 155)` | `var(--isa-p-green-600) (#16a34a)` | `var(--isa-p-green-400) (#4ade80)` |
+| `--isa-drop-link-reverse` | `var(--isa-drop-link)` | `var(--isa-drop-link)` | `var(--isa-drop-link)` | `var(--isa-drop-link)` |
+| `--isa-drop-displace` | `oklch(0.52 0.12 65)` | `var(--isa-warning)` | `var(--isa-p-orange-600) (#ea580c)` | `var(--isa-p-orange-400) (#fb923c)` |
+| `--isa-drop-reject` | `oklch(0.52 0.19 25)` | `oklch(0.72 0.16 22)` | `var(--isa-p-red-600) (#dc2626)` | `var(--isa-p-red-400) (#f87171)` |
+| `--isa-drop-insert` | `var(--isa-select)` | `var(--isa-select)` | `var(--isa-select)` | `var(--isa-select)` |
+| `--isa-doomed` | `var(--isa-drop-reject)` | `var(--isa-drop-reject)` | `var(--isa-drop-reject)` | `var(--isa-drop-reject)` |
+| `--isa-marquee-line` | `var(--isa-select)` | `var(--isa-select)` | `var(--isa-select)` | `var(--isa-select)` |
+| `--isa-marquee-fill` | `var(--isa-mm-view-bg)` | `var(--isa-mm-view-bg)` | `var(--isa-mm-view-bg)` | `var(--isa-mm-view-bg)` |
+| `--isa-temp-link` | `var(--isa-accent)` | `var(--isa-accent)` | `var(--isa-accent)` | `var(--isa-accent)` |
+| `--isa-temp-link-muted` | `var(--isa-accent-soft-2)` | `var(--isa-accent-soft-2)` | `var(--isa-accent-soft-2)` | `var(--isa-accent-soft-2)` |
+| `--isa-port-fill` | `#ffffff` | `var(--isa-surface-overlay)` | `var(--isa-p-white) (#ffffff)` | `var(--isa-p-night-800) (#172036)` |
+| `--isa-port-line` | `var(--isa-accent)` | `var(--isa-accent)` | `var(--isa-accent)` | `var(--isa-accent)` |
+| `--isa-danger` | `#b23a3a` | `#b23a3a` | `var(--isa-p-red-600) (#dc2626)` | `var(--isa-p-red-600) (#dc2626)` |
+| `--isa-text-on-danger` | `#ffffff` | `#ffffff` | `var(--isa-p-white) (#ffffff)` | `var(--isa-p-white) (#ffffff)` |
+| `--isa-shadow-drag` | `0 18px 30px -14px rgba(38, 36, 32, 0.4)` | `0 18px 30px -14px rgba(0, 0, 0, 0.6)` | `0 12px 24px -12px var(--isa-p-slate-900-a14)` | `0 12px 24px -12px var(--isa-p-black-a40)` |
+| `--isa-shadow-overlay` | `0 40px 80px -30px rgba(38, 36, 32, 0.4)` | `0 40px 80px -30px rgba(0, 0, 0, 0.6)` | `0 24px 48px -24px var(--isa-p-slate-900-a14)` | `0 24px 48px -24px var(--isa-p-black-a40)` |
 | `--isa-ring-select` | `0 0 0 3px var(--isa-select)` | `0 0 0 3px var(--isa-select)` | `0 0 0 3px var(--isa-select)` | `0 0 0 3px var(--isa-select)` |
+| `--isa-ring-drop-merge` | `0 0 0 3px var(--isa-drop-merge)` | `0 0 0 3px var(--isa-drop-merge)` | `0 0 0 3px var(--isa-drop-merge)` | `0 0 0 3px var(--isa-drop-merge)` |
+| `--isa-ring-drop-link` | `0 0 0 3px var(--isa-drop-link)` | `0 0 0 3px var(--isa-drop-link)` | `0 0 0 3px var(--isa-drop-link)` | `0 0 0 3px var(--isa-drop-link)` |
 | `--isa-outline-node-op` | `inset 0 0 0 1.5px var(--isa-tint-border)` | `inset 0 0 0 1.5px var(--isa-tint-border)` | `inset 0 0 0 1.5px var(--isa-tint-border)` | `inset 0 0 0 1.5px var(--isa-tint-border)` |
 | `--isa-stage` | `rgba(255, 255, 255, 0.32)` | `rgba(255, 255, 255, 0.04)` | `var(--isa-p-white) (#ffffff)` | `var(--isa-p-white-a8)` |
 | `--isa-accent-soft-2` | `rgba(108, 99, 255, 0.34)` | `rgba(108, 99, 255, 0.5)` | `var(--isa-p-navy-700-a16)` | `var(--isa-p-accent-300-a28)` |
@@ -293,7 +311,7 @@ describe("scripts/check-tokens.mjs", () => {
 
 ### `src/theme/__tests__/checks.ts`
 
-98 righe
+119 righe
 
 ```ts
 /**
@@ -345,11 +363,32 @@ function themeChecks(theme: Theme, mode: Mode): Check[] {
     add(`text-secondary su ${sn}`, fg("--isa-text-secondary"), s, 4.5);
     add(`accent su ${sn}`, fg("--isa-accent"), s, 3);
     add(`focus-ring su ${sn}`, fg("--isa-focus-ring"), s, 3);
+    // gesti (Fase 5): contorni degli esiti, cavo da inserire, riquadro, cavo provvisorio, porta, nodi da eliminare
+    for (const g of [
+      "drop-merge",
+      "drop-link",
+      "drop-link-reverse",
+      "drop-displace",
+      "drop-reject",
+      "drop-insert",
+      "doomed",
+      "marquee-line",
+      "temp-link",
+      "port-line",
+    ]) {
+      add(`${g} su ${sn}`, fg(`--isa-${g}`), s, 3);
+    }
     for (const fam of ["filter", "transform", "merge", "output"]) {
       add(`op-${fam} su ${sn}`, fg(`--isa-op-${fam}`), s, 3);
     }
   }
   const accentBg = over(fg("--isa-accent"), surf["base"] as Rgba);
+  add(
+    "text-on-danger su danger",
+    fg("--isa-text-on-danger"),
+    over(fg("--isa-danger"), surf["base"] as Rgba),
+    4.5,
+  );
   add("text-on-accent su accent", fg("--isa-text-on-accent"), accentBg, 4.5);
   return out;
 }
@@ -1079,40 +1118,5 @@ describe("«notte»: i colori richiesti", () => {
     expect(d["--isa-surface-base"]).toBe("#17181d");
   });
 });
-```
-
-### `src/theme/boot.ts`
-
-29 righe
-
-```ts
-/**
- * Script di avvio, inserito nella testa della pagina (src/routes/__root.tsx):
- * applica tema, modo e tinta dell'accento PRIMA del primo disegno, così non c'è
- * alcun lampo. Non importa nulla: è testo eseguito prima di qualunque modulo.
- * Legge la stessa preferenza di runtime.ts (`isa.theme.v1`, con ripiego sul
- * vecchio `isa-theme` per il modo) e applica i token d'accento già derivati e
- * salvati da `setAccentHue`. Tutto in try/catch: se l'archivio non è
- * disponibile resta il predefinito (tema "prototipo", scuro).
- *
- * Solo in sviluppo, `?theme=<nome>` forza il tema.
- */
-import { LEGACY_MODE_KEY, THEME_NAMES, THEME_STORAGE_KEY } from "./runtime";
-
-export function themeBootScript(allowQueryTheme: boolean): string {
-  return `(function(){try{
-var d=document.documentElement,p=null,m=null,t="prototipo",N=${JSON.stringify(THEME_NAMES)};
-try{p=JSON.parse(localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)})||"null")}catch(e){}
-if(p&&typeof p==="object"){if(p.mode==="light"||p.mode==="dark")m=p.mode;if(N.indexOf(p.theme)>=0)t=p.theme}else p=null;
-if(!m){try{m=localStorage.getItem(${JSON.stringify(LEGACY_MODE_KEY)})}catch(e){}if(m!=="light"&&m!=="dark")m="dark"}
-${
-  allowQueryTheme
-    ? `try{var q=new URLSearchParams(location.search).get("theme");if(N.indexOf(q)>=0)t=q}catch(e){}`
-    : ""
-}
-d.classList.toggle("dark",m==="dark");d.setAttribute("data-theme",t);
-var a=p&&p.accent&&p.accent[m];if(a&&typeof a==="object")for(var k in a)d.style.setProperty(k,a[k]);
-}catch(e){}})();`;
-}
 ```
 
