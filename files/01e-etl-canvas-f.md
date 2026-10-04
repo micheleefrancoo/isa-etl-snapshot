@@ -14,13 +14,14 @@ File in questo blocco:
 
 ### `src/etl-canvas/panels/layout.ts`
 
-138 righe
+152 righe
 
 ```ts
 /**
  * Geometria dei pannelli agganciabili: funzioni pure sullo stato dei pannelli
- * di etl-store (`Panels`: lato e aperto/chiuso di ciascuno). Numeri del
- * prototipo (docs/prototype/isa-fusion-prototype.html, righe 4756-4900).
+ * di etl-store (`Panels`: lato e aperto/chiuso di ciascuno). Misure del
+ * prototipo (docs/prototype/isa-fusion-prototype.html, righe 4756-4900), salvo
+ * l'altezza dell'area di lavoro (vedi `viewCompensation`).
  *
  * Nessuna logica di dominio: misure e compensazione della vista sono
  * geometria dell'interfaccia.
@@ -93,30 +94,43 @@ export function openExtent(panels: Panels, side: Side): number {
 }
 
 /**
- * Spostamento da dare a `view.x` perché i nodi restino fermi sullo schermo
- * quando i pannelli passano da `before` a `after` (righe 4780-4784, 4818-4821).
+ * Spostamento da dare alla vista perché i nodi restino fermi sullo schermo
+ * quando i pannelli passano da `before` a `after`.
  *
- * Solo il bordo SINISTRO sposta l'origine del canvas: lì il canvas cede
- * larghezza dal suo lato d'origine. A destra cede dal lato opposto, e sopra e
- * sotto il canvas conserva la sua altezza (è l'area di lavoro a crescere):
- * in quei casi la vista non cambia. Vale anche quando cambia la misura di un
- * pannello aperto (due pannelli che diventano schede).
+ * Solo i bordi SINISTRO e ALTO spostano l'origine del canvas: lì il canvas
+ * cede spazio dal suo lato d'origine, quindi `view.x` (sinistra) e `view.y`
+ * (alto) si compensano. A destra e in basso il canvas cede dal lato opposto e
+ * la vista non cambia. Vale anche quando cambia la misura di un pannello
+ * aperto (due pannelli che diventano schede).
+ *
+ * Nel prototipo (righe 4780-4784, 4815-4824) i pannelli orizzontali non
+ * toglievano altezza al canvas ma la aggiungevano all'area di lavoro, perché
+ * la pagina scorre; nell'app il contenitore ha l'altezza della finestra, quindi
+ * anche i pannelli orizzontali sottraggono spazio al canvas (vedi
+ * NOTE_DIVERGENZE.md).
  */
-export function viewCompensation(before: Panels, after: Panels): number {
-  const d = openExtent(before, "left") - openExtent(after, "left");
-  return d === 0 ? 0 : d;
+export function viewCompensation(
+  before: Panels,
+  after: Panels,
+): { readonly dx: number; readonly dy: number } {
+  return {
+    dx: openExtent(before, "left") - openExtent(after, "left"),
+    dy: openExtent(before, "top") - openExtent(after, "top"),
+  };
 }
 
 /** Applica la compensazione a una vista. */
 export function compensate(view: View, before: Panels, after: Panels): View {
-  const dx = viewCompensation(before, after);
-  return dx === 0 ? view : { ...view, x: view.x + dx };
+  const { dx, dy } = viewCompensation(before, after);
+  return dx === 0 && dy === 0 ? view : { ...view, x: view.x + dx, y: view.y + dy };
 }
 
-/** Altezza aggiunta all'area di lavoro dai pannelli aperti sopra e sotto (riga 4822-4824). */
-export function workspaceExtra(panels: Panels): number {
-  return openExtent(panels, "top") + openExtent(panels, "bottom");
-}
+/**
+ * Altezza minima del canvas, la riga centrale dello spazio di lavoro. Se i
+ * pannelli in alto e in basso lasciano meno spazio, scorre il contenitore
+ * dello spazio di lavoro, non la pagina.
+ */
+export const MIN_CANVAS_HEIGHT = 200;
 
 /** Il bordo del canvas più vicino a un punto (riga 4851-4856). */
 export function nearestSide(
@@ -158,7 +172,7 @@ export function activeTab(panels: Panels, side: Side): PanelKey | null {
 
 ### `src/etl-canvas/panels/panels.css`
 
-630 righe
+638 righe
 
 ```css
 /*
@@ -175,16 +189,20 @@ export function activeTab(panels: Panels, side: Side): PanelKey | null {
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 520px;
+  min-height: 0;
+  /* se i pannelli in alto e in basso lasciano al canvas meno del minimo, scorre questo contenitore, non la pagina */
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 .ec-workspace {
   display: grid;
   width: 100%;
+  /* l'altezza è quella del contenitore: sopra e sotto i pannelli tolgono altezza al canvas (riga centrale) */
+  height: 100%;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(var(--ec-canvas-min-h), 1fr) auto;
   color: var(--ec-ink);
   font-family: var(--ec-font);
-  transition: height 0.3s cubic-bezier(0.32, 0.72, 0, 1);
 }
 .ec-workspace * {
   box-sizing: border-box;
@@ -216,6 +234,10 @@ export function activeTab(panels: Panels, side: Side): PanelKey | null {
   grid-row: 2;
   position: relative;
   min-width: 0;
+  min-height: 0;
+}
+/* dentro lo spazio di lavoro l'altezza minima del canvas è quella della riga centrale (MIN_CANVAS_HEIGHT), non i 520px del canvas isolato */
+.ec-workspace .ec-center .etl-canvas {
   min-height: 0;
 }
 

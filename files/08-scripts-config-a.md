@@ -14,8 +14,6 @@ File in questo blocco:
 - `scripts/check-tokens.mjs`
 - `scripts/e2e-fase5.mjs`
 - `scripts/e2e-fase6a.mjs`
-- `scripts/extract-golden.mjs`
-- `scripts/generate-index.mjs`
 
 ---
 
@@ -850,7 +848,7 @@ process.exit(failed ? 1 : 0);
 
 ### `scripts/e2e-fase6a.mjs`
 
-373 righe
+537 righe
 
 ```js
 #!/usr/bin/env node
@@ -996,25 +994,189 @@ try {
       await page.waitForTimeout(500);
     }
   }
-  // la tacca si trascina da chiuso: si chiude, poi si porta sul bordo inferiore
-  await page.getByRole("button", { name: "Nascondi la cassetta degli strumenti" }).click();
+  // 4b. i pannelli orizzontali tolgono altezza al canvas: tutto resta dentro la finestra (Fase 6a.1)
+  const inWin = async (sel) => {
+    const b = await box(sel);
+    const vp = page.viewportSize();
+    return {
+      ok:
+        !!b &&
+        b.x >= -0.5 &&
+        b.y >= -0.5 &&
+        b.x + b.width <= vp.width + 0.5 &&
+        b.y + b.height <= vp.height + 0.5,
+      b,
+    };
+  };
+  const essentials = async (label, panelSel) => {
+    for (const [name, sel] of [
+      ["il pannello", panelSel],
+      ["la minimappa", ".ec-minimap"],
+      ["i controlli di zoom", ".ec-zoom"],
+    ]) {
+      const r = await inWin(sel);
+      check(
+        `${label}: ${name} è dentro la finestra`,
+        r.ok,
+        r.b && `${Math.round(r.b.y)}→${Math.round(r.b.y + r.b.height)}`,
+      );
+    }
+    const m = await page.evaluate(() => ({
+      host: document.querySelector(".ec-workspace-host").getBoundingClientRect().height,
+      ws: document.querySelector(".ec-workspace").getBoundingClientRect().height,
+      doc: document.scrollingElement.scrollHeight,
+      win: innerHeight,
+    }));
+    check(
+      `${label}: l'area di lavoro ha l'altezza del contenitore, la pagina non scorre`,
+      Math.abs(m.host - m.ws) < 1.5 && m.doc <= m.win,
+      `area ${m.ws} / contenitore ${m.host}, pagina ${m.doc} / finestra ${m.win}`,
+    );
+  };
+  const closeBtn = (name) => page.getByRole("button", { name });
+  const TOOLS_CLOSE = "Nascondi la cassetta degli strumenti";
+  const INSP_CLOSE = "Nascondi l’inspector";
+
+  await closeBtn(TOOLS_CLOSE).click();
   await page.waitForTimeout(500);
   const stageH = (await box(".ec-stage")).height;
+
+  // basso: il canvas si restringe dell'altezza del pannello, i nodi restano fermi
+  const nBottom0 = await nodeBox("op-join");
   await dragNotch("tools", "bottom");
   check(
     "la cassetta è sul bordo inferiore",
     (await panelSide("tools")) === "bottom" && (await isOpen("tools")),
   );
   const stageHBottom = (await box(".ec-stage")).height;
+  const panelH = (await box('[data-panel="tools"]')).height;
   check(
-    "sul bordo orizzontale il canvas mantiene la sua altezza (cresce l'area di lavoro)",
-    Math.abs(stageH - stageHBottom) < 1.5,
-    `${stageH}→${stageHBottom}`,
+    "bordo basso: il canvas perde l'altezza del pannello",
+    Math.abs(stageH - stageHBottom - panelH) < 1.5 && panelH > 150,
+    `${stageH}→${stageHBottom} (pannello ${panelH})`,
   );
+  const nBottom1 = await nodeBox("op-join");
+  check(
+    "bordo basso: i nodi restano fermi sullo schermo",
+    Math.abs(nBottom1.x - nBottom0.x) < 1.5 && Math.abs(nBottom1.y - nBottom0.y) < 1.5,
+    `${nBottom0.y}→${nBottom1.y}`,
+  );
+  await essentials("bordo basso", '[data-panel="tools"]');
   await shot("cassetta-basso-orizzontale.png");
-  await page.getByRole("button", { name: "Nascondi la cassetta degli strumenti" }).click();
+  await closeBtn(TOOLS_CLOSE).click();
   await page.waitForTimeout(500);
+
+  // alto: l'origine del canvas scende, view.y compensa e i nodi restano fermi
+  const nTop0 = await nodeBox("op-join");
+  await dragNotch("tools", "top");
+  check("la cassetta è sul bordo superiore", (await panelSide("tools")) === "top");
+  const nTop1 = await nodeBox("op-join");
+  check(
+    "bordo alto: i nodi restano fermi sullo schermo",
+    Math.abs(nTop1.x - nTop0.x) < 1.5 && Math.abs(nTop1.y - nTop0.y) < 1.5,
+    `${nTop0.y}→${nTop1.y}`,
+  );
+  check(
+    "bordo alto: view.y compensa l'altezza del pannello",
+    Math.abs((await state()).view.y + panelH) < 1.5,
+    String((await state()).view.y),
+  );
+  await essentials("bordo alto", '[data-panel="tools"]');
+  await shot("cassetta-alto.png");
+  await closeBtn(TOOLS_CLOSE).click();
+  await page.waitForTimeout(500);
+
+  // schede in basso: il pannello è dentro la finestra, il cambio di scheda non sposta nulla
+  await dragNotch("tools", "bottom");
+  const nTabs0 = await nodeBox("op-join");
+  await dragNotch("insp", "bottom");
+  check(
+    "schede in basso: i due pannelli condividono il bordo",
+    (await page.locator(".ec-panel.ec-grouped").count()) === 2 &&
+      (await panelSide("insp")) === "bottom",
+  );
+  await essentials("schede in basso", ".ec-panel.ec-open");
+  const nTabs1 = await nodeBox("op-join");
+  check(
+    "schede in basso: i nodi restano fermi sullo schermo",
+    Math.abs(nTabs1.x - nTabs0.x) < 1.5 && Math.abs(nTabs1.y - nTabs0.y) < 1.5,
+    `${nTabs0.y}→${nTabs1.y}`,
+  );
+
+  // un pannello in alto e uno in basso insieme
+  await closeBtn(INSP_CLOSE).click();
+  await page.waitForTimeout(400);
+  await dragNotch("insp", "top");
+  await page.locator('[data-notch="tools"]').click();
+  await page.waitForTimeout(600);
+  check(
+    "alto e basso insieme: due pannelli aperti, uno per bordo",
+    (await panelSide("insp")) === "top" &&
+      (await panelSide("tools")) === "bottom" &&
+      (await isOpen("insp")) &&
+      (await isOpen("tools")),
+  );
+  await essentials("alto e basso", '[data-panel="insp"]');
+  const toolsBoth = await inWin('[data-panel="tools"]');
+  check(
+    "alto e basso: anche la cassetta è dentro la finestra",
+    toolsBoth.ok,
+    JSON.stringify(toolsBoth.b),
+  );
+  const stageBoth = (await box(".ec-stage")).height;
+  check(
+    "alto e basso: il canvas non scende sotto l'altezza minima",
+    stageBoth >= 200,
+    String(stageBoth),
+  );
+  await shot("cassetta-alto-e-basso.png");
+
+  // finestra bassa: con un pannello in basso nulla di essenziale esce dall'area visibile
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.waitForTimeout(700);
+  await closeBtn(INSP_CLOSE).click();
+  await page.waitForTimeout(500);
+  await essentials("finestra 1280×600, pannello in basso", '[data-panel="tools"]');
+  await page.screenshot({
+    path: resolve(OUT, "cassetta-basso-finestra-bassa.png"),
+    animations: "disabled",
+  });
+  // sotto l'altezza minima scorre il contenitore dello spazio di lavoro, non la pagina
+  await page.locator('[data-notch="insp"]').click();
+  await page.waitForTimeout(600);
+  const low = await page.evaluate(() => {
+    const host = document.querySelector(".ec-workspace-host");
+    return {
+      scrolls: host.scrollHeight > host.clientHeight + 1,
+      page: document.scrollingElement.scrollHeight <= innerHeight,
+      stage: document.querySelector(".ec-stage").getBoundingClientRect().height,
+    };
+  });
+  check(
+    "finestra 1280×600 con due pannelli: scorre il contenitore, non la pagina",
+    low.scrolls && low.page && low.stage >= 200,
+    JSON.stringify(low),
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(700);
+
+  // si ripristina la disposizione iniziale (cassetta a sinistra, Inspector a destra chiuso)
+  await closeBtn(INSP_CLOSE).click();
+  await page.waitForTimeout(400);
+  await closeBtn(TOOLS_CLOSE).click();
+  await page.waitForTimeout(400);
   await dragNotch("tools", "left");
+  await dragNotch("insp", "right");
+  await closeBtn(INSP_CLOSE).click();
+  await page.waitForTimeout(500);
+  check(
+    "disposizione iniziale ripristinata",
+    (await panelSide("tools")) === "left" &&
+      (await isOpen("tools")) &&
+      !(await isOpen("insp")) &&
+      Math.abs((await state()).view.y) < 1.5,
+    JSON.stringify((await state()).view),
+  );
 
   // 5. due pannelli sullo stesso bordo diventano schede
   await page.getByRole("button", { name: "Nascondi la cassetta degli strumenti" }).click();
@@ -1225,517 +1387,5 @@ try {
 console.table(results);
 console.log(failed ? `${failed} PROVE FALLITE` : `TUTTE LE ${results.length} PROVE SUPERATE`);
 process.exit(failed ? 1 : 0);
-```
-
-### `scripts/extract-golden.mjs`
-
-386 righe
-
-```js
-#!/usr/bin/env node
-/**
- * Genera i file golden di src/etl-layout/__tests__/golden/*.json eseguendo
- * il PROTOTIPO (docs/prototype/isa-fusion-prototype.html) in Chromium
- * senza interfaccia, tramite Playwright.
- *
- * Ogni scenario viene costruito con le variabili e le funzioni globali del
- * prototipo (`cards`, `linksArr`, `linkState`, `MAX_BENDS`, `drawLinks`,
- * `autoLayout`, `setMode`, `spawnOutput`, ...), dentro un'unica chiamata
- * sincrona: nessun fotogramma di animazione può intervenire nel mezzo.
- *
- * Cavi "a regime": `drawLinks` anima l'angolo di aggancio e lo snodo
- * verso il valore scelto (righe 1339-1341). Una "passata" qui è:
- * rivaluta tutti i cavi (`nextEval = 0`, poi `drawLinks()`), porta
- * angoli e snodo sul valore obiettivo, ridisegna (`drawLinks()` con la
- * rivalutazione disattivata). Le passate si ripetono finché i percorsi non
- * cambiano più (al massimo 8), esattamente come `settleLinks` di
- * etl-layout.
- *
- * Uso:  node scripts/extract-golden.mjs            (scrive i file golden)
- *       node scripts/extract-golden.mjs --explore  (stampa un riassunto, non scrive)
- */
-import { chromium } from "playwright";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const prototype = resolve(root, "docs/prototype/isa-fusion-prototype.html");
-const outDir = resolve(root, "src/etl-layout/__tests__/golden");
-const explore = process.argv.includes("--explore");
-const VIEWPORT = { width: 1440, height: 900 };
-const MAX_PASSES = 8;
-
-const ds = (id, x, y, extra = {}) => ({
-  id,
-  kind: "dataset",
-  components: ["dataset"],
-  x,
-  y,
-  ...extra,
-});
-const op = (id, components, x, y, extra = {}) => ({ id, kind: "op", components, x, y, ...extra });
-const L = (from, to) => ({ from, to });
-
-/** Scenari. `type` decide cosa viene eseguito e registrato. */
-const SCENARIOS = [
-  {
-    name: "01-dritto-allineati",
-    description: "Due nodi allineati orizzontalmente: cavo dritto.",
-    type: "routes",
-    cards: [ds("A", 104, 312), op("B", ["filter"], 416, 312)],
-    links: [L("A", "B")],
-  },
-  {
-    name: "02-dritto-scorrimento",
-    description: "Disallineati di 20 px, entro lo scorrimento delle porte: ancora dritto.",
-    type: "routes",
-    cards: [ds("A", 104, 312), op("B", ["filter"], 416, 332)],
-    links: [L("A", "B")],
-  },
-  {
-    name: "03-oltre-scorrimento",
-    description: "Disallineati di 130 px, oltre lo scorrimento: forma a L o a Z.",
-    type: "routes",
-    cards: [ds("A", 104, 312), op("B", ["filter"], 416, 442)],
-    links: [L("A", "B")],
-  },
-  {
-    name: "04-ostacolo",
-    description: "Un nodo ostruisce il percorso diretto: il cavo lo aggira.",
-    type: "routes",
-    cards: [ds("A", 104, 312), op("X", ["sort"], 286, 312), op("B", ["filter"], 520, 312)],
-    links: [L("A", "B")],
-  },
-  {
-    name: "05-incrocio",
-    description: "Due cavi che si incrocerebbero con il percorso più corto.",
-    type: "routes",
-    cards: [
-      ds("A1", 104, 208),
-      ds("A2", 104, 468),
-      op("B1", ["filter"], 520, 468),
-      op("B2", ["sort"], 520, 208),
-    ],
-    links: [L("A1", "B1"), L("A2", "B2")],
-  },
-  {
-    name: "06-corsie",
-    description: "Più cavi nello stesso corridoio (snodi ammessi: 2, perché nascano forme a Z).",
-    type: "routes",
-    maxBends: 2,
-    cards: [
-      ds("A1", 104, 104),
-      ds("A2", 104, 234),
-      ds("A3", 104, 364),
-      op("B1", ["filter"], 546, 494),
-      op("B2", ["sort"], 546, 624),
-      op("B3", ["aggregate"], 546, 754),
-    ],
-    links: [L("A1", "B1"), L("A2", "B2"), L("A3", "B3")],
-  },
-  {
-    name: "07-join-output-parziale",
-    description: "Un box con due ingressi da un join e il suo output parziale.",
-    type: "routes",
-    cards: [
-      ds("A", 104, 208),
-      ds("B", 104, 442),
-      op("J", ["join"], 364, 312),
-      ds("O", 572, 312, { isOutput: true, capacity: 2, filled: 1 }),
-    ],
-    links: [L("A", "J"), L("B", "J"), L("J", "O")],
-  },
-  {
-    name: "08-spostamento",
-    description: "Un nodo spostato di poco (il cavo conserva il percorso) e di molto (lo cambia).",
-    type: "routes",
-    cards: [ds("A", 104, 312), op("B", ["filter"], 416, 442)],
-    links: [L("A", "B")],
-    moves: [
-      { id: "B", dx: 8, dy: -6 },
-      { id: "B", dx: -390, dy: 260 },
-    ],
-  },
-  {
-    name: "09-catena-riordino",
-    description:
-      "Catena dataset → filtro → join → ordina → esporta con un secondo dataset sul join, prima e dopo il riordino automatico.",
-    type: "autoLayout",
-    cards: [
-      ds("D1", 520, 600),
-      op("F", ["filter"], 130, 130),
-      ds("OF", 780, 390, { isOutput: true, capacity: 1, filled: 1 }),
-      ds("D2", 60, 700),
-      op("J", ["join"], 910, 130),
-      ds("OJ", 300, 450, { isOutput: true, capacity: 2, filled: 2 }),
-      op("S", ["sort"], 1100, 600),
-      ds("OS", 650, 100, { isOutput: true, capacity: 1, filled: 1 }),
-      op("E", ["exportOp"], 400, 260),
-    ],
-    links: [
-      L("D1", "F"),
-      L("F", "OF"),
-      L("OF", "J"),
-      L("D2", "J"),
-      L("J", "OJ"),
-      L("OJ", "S"),
-      L("S", "OS"),
-      L("OS", "E"),
-    ],
-  },
-  {
-    name: "10-riordino-isolati",
-    description: "Riordino con nodi isolati: colonna di parcheggio a destra del flusso.",
-    type: "autoLayout",
-    cards: [
-      op("I1", ["sort"], 700, 80),
-      ds("D", 300, 500),
-      ds("I2", 90, 90),
-      op("F", ["filter"], 90, 400),
-      ds("O", 900, 600, { isOutput: true, capacity: 1, filled: 1 }),
-      op("I3", ["aggregate"], 500, 300),
-      ds("I4", 620, 520),
-      op("I5", ["rename"], 250, 250),
-    ],
-    links: [L("D", "F"), L("F", "O")],
-  },
-  {
-    name: "10b-riordino-colonna-fitta",
-    description:
-      "Riordino con cinque nodi nella stessa colonna in uno stage alto 636 px: la distanza tra le righe scende al minimo (CARD + LABEL_H + 18).",
-    type: "autoLayout",
-    stageH: 636,
-    cards: [
-      ds("D", 300, 500),
-      op("F", ["filter"], 90, 400),
-      op("I1", ["sort"], 700, 80),
-      ds("I2", 90, 90),
-      op("I3", ["aggregate"], 500, 300),
-      ds("I4", 620, 520),
-      op("I5", ["rename"], 250, 250),
-    ],
-    links: [L("D", "F")],
-  },
-  {
-    name: "11-organizzato",
-    description: "Modalità Organizzato: assegnazione iniziale delle postazioni e scambio di posto.",
-    type: "grid",
-    cards: [
-      ds("A", 40, 30),
-      op("B", ["filter"], 170, 40),
-      op("C", ["sort"], 150, 170),
-      ds("D", 30, 180),
-      op("E", ["aggregate"], 420, 300),
-    ],
-    links: [L("A", "B")],
-    drops: [
-      { id: "E", x: 150, y: 20 },
-      { id: "A", x: 700, y: 700 },
-    ],
-  },
-  {
-    name: "12-output-generato",
-    description:
-      "Posizione dell'output generato in modalità Libero, con un nodo già nel posto ideale.",
-    type: "spawn",
-    cards: [ds("A", 104, 312), op("B", ["filter"], 312, 312), op("X", ["sort"], 520, 312)],
-    links: [L("A", "B")],
-    boxId: "B",
-  },
-  {
-    name: "13-output-organizzato",
-    description:
-      "Posizione dell'output generato in modalità Organizzato: postazione a destra del box.",
-    type: "spawn",
-    mode: "grid",
-    cards: [ds("A", 40, 300), op("B", ["filter"], 300, 300), op("X", ["sort"], 430, 300)],
-    links: [L("A", "B")],
-    boxId: "B",
-  },
-];
-
-/** Funzione eseguita nella pagina del prototipo. Solo globali del prototipo. */
-function runScenario(sc, maxPasses) {
-  /* global cards:writable, linksArr:writable, linkState, MAX_BENDS:writable, drawLinks, autoLayout,
-     setMode, spawnOutput, createCardEl, defaultParams, nearestSlot, placeInSlots, layoutMode:writable,
-     draggingUid:writable, stage, workspace */
-  const clone = (v) => JSON.parse(JSON.stringify(v));
-  // altezza dello stage (CSS `--stage-h`, riga 18; 520 px nel prototipo)
-  // (la transizione di `.workspace`, riga 213, farebbe leggere l'altezza vecchia)
-  workspace.style.transition = "none";
-  document.documentElement.style.setProperty("--stage-h", (sc.stageH ?? 520) + "px");
-  document.querySelectorAll("#stage .card").forEach((c) => c.remove());
-  Object.keys(linkState).forEach((k) => delete linkState[k]);
-  layoutMode = "free";
-  draggingUid = null;
-  MAX_BENDS = sc.maxBends ?? 1;
-  cards = {};
-  for (const c of sc.cards) {
-    const { id, ...rest } = c;
-    cards[id] = {
-      ...clone(rest),
-      params: rest.components.map((t) => defaultParams(t)),
-      name: id,
-    };
-  }
-  linksArr = sc.links.map((l) => ({ from: l.from, to: l.to }));
-
-  const signature = () =>
-    JSON.stringify(
-      linksArr.map((l) => {
-        const st = linkState[l.from + "|" + l.to];
-        return st && st.pts ? [st.portA, st.portB, st.pts.map((p) => [p.x, p.y])] : null;
-      }),
-    );
-  const settle = () => {
-    let cur = signature();
-    let passes = 0;
-    while (passes < maxPasses) {
-      Object.values(linkState).forEach((st) => (st.nextEval = 0));
-      drawLinks();
-      Object.values(linkState).forEach((st) => {
-        st.a = st.portA;
-        st.b = st.portB;
-        if (st.knobTarget !== null) st.knob = st.knobTarget;
-        st.nextEval = Infinity;
-      });
-      drawLinks();
-      passes++;
-      const next = signature();
-      const stable = next === cur;
-      cur = next;
-      if (stable) break;
-    }
-    const d = {};
-    document.querySelectorAll("#linkPaths path[id^='lp-']").forEach((p) => {
-      d[p.id.slice(3)] = p.getAttribute("d");
-    });
-    const routes = [];
-    linksArr.forEach((l, i) => {
-      const st = linkState[l.from + "|" + l.to];
-      if (!st || !st.pts) return;
-      routes.push({
-        from: l.from,
-        to: l.to,
-        portA: st.portA,
-        portB: st.portB,
-        shape: st.shape.kind,
-        pts: st.pts.map((p) => ({ x: p.x, y: p.y })),
-        d: d[String(i)] ?? null,
-      });
-    });
-    return { passes, routes };
-  };
-  const positions = () =>
-    Object.keys(cards).map((id) => {
-      const c = cards[id];
-      const out = { id, x: c.x, y: c.y };
-      if (c.slot !== undefined) out.slot = c.slot;
-      return out;
-    });
-
-  const stageSize = { w: stage.clientWidth, h: stage.clientHeight };
-
-  if (sc.type === "routes") {
-    const steps = [{ move: null, ...settle() }];
-    for (const m of sc.moves ?? []) {
-      cards[m.id].x += m.dx;
-      cards[m.id].y += m.dy;
-      steps.push({ move: m, ...settle() });
-    }
-    return { stage: stageSize, steps };
-  }
-  if (sc.type === "autoLayout") {
-    const before = settle();
-    Object.keys(cards).forEach((id) => createCardEl(id));
-    autoLayout();
-    const after = settle();
-    return { stage: stageSize, before, positions: positions(), after };
-  }
-  if (sc.type === "grid") {
-    Object.keys(cards).forEach((id) => createCardEl(id));
-    setMode("grid");
-    const steps = [{ drop: null, positions: positions() }];
-    for (const dr of sc.drops ?? []) {
-      // gestore di rilascio in Organizzato (righe 2093-2100), che nel prototipo vive
-      // dentro un listener di pointerup non richiamabile: stesse istruzioni
-      const uid = dr.id;
-      cards[uid].x = dr.x;
-      cards[uid].y = dr.y;
-      const idx = nearestSlot(cards[uid].x, cards[uid].y, uid, false);
-      if (idx >= 0) {
-        const occupant = Object.keys(cards).find((id) => id !== uid && cards[id].slot === idx);
-        if (occupant) cards[occupant].slot = cards[uid].slot;
-        cards[uid].slot = idx;
-      }
-      placeInSlots(false);
-      steps.push({ drop: dr, positions: positions() });
-    }
-    return { stage: stageSize, steps };
-  }
-  if (sc.type === "spawn") {
-    Object.keys(cards).forEach((id) => createCardEl(id));
-    if (sc.mode === "grid") setMode("grid");
-    const before = new Set(Object.keys(cards));
-    spawnOutput(sc.boxId);
-    const outputId = Object.keys(cards).find((id) => !before.has(id)) ?? null;
-    return { stage: stageSize, outputId, positions: positions() };
-  }
-  throw new Error("tipo di scenario sconosciuto: " + sc.type);
-}
-
-const browser = await chromium.launch();
-try {
-  const page = await browser.newPage({ viewport: VIEWPORT });
-  // il prototipo carica solo un font da Google Fonts: non serve alla geometria
-  await page.route(/^https?:/, (r) => r.abort());
-  await page.goto(pathToFileURL(prototype).href);
-  await page.waitForFunction(() => typeof drawLinks === "function");
-  await page.addScriptTag({ content: "window.runScenarioInPage = " + runScenario.toString() });
-  if (!explore) mkdirSync(outDir, { recursive: true });
-  for (const sc of SCENARIOS) {
-    const expected = await page.evaluate(
-      ([s, m]) => window.runScenarioInPage(s, m),
-      [sc, MAX_PASSES],
-    );
-    const { name, description, type, ...input } = sc;
-    const golden = { name, description, type, input, expected };
-    if (explore) {
-      const summary = (r) =>
-        r.routes.map((x) => `${x.from}->${x.to}:${x.shape}/${x.pts.length}pt`).join(" ");
-      if (expected.steps && expected.steps[0].routes)
-        console.log(name, expected.steps.map((s) => `[p${s.passes}] ` + summary(s)).join(" | "));
-      else if (expected.before)
-        console.log(name, summary(expected.before), "=>", summary(expected.after));
-      else console.log(name, JSON.stringify(expected).slice(0, 400));
-      continue;
-    }
-    writeFileSync(resolve(outDir, name + ".json"), JSON.stringify(golden, null, 2) + "\n");
-    console.log("scritto", name + ".json");
-  }
-} finally {
-  await browser.close();
-}
-```
-
-### `scripts/generate-index.mjs`
-
-114 righe
-
-```js
-#!/usr/bin/env node
-// Builds INDEX.md for the snapshot repo, once the commit SHA that holds
-// every other file is known (INDEX.md is always committed/pushed second,
-// after everything else -- see sync-snapshot.sh).
-
-import { readFileSync, writeFileSync } from "node:fs";
-
-function argVal(name) {
-  const i = process.argv.indexOf(`--${name}`);
-  return i === -1 ? undefined : process.argv[i + 1];
-}
-
-const manifestPath = argVal("manifest");
-const sha = argVal("sha");
-const repo = argVal("repo"); // owner/name
-const branch = argVal("branch");
-const sourceSha = argVal("source-sha");
-const dirtyFilesArg = argVal("dirty-files") || "";
-const generatedAt = argVal("generated-at");
-const outPath = argVal("out");
-
-if (!manifestPath || !sha || !repo || !outPath) {
-  console.error(
-    "Usage: generate-index.mjs --manifest <path> --sha <sha> --repo <owner/name> --branch <b> --source-sha <sha> --dirty-files <list> --generated-at <ts> --out <path>",
-  );
-  process.exit(1);
-}
-
-const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-const dirtyFiles = dirtyFilesArg
-  .split("\n")
-  .map((l) => l.trim())
-  .filter(Boolean);
-
-function rawUrl(pathInSnapshot) {
-  return `https://raw.githubusercontent.com/${repo}/${sha}/${pathInSnapshot}`;
-}
-
-const lines = [];
-lines.push("# INDEX.md");
-lines.push("");
-lines.push(`Generato: ${generatedAt} (UTC)`);
-lines.push(
-  `Repository sorgente: isa-glass-platform, branch \`${branch}\`, commit \`${sourceSha}\``,
-);
-if (dirtyFiles.length === 0) {
-  lines.push("Working tree del repository sorgente: pulito (nessuna modifica non committata).");
-} else {
-  lines.push(
-    `Working tree del repository sorgente: modifiche non committate presenti (${dirtyFiles.length} file):`,
-  );
-  lines.push("");
-  for (const f of dirtyFiles) lines.push(`- \`${f}\``);
-}
-lines.push("");
-lines.push(
-  `Questo indice è fissato al commit \`${sha}\` del repository snapshot (isa-etl-snapshot): tutti gli URL sotto puntano a quel commit e restano validi anche dopo aggiornamenti futuri.`,
-);
-lines.push("");
-lines.push("## Da leggere per primi");
-lines.push("");
-lines.push(`1. [STATUS.md](${rawUrl("STATUS.md")}) — stato di type check, lint, test, build`);
-lines.push(
-  `2. [ENV.md](${rawUrl("ENV.md")}) — configurazione completa (package.json, tsconfig, vite, eslint, CSS)`,
-);
-lines.push(`3. [TREE.md](${rawUrl("TREE.md")}) — albero completo del repository`);
-lines.push("4. I blocchi in `files/`, in ordine, elencati sotto.");
-lines.push("");
-
-lines.push("## Blocchi (files/)");
-lines.push("");
-for (const block of manifest.blocks) {
-  const kb = (block.bytes / 1000).toFixed(1);
-  lines.push(`### [${block.name}](${rawUrl(block.name)})`);
-  lines.push("");
-  lines.push(`${kb} KB. File sorgente contenuti:`);
-  lines.push("");
-  for (const f of block.files) lines.push(`- \`${f}\``);
-  lines.push("");
-}
-
-if (manifest.reportFiles && manifest.reportFiles.length > 0) {
-  lines.push("## Report (reports/)");
-  lines.push("");
-  for (const rel of manifest.reportFiles) {
-    const name = rel.split("/").pop();
-    lines.push(`- [${name}](${rawUrl(`reports/${name}`)})`);
-  }
-  lines.push("");
-}
-
-if (manifest.excluded && manifest.excluded.length > 0) {
-  lines.push("## File esclusi dallo snapshot");
-  lines.push("");
-  lines.push("(elencati per riferimento in TREE.md, contenuto non incluso in files/)");
-  lines.push("");
-  for (const e of manifest.excluded) {
-    lines.push(`- \`${e.file}\` — motivo: ${e.reason}`);
-  }
-  lines.push("");
-}
-
-if (manifest.redactions && manifest.redactions.length > 0) {
-  lines.push("## Segreti redatti");
-  lines.push("");
-  for (const r of manifest.redactions) {
-    lines.push(`- \`${r.file}\` — pattern: ${r.pattern} — valore sostituito con \`[REDATTO]\``);
-  }
-  lines.push("");
-}
-
-writeFileSync(outPath, lines.join("\n") + "\n", "utf8");
-console.log(`INDEX.md written to ${outPath}`);
 ```
 

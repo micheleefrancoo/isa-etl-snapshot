@@ -17,7 +17,7 @@ File in questo blocco:
 
 ### `src/etl-canvas/__tests__/panels-actions.test.ts`
 
-158 righe
+162 righe
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -28,6 +28,7 @@ import { createPanelActions, followInspector } from "../panels/actions";
 import { PANEL_SIZE, EXTENT_PAD } from "../panels/layout";
 import { storeWith } from "./helpers";
 
+const TOOLS_H_EXT = PANEL_SIZE.tools.h + EXTENT_PAD;
 const TOOLS_EXT = PANEL_SIZE.tools.w + EXTENT_PAD;
 const panels = (s: EtlStore) => s.getState().panels;
 const view = (s: EtlStore) => s.getState().view;
@@ -72,16 +73,19 @@ describe("aprire, chiudere, spostare un pannello", () => {
     }
   });
 
-  it("dal bordo sinistro a uno non sinistro la vista restituisce lo spazio; sopra e sotto non la toccano", () => {
+  it("dal bordo sinistro a uno non sinistro la vista restituisce la larghezza; il bordo alto compensa y, il basso no", () => {
     const s = createEtlStore();
     const a = createPanelActions(s);
     a.moveTo("tools", "top");
     expect(panels(s).tools).toEqual({ side: "top", open: true });
     expect(view(s).x).toBe(TOOLS_EXT); // il canvas non cede più larghezza a sinistra
+    expect(view(s).y).toBe(-TOOLS_H_EXT); // cede altezza in alto: l'origine scende
     a.moveTo("tools", "bottom");
     expect(view(s).x).toBe(TOOLS_EXT);
+    expect(view(s).y).toBe(0); // il basso non sposta l'origine
     a.moveTo("tools", "left");
     expect(view(s).x).toBe(0);
+    expect(view(s).y).toBe(0);
   });
 
   it("due pannelli sullo stesso bordo diventano schede: se ne apre uno alla volta; separati, tornano due pannelli", () => {
@@ -181,13 +185,14 @@ describe("l'Inspector segue la selezione", () => {
 
 ### `src/etl-canvas/__tests__/panels-layout.test.ts`
 
-128 righe
+182 righe
 
 ```ts
 import { describe, expect, it } from "vitest";
 import type { Panels } from "../../etl-store";
 import {
   EXTENT_PAD,
+  MIN_CANVAS_HEIGHT,
   PANEL_SIZE,
   activeTab,
   compensate,
@@ -199,7 +204,6 @@ import {
   panelExtent,
   panelSize,
   viewCompensation,
-  workspaceExtra,
 } from "../panels/layout";
 
 const P = (tools: Panels["tools"], insp: Panels["insp"]): Panels => ({ tools, insp });
@@ -222,8 +226,22 @@ describe("misure dei pannelli", () => {
   it("l'ingombro dei bordi verticali è la larghezza, quello degli orizzontali l'altezza", () => {
     const top = P({ side: "top", open: true }, { side: "right", open: false });
     expect(panelExtent(top, "tools")).toBe(PANEL_SIZE.tools.h + EXTENT_PAD);
-    expect(workspaceExtra(top)).toBe(PANEL_SIZE.tools.h + EXTENT_PAD);
-    expect(workspaceExtra(closedSplit)).toBe(0);
+    expect(openExtent(top, "top")).toBe(PANEL_SIZE.tools.h + EXTENT_PAD);
+    expect(openExtent(closedSplit, "top")).toBe(0);
+  });
+
+  it("due pannelli come schede in alto o in basso usano l'altezza maggiore dei due", () => {
+    for (const side of ["top", "bottom"] as const) {
+      const grouped = P({ side, open: true }, { side, open: false });
+      const h = Math.max(PANEL_SIZE.tools.h, PANEL_SIZE.insp.h);
+      expect(panelSize(grouped, "tools").h).toBe(h);
+      expect(panelSize(grouped, "insp").h).toBe(h);
+      expect(openExtent(grouped, side)).toBe(h + EXTENT_PAD);
+    }
+  });
+
+  it("l'altezza minima del canvas è una misura positiva, definita in layout.ts", () => {
+    expect(MIN_CANVAS_HEIGHT).toBeGreaterThan(0);
   });
 
   it("solo i pannelli aperti sottraggono spazio", () => {
@@ -240,8 +258,8 @@ describe("compensazione della vista", () => {
 
   it("aprendo a sinistra l'origine si sposta indietro, chiudendo avanti: i nodi restano fermi sullo schermo", () => {
     const ext = PANEL_SIZE.tools.w + EXTENT_PAD;
-    expect(viewCompensation(closedSplit, open("left"))).toBe(-ext);
-    expect(viewCompensation(open("left"), closedSplit)).toBe(ext);
+    expect(viewCompensation(closedSplit, open("left"))).toEqual({ dx: -ext, dy: 0 });
+    expect(viewCompensation(open("left"), closedSplit)).toEqual({ dx: ext, dy: 0 });
     expect(compensate({ x: 10, y: 5, zoom: 2 }, closedSplit, open("left"))).toEqual({
       x: 10 - ext,
       y: 5,
@@ -249,30 +267,70 @@ describe("compensazione della vista", () => {
     });
   });
 
-  it("a destra, sopra e sotto la vista non cambia", () => {
-    for (const side of ["right", "top", "bottom"] as const) {
-      expect(viewCompensation(closedSplit, open(side))).toBe(0);
-      expect(viewCompensation(open(side), closedSplit)).toBe(0);
+  it("aprendo in alto l'origine scende: view.y si compensa, x no", () => {
+    const ext = PANEL_SIZE.tools.h + EXTENT_PAD;
+    expect(viewCompensation(closedSplit, open("top"))).toEqual({ dx: 0, dy: -ext });
+    expect(viewCompensation(open("top"), closedSplit)).toEqual({ dx: 0, dy: ext });
+    expect(compensate({ x: 10, y: 5, zoom: 2 }, closedSplit, open("top"))).toEqual({
+      x: 10,
+      y: 5 - ext,
+      zoom: 2,
+    });
+  });
+
+  it("a destra e in basso la vista non cambia", () => {
+    for (const side of ["right", "bottom"] as const) {
+      expect(viewCompensation(closedSplit, open(side))).toEqual({ dx: 0, dy: 0 });
+      expect(viewCompensation(open(side), closedSplit)).toEqual({ dx: 0, dy: 0 });
     }
     const view = { x: 3, y: 4, zoom: 1 };
-    expect(compensate(view, closedSplit, open("top"))).toBe(view);
+    expect(compensate(view, closedSplit, open("bottom"))).toBe(view);
+    expect(compensate(view, closedSplit, open("right"))).toBe(view);
+  });
+
+  it("sinistra e destra non toccano y; alto e basso non toccano x (basso nemmeno y)", () => {
+    for (const side of ["left", "right"] as const) {
+      expect(viewCompensation(closedSplit, open(side)).dy).toBe(0);
+    }
+    for (const side of ["top", "bottom"] as const) {
+      expect(viewCompensation(closedSplit, open(side)).dx).toBe(0);
+    }
+    expect(viewCompensation(closedSplit, open("bottom")).dy).toBe(0);
   });
 
   it("spostare un pannello aperto da sinistra a destra restituisce lo spazio", () => {
-    expect(viewCompensation(open("left"), open("right"))).toBe(PANEL_SIZE.tools.w + EXTENT_PAD);
+    expect(viewCompensation(open("left"), open("right"))).toEqual({
+      dx: PANEL_SIZE.tools.w + EXTENT_PAD,
+      dy: 0,
+    });
   });
 
   it("cambiare scheda in un gruppo a sinistra non sposta il canvas (stessa misura)", () => {
     const a = P({ side: "left", open: true }, { side: "left", open: false });
     const b = P({ side: "left", open: false }, { side: "left", open: true });
-    expect(viewCompensation(a, b)).toBe(0);
+    expect(viewCompensation(a, b)).toEqual({ dx: 0, dy: 0 });
   });
 
   it("un pannello aperto a sinistra che si unisce all'altro cambia misura e la vista compensa la differenza", () => {
     const alone = P({ side: "left", open: true }, { side: "right", open: false });
     const joined = P({ side: "left", open: true }, { side: "left", open: false });
     const grow = Math.max(PANEL_SIZE.tools.w, PANEL_SIZE.insp.w) - PANEL_SIZE.tools.w;
-    expect(viewCompensation(alone, joined)).toBe(-grow);
+    expect(viewCompensation(alone, joined)).toEqual({ dx: -grow, dy: 0 });
+  });
+});
+
+describe("schede in alto: la compensazione segue la differenza di altezza", () => {
+  it("un pannello aperto in alto che si unisce all'altro cambia altezza e view.y compensa la differenza", () => {
+    const alone = P({ side: "top", open: true }, { side: "right", open: false });
+    const joined = P({ side: "top", open: true }, { side: "top", open: false });
+    const grow = Math.max(PANEL_SIZE.tools.h, PANEL_SIZE.insp.h) - PANEL_SIZE.tools.h;
+    expect(viewCompensation(alone, joined)).toEqual({ dx: 0, dy: -grow });
+  });
+
+  it("cambiare scheda in un gruppo in alto non sposta il canvas", () => {
+    const a = P({ side: "top", open: true }, { side: "top", open: false });
+    const b = P({ side: "top", open: false }, { side: "top", open: true });
+    expect(viewCompensation(a, b)).toEqual({ dx: 0, dy: 0 });
   });
 });
 
@@ -846,7 +904,7 @@ describe("trascinamento dalla cassetta al canvas (un nodo esterno)", () => {
 
 ### `src/etl-canvas/__tests__/toolbox.test.tsx`
 
-187 righe
+189 righe
 
 ```tsx
 import { createElement } from "react";
@@ -991,12 +1049,14 @@ describe("orientamento e schede", () => {
     expect(markup).toMatch(/ec-notch ec-notch-right"/);
   });
 
-  it("sui bordi orizzontali il pannello è una fascia (ec-horiz) e l'area di lavoro cresce", () => {
+  it("sui bordi orizzontali il pannello è una fascia (ec-horiz) e l'area di lavoro non cresce", () => {
     const store = createEtlStore();
     createPanelActions(store).moveTo("tools", "bottom");
     const markup = layout(store);
     expect(markup).toMatch(/class="ec-panel ec-side-bottom ec-open ec-horiz"/);
-    expect(markup).toContain("height:calc(100% + 222px)");
+    // l'area di lavoro ha l'altezza del contenitore: il pannello sottrae altezza al canvas
+    expect(markup).not.toContain("calc(100% +");
+    expect(markup).toContain("--ec-canvas-min-h:");
   });
 
   it("due pannelli sullo stesso bordo mostrano le schede, con quella attiva evidenziata", () => {

@@ -913,7 +913,7 @@ export function useMotion(): MotionEngine | null {
 
 ### `src/etl-canvas/panels/Dock.tsx`
 
-262 righe
+260 righe
 
 ```tsx
 /**
@@ -933,6 +933,7 @@ import type { EtlStore, PanelKey, Panels, Side } from "../../etl-store";
 import { useEtlState } from "../../etl-store/react";
 import type { PanelActions } from "./actions";
 import {
+  MIN_CANVAS_HEIGHT,
   PANEL_KEYS,
   PANEL_LABEL,
   PANEL_NAME,
@@ -944,7 +945,6 @@ import {
   notchHidden,
   notchOffset,
   panelSize,
-  workspaceExtra,
 } from "./layout";
 import "./panels.css";
 import { InspectorIcon, ToolsIcon } from "./ui-icons";
@@ -1046,14 +1046,12 @@ export function DockLayout(props: DockLayoutProps) {
     window.addEventListener("pointercancel", abort);
   };
 
-  const extra = workspaceExtra(panels);
-
   return (
     <div
       className="ec-workspace"
       data-testid="ec-workspace"
-      // il canvas conserva la sua altezza: sopra e sotto è l'area di lavoro a crescere (riga 4822)
-      style={{ height: `calc(100% + ${extra}px)` }}
+      // l'area di lavoro ha l'altezza del contenitore: i pannelli in alto e in basso la sottraggono al canvas
+      style={{ "--ec-canvas-min-h": `${MIN_CANVAS_HEIGHT}px` } as CSSProperties}
     >
       {SIDES.map((side) => (
         <div key={side} className={`ec-dock ec-dock-${side}`} data-dock={side}>
@@ -1272,7 +1270,7 @@ export function EtlWorkspace(props: { store: EtlStore }) {
         <DockLayout
           store={store}
           actions={actions}
-          canvas={<EtlCanvas store={store} controller={controller} />}
+          canvas={<EtlCanvas store={store} controller={controller} minHeight={0} />}
           content={{
             tools: ({ side }) => (
               <Toolbox
@@ -1527,7 +1525,7 @@ export function Toolbox(props: ToolboxProps) {
 
 ### `src/etl-canvas/panels/actions.ts`
 
-50 righe
+52 righe
 
 ```ts
 /**
@@ -1552,7 +1550,9 @@ export function createPanelActions(store: EtlStore): PanelActions {
     if (!result.ok) return result;
     const state = store.getState();
     const view = compensate(state.view, before, state.panels);
-    if (view !== state.view) store.dispatch({ type: "setView", payload: { x: view.x } });
+    if (view !== state.view) {
+      store.dispatch({ type: "setView", payload: { x: view.x, y: view.y } });
+    }
     return result;
   };
   return {

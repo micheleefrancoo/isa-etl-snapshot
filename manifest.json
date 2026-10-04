@@ -155,7 +155,7 @@
     },
     {
       "name": "files/01e-etl-canvas-a.md",
-      "bytes": 53082,
+      "bytes": 54815,
       "files": [
         "src/etl-canvas/EtlCanvas.tsx",
         "src/etl-canvas/Links.tsx",
@@ -183,7 +183,7 @@
     },
     {
       "name": "files/01e-etl-canvas-c.md",
-      "bytes": 53273,
+      "bytes": 56169,
       "files": [
         "src/etl-canvas/__tests__/panels-actions.test.ts",
         "src/etl-canvas/__tests__/panels-layout.test.ts",
@@ -212,7 +212,7 @@
     },
     {
       "name": "files/01e-etl-canvas-e.md",
-      "bytes": 55272,
+      "bytes": 55312,
       "files": [
         "src/etl-canvas/interaction.ts",
         "src/etl-canvas/loop.ts",
@@ -229,7 +229,7 @@
     },
     {
       "name": "files/01e-etl-canvas-f.md",
-      "bytes": 37958,
+      "bytes": 38907,
       "files": [
         "src/etl-canvas/panels/layout.ts",
         "src/etl-canvas/panels/panels.css",
@@ -382,7 +382,7 @@
     },
     {
       "name": "files/05-app-pages-a.md",
-      "bytes": 59030,
+      "bytes": 59024,
       "files": [
         "src/routeTree.gen.ts",
         "src/router.tsx",
@@ -421,7 +421,7 @@
     },
     {
       "name": "files/08-scripts-config-a.md",
-      "bytes": 58596,
+      "bytes": 47203,
       "files": [
         ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",
@@ -434,27 +434,27 @@
         "package.json",
         "scripts/check-tokens.mjs",
         "scripts/e2e-fase5.mjs",
-        "scripts/e2e-fase6a.mjs",
-        "scripts/extract-golden.mjs",
-        "scripts/generate-index.mjs"
+        "scripts/e2e-fase6a.mjs"
       ]
     },
     {
       "name": "files/08-scripts-config-b.md",
-      "bytes": 51254,
+      "bytes": 55011,
       "files": [
+        "scripts/extract-golden.mjs",
+        "scripts/generate-index.mjs",
         "scripts/generate-snapshot.mjs",
         "scripts/sync-snapshot.sh",
         "scripts/theme-map.mjs",
         "scripts/token-legacy-files.txt",
-        "scripts/visual-compare.mjs",
-        "scripts/visual-fase4.mjs"
+        "scripts/visual-compare.mjs"
       ]
     },
     {
       "name": "files/08-scripts-config-c.md",
-      "bytes": 23640,
+      "bytes": 37366,
       "files": [
+        "scripts/visual-fase4.mjs",
         "scripts/visual-fase4b.mjs",
         "scripts/visual-lib.mjs",
         "scripts/visual-temi.mjs",
@@ -889,7 +889,15 @@
       "reason": "binary"
     },
     {
+      "file": "docs/visual/fase6a/cassetta-alto-e-basso.png",
+      "reason": "binary"
+    },
+    {
       "file": "docs/visual/fase6a/cassetta-alto.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6a/cassetta-basso-finestra-bassa.png",
       "reason": "binary"
     },
     {
@@ -1500,8 +1508,9 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-09-29T19-51-32Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-02T12-35-11Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-02T13-25-09Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T07-50-59Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T07-50-59Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T08-45-00Z.md"
   ],
   "inScopeFileCount": 301,
-  "reportFileCount": 18
+  "reportFileCount": 19
 }

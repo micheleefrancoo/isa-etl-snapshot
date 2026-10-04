@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-10-04T07:51:59Z (UTC)
+Generato: 2026-10-04T08:31:58Z (UTC)
 
 ## Type check
 
@@ -9,7 +9,7 @@ Nessuno script "typecheck" in package.json: eseguito il comando diretto.
 Comando: `npx tsc --noEmit`
 
 Esito: OK (exit 0)
-Durata: 10s
+Durata: 12s
 
 Ultime 60 righe di output:
 ```
@@ -20,7 +20,7 @@ Ultime 60 righe di output:
 Comando: `npm run lint`
 
 Esito: OK (exit 0)
-Durata: 11s
+Durata: 13s
 
 Ultime 60 righe di output:
 ```
@@ -74,7 +74,7 @@ Ultime 60 righe di output:
 Comando: `npm test`
 
 Esito: OK (exit 0)
-Durata: 38s
+Durata: 40s
 
 Ultime 60 righe di output:
 ```
@@ -88,12 +88,12 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 
 
  Test Files  45 passed (45)
-      Tests  814 passed (814)
-   Start at  07:52:21
-   Duration  37.11s (tests 89%, import 6%, transform 4%, worker 1%)
+      Tests  820 passed (820)
+   Start at  08:32:24
+   Duration  39.48s (tests 89%, import 7%, transform 4%, worker 1%)
 
-    Isolate  45 workers spawned · ~101ms startup each (spawn + environment, per file)
-             at least ~4.46s faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  45 workers spawned · ~111ms startup each (spawn + environment, per file)
+             at least ~4.88s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -102,7 +102,7 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 Comando: `npm run build`
 
 Esito: OK (exit 0)
-Durata: 6s
+Durata: 7s
 
 Ultime 60 righe di output:
 ```
@@ -113,7 +113,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/templates-BxgvM8qO.mjs                          0.61 kB │ gzip:   0.39 kB
 .output/server/_ssr/solutions._solutionId.dashboard-CujVFx5K.mjs    0.86 kB │ gzip:   0.47 kB
 .output/server/_ssr/solutions._solutionId.model-D5GqwrKQ.mjs        0.88 kB │ gzip:   0.47 kB
-.output/server/_ssr/solutions._solutionId.etl-DADefv2-.mjs          1.09 kB │ gzip:   0.58 kB
+.output/server/_ssr/solutions._solutionId.etl-CjQFol1q.mjs          1.09 kB │ gzip:   0.58 kB
 .output/server/_libs/hookable.mjs                                   1.16 kB │ gzip:   0.51 kB
 .output/server/_ssr/start-RKGGYzjZ.mjs                              1.53 kB │ gzip:   0.70 kB
 .output/server/_runtime.mjs                                         1.61 kB │ gzip:   0.74 kB
@@ -122,7 +122,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/createCsrfMiddleware-B2To0gPJ.mjs               3.11 kB │ gzip:   1.01 kB
 .output/server/_libs/d3-path.mjs                                    3.25 kB │ gzip:   1.16 kB
 .output/server/_ssr/activity-C06WSQVD.mjs                           3.45 kB │ gzip:   0.97 kB
-.output/server/_tanstack-start-manifest_v-CSemw1G6.mjs              3.71 kB │ gzip:   0.87 kB
+.output/server/_tanstack-start-manifest_v-y-Cw1ZxF.mjs              3.71 kB │ gzip:   0.86 kB
 .output/server/_ssr/solutions._solutionId.model-DN1m8FSz.mjs        4.05 kB │ gzip:   1.32 kB
 .output/server/_ssr/ssr.mjs                                         4.55 kB │ gzip:   1.92 kB
 .output/server/_libs/d3-interpolate.mjs                             5.02 kB │ gzip:   1.61 kB
@@ -135,7 +135,7 @@ Ultime 60 righe di output:
 .output/server/_libs/d3-color.mjs                                  10.38 kB │ gzip:   3.57 kB
 .output/server/_libs/d3-format.mjs                                 10.56 kB │ gzip:   3.02 kB
 .output/server/_libs/tanstack__history.mjs                         12.09 kB │ gzip:   3.48 kB
-.output/server/_ssr/router-rHxp9gR6.mjs                            14.47 kB │ gzip:   3.89 kB
+.output/server/_ssr/router-DBKNxTVQ.mjs                            14.47 kB │ gzip:   3.90 kB
 .output/server/_ssr/theme-Dujx4GV7.mjs                             15.18 kB │ gzip:   6.06 kB
 .output/server/_libs/fast-equals.mjs                               15.91 kB │ gzip:   4.13 kB
 .output/server/_libs/h3-v2+rou3+srvx+unenv.mjs                     15.92 kB │ gzip:   4.39 kB
@@ -149,15 +149,15 @@ Ultime 60 righe di output:
 .output/server/_libs/lucide-react.mjs                              37.25 kB │ gzip:   7.17 kB
 .output/server/_libs/react-smooth.mjs                              37.83 kB │ gzip:   8.14 kB
 .output/server/_libs/tanstack__query-core.mjs                      49.84 kB │ gzip:  11.12 kB
-.output/server/_ssr/server-BniDSYZs.mjs                            54.77 kB │ gzip:  14.39 kB
+.output/server/_ssr/server-DSYU4JD7.mjs                            54.77 kB │ gzip:  14.39 kB
 .output/server/_libs/d3-scale+[...].mjs                            58.22 kB │ gzip:  12.11 kB
 .output/server/_libs/@tanstack/router-core+[...].mjs              125.35 kB │ gzip:  26.53 kB
 .output/server/_libs/lodash.mjs                                   161.80 kB │ gzip:  29.45 kB
-.output/server/_ssr/solutions._solutionId.etl-j3fQU8Hr.mjs        386.55 kB │ gzip: 103.61 kB
+.output/server/_ssr/solutions._solutionId.etl-DVd_EoR2.mjs        386.72 kB │ gzip: 103.72 kB
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 978ms
+✓ built in 1.04s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -175,7 +175,7 @@ Colori, raggi e ombre letterali nei file controllati (scripts/check-tokens.mjs).
 Comando: `node scripts/check-tokens.mjs`
 
 Esito: OK (exit 0)
-Durata: 1s
+Durata: 0s
 
 Ultime 60 righe di output:
 ```
@@ -185,6 +185,8 @@ check-tokens: 0 violazioni nei file controllati; debito preesistente: 26 (6 ombr
 ## Git log (ultimi 20 commit)
 
 ```
+cf6e294 Fase 6a.1: i pannelli in alto e in basso sottraggono altezza al canvas
+ae56053 Baseline visiva rigenerata nell'ambiente attuale, nessuna modifica al codice
 37cd559 Fase 6a: pannelli agganciabili e cassetta degli strumenti
 a2dd012 Clic su un cavo per eliminarlo (deleteLink), come nel prototipo
 199cdfe Soglia di trascinamento: DRAG_THRESHOLD_PX = 5 in etl-layout (prototipo, riga 1982)
@@ -203,8 +205,6 @@ ea2d57c Collegamenti tra canvas vecchio e nuovo nella pagina ETL
 c5696b6 Fase 3: stato dell'applicazione, cronologia e registro (src/etl-store/)
 951207c Report Fase 2.1: validazione ripetuta dopo npm ci pulito
 4ac5954 Report Fase 2.1: formattazione
-dca3b87 Fase 2.1: convergenza dei cavi e correzioni puntuali alla geometria
-fad990a Fase 2: geometria del canvas in TypeScript puro (src/etl-layout/)
 ```
 
 ## Branch
@@ -221,6 +221,7 @@ fad990a Fase 2: geometria del canvas in TypeScript puro (src/etl-layout/)
   feat/interactions
   feat/link-click-delete
   feat/panels
+  feat/panels-fix
   feat/theme-system
   fix/drag-threshold
 * main
@@ -237,6 +238,7 @@ fad990a Fase 2: geometria del canvas in TypeScript puro (src/etl-layout/)
   remotes/origin/feat/interactions
   remotes/origin/feat/link-click-delete
   remotes/origin/feat/panels
+  remotes/origin/feat/panels-fix
   remotes/origin/feat/theme-system
   remotes/origin/fix/drag-threshold
   remotes/origin/main
@@ -360,6 +362,17 @@ Diff stat rispetto a main:
 Ultimo commit:
 ```
 37cd559 Fase 6a: pannelli agganciabili e cassetta degli strumenti
+```
+
+Diff stat rispetto a main:
+```
+```
+
+### `feat/panels-fix`
+
+Ultimo commit:
+```
+cf6e294 Fase 6a.1: i pannelli in alto e in basso sottraggono altezza al canvas
 ```
 
 Diff stat rispetto a main:

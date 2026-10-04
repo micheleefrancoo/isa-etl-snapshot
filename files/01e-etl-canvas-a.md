@@ -14,7 +14,7 @@ File in questo blocco:
 
 ### `src/etl-canvas/EtlCanvas.tsx`
 
-431 righe
+441 righe
 
 ```tsx
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -412,7 +412,12 @@ const noopSubscribe = () => () => {};
  * di idratazione produce sempre lo stesso contenitore vuoto, così non ci
  * sono differenze da riconciliare. Misura l'area con un ResizeObserver.
  */
-export function EtlCanvas(props: { store: EtlStore; controller?: InteractionController }) {
+export function EtlCanvas(props: {
+  store: EtlStore;
+  controller?: InteractionController;
+  /** Altezza minima del contenitore (px). Nello spazio di lavoro è la riga centrale a fissarla (0). */
+  minHeight?: number;
+}) {
   const isClient = useSyncExternalStore(
     noopSubscribe,
     () => true,
@@ -439,7 +444,12 @@ export function EtlCanvas(props: { store: EtlStore; controller?: InteractionCont
     <div
       ref={hostRef}
       className="etl-canvas-host"
-      style={{ position: "relative", width: "100%", height: "100%", minHeight: 520 }}
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        minHeight: props.minHeight ?? 520,
+      }}
     >
       {isClient && size ? (
         <CanvasSurface store={props.store} size={size} controller={props.controller} />
@@ -614,7 +624,7 @@ export function Minimap(props: {
 
 ### `src/etl-canvas/NOTE_DIVERGENZE.md`
 
-70 righe
+96 righe
 
 ```md
 # Note di divergenza — etl-canvas (Fase 4b)
@@ -686,6 +696,32 @@ conservata quando React ri-renderizza il nodo.
 Il prototipo ha solo il tema chiaro (`rgba(108,99,255,0.6)`, riga 1517). Nel
 tema scuro il flusso è `rgba(168,163,255,0.9)` (token `--ec-flow`), con
 contrasto ≥ 3:1 sul canvas, verificato da `tokens.test.ts`.
+
+## 8. Pannelli in alto e in basso: tolgono altezza al canvas (Fase 6a.1)
+
+**Prototipo.** Aprendo un pannello su un bordo orizzontale il canvas conserva
+la propria altezza e a crescere è l'area di lavoro (`fitWorkspace`, righe
+4819-4824: altezza del canvas più quella dei pannelli sopra e sotto).
+Funziona perché la pagina del prototipo scorre. `compensate` (righe
+4815-4818) agisce solo sul bordo sinistro: con un pannello in alto il canvas
+scende insieme al pannello e i nodi con lui.
+
+**Qui.** Il contenitore dello spazio di lavoro ha l'altezza della finestra e
+non scorre con la pagina: con la regola del prototipo l'area di lavoro supera il
+contenitore e il pannello in basso resta tagliato (misurato a 1440 × 900: area
+di lavoro 960 px in un contenitore di 738, pannello da y = 884 a 1106 in una
+finestra di 900), mentre con il pannello in alto il canvas scende e minimappa e
+controlli di zoom escono dall'area visibile. Ora i pannelli orizzontali
+sottraggono altezza al canvas, come i laterali sottraggono larghezza:
+
+- l'area di lavoro mantiene l'altezza del suo contenitore e il canvas (riga
+  centrale della griglia) si restringe;
+- il bordo alto sposta l'origine del canvas, quindi `view.y` si compensa come
+  `view.x` per il bordo sinistro (nodi fermi sullo schermo); basso e destro non
+  compensano;
+- il canvas ha un'altezza minima (`MIN_CANVAS_HEIGHT` in `panels/layout.ts`):
+  sotto quella soglia scorre il contenitore dello spazio di lavoro;
+- due pannelli come schede in alto o in basso usano l'altezza maggiore dei due.
 ```
 
 ### `src/etl-canvas/Node.tsx`
