@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-10-04T09:59:45Z (UTC)
+Generato: 2026-10-04T11:38:29Z (UTC)
 
 ## Type check
 
@@ -19,8 +19,8 @@ Ultime 60 righe di output:
 
 Comando: `npm run lint`
 
-Esito: OK (exit 0)
-Durata: 12s
+Esito: FALLITO (exit 1)
+Durata: 13s
 
 Ultime 60 righe di output:
 ```
@@ -28,6 +28,18 @@ Ultime 60 righe di output:
 > lint
 > eslint .
 
+
+/workspaces/isa-glass-platform/scripts/.tmpdiff.mjs
+   4:35  error  Replace `·` with `⏎`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      prettier/prettier
+   7:30  error  Insert `⏎····`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            prettier/prettier
+   8:5   error  Replace `const·load·=·(u)·=>·new·Promise((res)·=>·{·const·i·=·new·Image();·i.onload·=·()·=>·res(i);·i.src·=·u;` with `··const·load·=·(u)·=>⏎········new·Promise((res)·=>·{⏎··········const·i·=·new·Image();⏎··········i.onload·=·()·=>·res(i);⏎··········i.src·=·u;⏎·······`                                                                                                                                                                                                                              prettier/prettier
+   9:5   error  Insert `··`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               prettier/prettier
+  10:1   error  Insert `··`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               prettier/prettier
+  11:5   error  Replace `const·d·=·(i)·=>·{·const·k·=·document.createElement("canvas");·k.width·=·i.width;·k.height·=·i.height;·const·g·=·k.getContext("2d");·g.drawImage(i,·0,·0);·return·g.getImageData(0,·0,·i.width,·i.height).data;` with `··const·d·=·(i)·=>·{⏎········const·k·=·document.createElement("canvas");⏎········k.width·=·i.width;⏎········k.height·=·i.height;⏎········const·g·=·k.getContext("2d");⏎········g.drawImage(i,·0,·0);⏎········return·g.getImageData(0,·0,·i.width,·i.height).data;⏎·····`  prettier/prettier
+  12:1   error  Replace `····const·A·=·d(x),·B·=·d(y);` with `······const·A·=·d(x),⏎········B·=·d(y);⏎·····`                                                                                                                                                                                                                                                                                                                                                                                                              prettier/prettier
+  13:1   error  Replace `····for·(let·i·=·0;·i·<·A.length;·i·+=·4)·if·(Math.max(Math.abs(A[i]-B[i]),·Math.abs(A[i+1]-B[i+1]),·Math.abs(A[i+2]-B[i+2]))·>·8)` with `······for·(let·i·=·0;·i·<·A.length;·i·+=·4)⏎········if·(⏎··········Math.max(⏎············Math.abs(A[i]·-·B[i]),⏎············Math.abs(A[i·+·1]·-·B[i·+·1]),⏎············Math.abs(A[i·+·2]·-·B[i·+·2]),⏎··········)·>·8⏎········)⏎·········`                                                                                                             prettier/prettier
+  14:1   error  Insert `··`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               prettier/prettier
+  15:3   error  Replace `},·[rd(A_·+·"/"·+·n),·rd(B_·+·"/"·+·n)]` with `··},⏎····[rd(A_·+·"/"·+·n),·rd(B_·+·"/"·+·n)],⏎··`                                                                                                                                                                                                                                                                                                                                                                                                prettier/prettier
 
 /workspaces/isa-glass-platform/src/canvas/components/CanvasContainer.tsx
   23:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
@@ -65,7 +77,8 @@ Ultime 60 righe di output:
 /workspaces/isa-glass-platform/src/lib/theme.tsx
   54:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
 
-✖ 14 problems (0 errors, 14 warnings)
+✖ 24 problems (10 errors, 14 warnings)
+  10 errors and 0 warnings potentially fixable with the `--fix` option.
 
 ```
 
@@ -74,7 +87,7 @@ Ultime 60 righe di output:
 Comando: `npm test`
 
 Esito: OK (exit 0)
-Durata: 43s
+Durata: 39s
 
 Ultime 60 righe di output:
 ```
@@ -87,13 +100,13 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
  RUN  v5.0.1 /workspaces/isa-glass-platform
 
 
- Test Files  49 passed (49)
-      Tests  928 passed (928)
-   Start at  10:00:10
-   Duration  41.63s (tests 89%, import 7%, transform 4%, worker 1%)
+ Test Files  53 passed (53)
+      Tests  1059 passed (1059)
+   Start at  11:38:54
+   Duration  39.30s (tests 88%, import 7%, transform 4%, worker 1%)
 
-    Isolate  49 workers spawned · ~113ms startup each (spawn + environment, per file)
-             at least ~5.43s faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  53 workers spawned · ~102ms startup each (spawn + environment, per file)
+             at least ~5.29s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -113,7 +126,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/templates-BxgvM8qO.mjs                          0.61 kB │ gzip:   0.39 kB
 .output/server/_ssr/solutions._solutionId.dashboard-CujVFx5K.mjs    0.86 kB │ gzip:   0.47 kB
 .output/server/_ssr/solutions._solutionId.model-D5GqwrKQ.mjs        0.88 kB │ gzip:   0.47 kB
-.output/server/_ssr/solutions._solutionId.etl-tR54qSL1.mjs          1.09 kB │ gzip:   0.58 kB
+.output/server/_ssr/solutions._solutionId.etl-DPc3Mtq_.mjs          1.09 kB │ gzip:   0.58 kB
 .output/server/_libs/hookable.mjs                                   1.16 kB │ gzip:   0.51 kB
 .output/server/_ssr/start-RKGGYzjZ.mjs                              1.53 kB │ gzip:   0.70 kB
 .output/server/_runtime.mjs                                         1.61 kB │ gzip:   0.74 kB
@@ -122,7 +135,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/createCsrfMiddleware-B2To0gPJ.mjs               3.11 kB │ gzip:   1.01 kB
 .output/server/_libs/d3-path.mjs                                    3.25 kB │ gzip:   1.16 kB
 .output/server/_ssr/activity-C06WSQVD.mjs                           3.45 kB │ gzip:   0.97 kB
-.output/server/_tanstack-start-manifest_v-DVHKmg9X.mjs              3.71 kB │ gzip:   0.86 kB
+.output/server/_tanstack-start-manifest_v-DWBs0G49.mjs              3.71 kB │ gzip:   0.86 kB
 .output/server/_ssr/solutions._solutionId.model-DN1m8FSz.mjs        4.05 kB │ gzip:   1.32 kB
 .output/server/_ssr/ssr.mjs                                         4.55 kB │ gzip:   1.92 kB
 .output/server/_libs/d3-interpolate.mjs                             5.02 kB │ gzip:   1.61 kB
@@ -135,7 +148,7 @@ Ultime 60 righe di output:
 .output/server/_libs/d3-color.mjs                                  10.38 kB │ gzip:   3.57 kB
 .output/server/_libs/d3-format.mjs                                 10.56 kB │ gzip:   3.02 kB
 .output/server/_libs/tanstack__history.mjs                         12.09 kB │ gzip:   3.48 kB
-.output/server/_ssr/router-SmS7s-B7.mjs                            14.47 kB │ gzip:   3.89 kB
+.output/server/_ssr/router-CqDFlgNI.mjs                            14.47 kB │ gzip:   3.90 kB
 .output/server/_ssr/theme-Dujx4GV7.mjs                             15.18 kB │ gzip:   6.06 kB
 .output/server/_libs/fast-equals.mjs                               15.91 kB │ gzip:   4.13 kB
 .output/server/_libs/h3-v2+rou3+srvx+unenv.mjs                     15.92 kB │ gzip:   4.39 kB
@@ -149,15 +162,15 @@ Ultime 60 righe di output:
 .output/server/_libs/lucide-react.mjs                              37.25 kB │ gzip:   7.17 kB
 .output/server/_libs/react-smooth.mjs                              37.83 kB │ gzip:   8.14 kB
 .output/server/_libs/tanstack__query-core.mjs                      49.84 kB │ gzip:  11.12 kB
-.output/server/_ssr/server-CePXbmH0.mjs                            54.77 kB │ gzip:  14.39 kB
+.output/server/_ssr/server-Ddufsfy1.mjs                            54.77 kB │ gzip:  14.39 kB
 .output/server/_libs/d3-scale+[...].mjs                            58.22 kB │ gzip:  12.11 kB
 .output/server/_libs/@tanstack/router-core+[...].mjs              125.35 kB │ gzip:  26.53 kB
 .output/server/_libs/lodash.mjs                                   161.80 kB │ gzip:  29.45 kB
-.output/server/_ssr/solutions._solutionId.etl-D5o9swyC.mjs        409.03 kB │ gzip: 109.70 kB
+.output/server/_ssr/solutions._solutionId.etl-R8v2UzDX.mjs        494.32 kB │ gzip: 129.52 kB
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 989ms
+✓ built in 987ms
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -175,7 +188,7 @@ Colori, raggi e ombre letterali nei file controllati (scripts/check-tokens.mjs).
 Comando: `node scripts/check-tokens.mjs`
 
 Esito: OK (exit 0)
-Durata: 0s
+Durata: 1s
 
 Ultime 60 righe di output:
 ```
@@ -185,6 +198,17 @@ check-tokens: 0 violazioni nei file controllati; debito preesistente: 26 (6 ombr
 ## Git log (ultimi 20 commit)
 
 ```
+5dad418 Fase 6b.1: schermate dell'Inspector e report di validazione
+6840ff1 Fase 6b.1: documentazione (README, note di divergenza, token di forma)
+8dec8e2 Fase 6b.1: e2e, notte in due schermate, selettori dei pulsanti circoscritti alle conferme
+738aa1e Fase 6b.1: e2e (colonne, valori, riordino), correzione del riordino per trascinamento delle etichette
+2f979c1 Fase 6b.1: verifica nel browser (e2e-fase6b1), prima parte: stato bloccato, collegamento, tendine vicino agli angoli
+d75d065 Fase 6b.1: test del tetto d'altezza, dei pulsanti sul nodo e dei passaggi
+2f435e8 Fase 6b.1: pulsanti sul nodo, pannello espanso, tetto d'altezza, test strutturali e di forma
+643005d Fase 6b.1: contenuto dell'Inspector (selettori, voci multiple, passaggi), stili a token
+d7b87b8 Fase 6b.1: menu.ts, posizionamento puro delle tendine, con la matrice di prova
+b4db69c Fase 6b.1: token di forma (scala tipografica e degli spazi), token semantici dell'Inspector in entrambi i temi, controlli di contrasto, check-tokens esteso
+a39ee3a Fase 6b.1: elenco delle parti del prototipo da portare (README di etl-canvas)
 d560fdd Fase 6b.0: dominio, colonne multiple nelle voci
 8db8087 Fase 6a.2: report di validazione
 a7a2127 Baseline visiva rigenerata: la barra dei controlli riduce l'altezza del canvas
@@ -194,17 +218,6 @@ ae56053 Baseline visiva rigenerata nell'ambiente attuale, nessuna modifica al co
 37cd559 Fase 6a: pannelli agganciabili e cassetta degli strumenti
 a2dd012 Clic su un cavo per eliminarlo (deleteLink), come nel prototipo
 199cdfe Soglia di trascinamento: DRAG_THRESHOLD_PX = 5 in etl-layout (prototipo, riga 1982)
-a4788a3 Fase 5: interazioni (trascinamento, fusione, collegamento, porte, selezione, tastiera)
-1ac7de4 Fase T: deroghe di contrasto allineate ai valori misurati (4,3153 e 2,1476), bidirezionali
-07a0a0e Fase T: sistema di temi (token a tre livelli, tema notte, accento derivato, contrasti garantiti)
-1e3f6a1 Fase T: schermate di riferimento del tema predefinito (prima del sistema di temi)
-313a602 Fondazione: vite.config.ts esplicito (cloudflare-module) e primitive --isa-* condivise
-48de751 Fondazione (parziale): Manrope unico, derivazioni a valore identico, pulizia Lovable
-41a04c4 Fase 4b: animazioni del canvas (flusso, attesa, transizioni dei cavi)
-9663abe Il nuovo canvas diventa quello predefinito della pagina ETL
-81831f0 Test della rotta: distingue il canvas nuovo dal pulsante che lo apre
-ea2d57c Collegamenti tra canvas vecchio e nuovo nella pagina ETL
-8b7cb52 Fase 4a: il canvas visibile (src/etl-canvas/)
 ```
 
 ## Branch
@@ -218,6 +231,7 @@ ea2d57c Collegamenti tra canvas vecchio e nuovo nella pagina ETL
   feat/etl-layout-fix
   feat/etl-store
   feat/etl-store-fix
+  feat/inspector-core
   feat/interactions
   feat/link-click-delete
   feat/multi-columns
@@ -237,6 +251,7 @@ ea2d57c Collegamenti tra canvas vecchio e nuovo nella pagina ETL
   remotes/origin/feat/etl-layout-fix
   remotes/origin/feat/etl-store
   remotes/origin/feat/etl-store-fix
+  remotes/origin/feat/inspector-core
   remotes/origin/feat/interactions
   remotes/origin/feat/link-click-delete
   remotes/origin/feat/multi-columns
@@ -333,6 +348,17 @@ Diff stat rispetto a main:
 Ultimo commit:
 ```
 5ef51d1 Fase 3.1: raggruppamento della cronologia, registro senza vista, inspector
+```
+
+Diff stat rispetto a main:
+```
+```
+
+### `feat/inspector-core`
+
+Ultimo commit:
+```
+5dad418 Fase 6b.1: schermate dell'Inspector e report di validazione
 ```
 
 Diff stat rispetto a main:

@@ -10,13 +10,12 @@ File in questo blocco:
 - `src/theme/__tests__/readme.test.ts`
 - `src/theme/__tests__/runtime.test.ts`
 - `src/theme/__tests__/support.ts`
-- `src/theme/__tests__/themes.test.ts`
 
 ---
 
 ### `src/theme/README.md`
 
-226 righe
+244 righe
 
 ```md
 # Sistema di temi
@@ -32,6 +31,10 @@ Architettura che permetterà all'utente di personalizzare l'interfaccia entro li
 | 3. Di componente | `--ec-*` e simili                                                                        | accanto al componente (es. `src/etl-canvas/tokens.css`) | solo il componente. Usano **soltanto** token semantici.                                                                          |
 
 Le due tavolozze storiche (token OKLCH dell'app in `styles.css`, primitive `--isa-*` del canvas) **non sono state unificate**: sono messe sotto la stessa architettura. Nel tema `prototipo` i loro valori sono scritti direttamente nell'assegnazione semantica (sono quelli storici e devono restare identici); il tema `notte` invece passa dalle primitive.
+
+## Token di forma (indipendenti dal tema)
+
+`layout-tokens.css` (importato da `index.css`) definisce la scala tipografica (`--isa-fs-*`), la scala degli spazi (`--isa-space-1..8`: 4, 8, 12, 16, 20, 24, 32 px), l'altezza dei controlli e le misure dei menu (`--isa-menu-gap`, `--isa-menu-edge`, …). Non dipendono da tema né da modo, quindi non compaiono nella mappa dei token. Li usa l'Inspector (`src/etl-canvas/inspector/`); `scripts/check-tokens.mjs` verifica che lì `font-size`, `margin`, `padding` e `gap` usino solo questi token. I colori dei nuovi elementi (campi, voci di menu, etichette, caselle, scorrimento, sfondo dei pannelli modali) sono token semantici `--isa-field-*`, `--isa-option-*`, `--isa-chip-*`, `--isa-check-*`, `--isa-scroll-thumb`, `--isa-lock-ink`, `--isa-scrim`, definiti nei due temi e verificati dai test dei contrasti.
 
 ## Selezione di tema e modo
 
@@ -242,17 +245,31 @@ Token semantico → valore assegnato, per tema e modo. Dove il valore è una pri
 | `--isa-mm-node-ds` | `#6c63ff` | `#a8a3ff` | `var(--isa-p-navy-700) (#1e3a6e)` | `var(--isa-p-accent-300) (#7fa3e8)` |
 | `--isa-mm-view-line` | `#6c63ff` | `#a8a3ff` | `var(--isa-p-blue-600) (#2563eb)` | `var(--isa-p-blue-400) (#60a5fa)` |
 | `--isa-mm-view-bg` | `rgba(108, 99, 255, 0.08)` | `rgba(168, 163, 255, 0.12)` | `var(--isa-p-blue-600-a12)` | `var(--isa-p-blue-400-a16)` |
+| `--isa-field-bg` | `var(--isa-surface-overlay)` | `var(--isa-surface-overlay)` | `var(--isa-surface-overlay)` | `var(--isa-surface-overlay)` |
+| `--isa-field-border` | `var(--isa-text-muted)` | `var(--isa-text-muted)` | `var(--isa-text-muted)` | `var(--isa-text-muted)` |
+| `--isa-field-placeholder` | `var(--isa-text-secondary)` | `var(--isa-text-secondary)` | `var(--isa-text-secondary)` | `var(--isa-text-secondary)` |
+| `--isa-option-hover` | `var(--isa-accent-soft)` | `var(--isa-accent-soft)` | `var(--isa-accent-soft)` | `var(--isa-accent-soft)` |
+| `--isa-option-selected` | `var(--isa-accent-soft)` | `var(--isa-accent-soft)` | `var(--isa-accent-soft)` | `var(--isa-accent-soft)` |
+| `--isa-chip-bg` | `var(--isa-accent-soft)` | `var(--isa-accent-soft)` | `var(--isa-accent-soft)` | `var(--isa-accent-soft)` |
+| `--isa-chip-ink` | `var(--isa-text)` | `var(--isa-text)` | `var(--isa-text)` | `var(--isa-text)` |
+| `--isa-chip-free-border` | `var(--isa-text-secondary)` | `var(--isa-text-secondary)` | `var(--isa-text-secondary)` | `var(--isa-text-secondary)` |
+| `--isa-check-border` | `var(--isa-text-secondary)` | `var(--isa-text-secondary)` | `var(--isa-text-secondary)` | `var(--isa-text-secondary)` |
+| `--isa-check-fill` | `var(--isa-accent)` | `var(--isa-accent)` | `var(--isa-accent)` | `var(--isa-accent)` |
+| `--isa-check-mark` | `var(--isa-text-on-accent)` | `var(--isa-text-on-accent)` | `var(--isa-text-on-accent)` | `var(--isa-text-on-accent)` |
+| `--isa-scroll-thumb` | `var(--isa-text-muted)` | `var(--isa-text-muted)` | `var(--isa-text-muted)` | `var(--isa-text-muted)` |
+| `--isa-lock-ink` | `var(--isa-text-secondary)` | `var(--isa-text-secondary)` | `var(--isa-text-secondary)` | `var(--isa-text-secondary)` |
+| `--isa-scrim` | `rgba(38, 36, 32, 0.32)` | `rgba(0, 0, 0, 0.5)` | `var(--isa-p-black-a40)` | `var(--isa-p-black-a40)` |
 
 <!-- END token-map -->
 ```
 
 ### `src/theme/__tests__/check-tokens.test.ts`
 
-57 righe
+107 righe
 
 ```ts
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -307,11 +324,61 @@ describe("scripts/check-tokens.mjs", () => {
     ).toBe(0);
   });
 });
+
+describe("scripts/check-tokens.mjs: scala tipografica e degli spazi dell'Inspector (Fase 6b.1)", () => {
+  /** Il file sta in una cartella `etl-canvas/inspector/`, come quelli veri. */
+  function inspectorFile(name: string, content: string) {
+    const dir = join(mkdtempSync(join(tmpdir(), "tokens-")), "etl-canvas", "inspector");
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, name);
+    writeFileSync(file, content);
+    const r = spawnSync("node", [SCRIPT, "--check-file", file], { encoding: "utf8" });
+    return { code: r.status, out: r.stderr };
+  }
+
+  it("accetta i token, 0, auto, le percentuali e i bordi da 1px", () => {
+    const ok = `.a { font-size: var(--isa-fs-value); margin: 0 auto; padding: var(--isa-space-2) var(--isa-space-3);
+      gap: var(--isa-space-4); margin-left: calc(-1 * var(--isa-space-2)); padding-inline: 0 50%;
+      row-gap: calc(var(--isa-space-1) + var(--isa-space-2)); padding: 0 var(--isa-menu-item-px); margin: var(--isa-menu-pad); border: 1px solid var(--isa-border); }`;
+    expect(inspectorFile("ok.css", ok).code).toBe(0);
+    expect(
+      inspectorFile(
+        "ok.tsx",
+        `export const s = { padding: "var(--isa-space-2)", gap: "var(--isa-space-3)", margin: 0 };`,
+      ).code,
+    ).toBe(0);
+  });
+
+  it("rifiuta font-size, margin, padding e gap scritti a mano", () => {
+    for (const decl of [
+      "font-size: 12px",
+      "font-size: 0.9rem",
+      "margin: 8px",
+      "margin-top: 4px",
+      "padding: 0 12px",
+      "padding: var(--isa-space-2) 10px",
+      "gap: 1rem",
+      "row-gap: 6px",
+      "padding: calc(var(--isa-space-2) + 3px)",
+    ]) {
+      expect(inspectorFile("a.css", `.a { ${decl}; }`).code, decl).toBe(1);
+    }
+    expect(inspectorFile("a.tsx", `export const s = { padding: 8 };`).code).toBe(1);
+    expect(inspectorFile("a.tsx", `export const s = { fontSize: "13px" };`).code).toBe(1);
+    expect(inspectorFile("a.tsx", `export const s = { gap: "6px" };`).code).toBe(1);
+  });
+
+  it("fuori da src/etl-canvas/inspector/ le stesse misure non si controllano", () => {
+    expect(checkFile("a.css", `.a { font-size: 12px; margin: 8px; padding: 0 12px; }`).code).toBe(
+      0,
+    );
+  });
+});
 ```
 
 ### `src/theme/__tests__/checks.ts`
 
-119 righe
+135 righe
 
 ```ts
 /**
@@ -382,6 +449,22 @@ function themeChecks(theme: Theme, mode: Mode): Check[] {
       add(`op-${fam} su ${sn}`, fg(`--isa-op-${fam}`), s, 3);
     }
   }
+  // Inspector (Fase 6b.1): campi, voci di menu, etichette, caselle, scorrimento
+  const overlay = surf["overlay"] as Rgba;
+  const fieldBg = over(fg("--isa-field-bg"), overlay);
+  add("field-border su field-bg", fg("--isa-field-border"), fieldBg, 3);
+  add("field-placeholder su field-bg", fg("--isa-field-placeholder"), fieldBg, 4.5);
+  add("text su field-bg", fg("--isa-text"), fieldBg, 4.5);
+  add("check-border su field-bg", fg("--isa-check-border"), fieldBg, 3);
+  add("check-mark su check-fill", fg("--isa-check-mark"), over(fg("--isa-check-fill"), overlay), 3);
+  for (const [sn, s] of Object.entries(surf)) {
+    add(`chip-ink su chip-bg su ${sn}`, fg("--isa-chip-ink"), over(fg("--isa-chip-bg"), s), 4.5);
+    add(`scroll-thumb su ${sn}`, fg("--isa-scroll-thumb"), s, 3);
+    add(`lock-ink su ${sn}`, fg("--isa-lock-ink"), s, 4.5);
+  }
+  add("text su option-hover", fg("--isa-text"), over(fg("--isa-option-hover"), overlay), 4.5);
+  add("text su option-selected", fg("--isa-text"), over(fg("--isa-option-selected"), overlay), 4.5);
+  add("chip-free-border su field-bg", fg("--isa-chip-free-border"), fieldBg, 3);
   const accentBg = over(fg("--isa-accent"), surf["base"] as Rgba);
   add(
     "text-on-danger su danger",
@@ -965,158 +1048,5 @@ export function surfaces(tokens: Decls): Record<string, Rgba> {
 }
 
 export { contrast, over };
-```
-
-### `src/theme/__tests__/themes.test.ts`
-
-147 righe
-
-```ts
-import { describe, expect, it } from "vitest";
-import { parseColor } from "../color";
-import {
-  MODES,
-  PRIMITIVES_CSS,
-  THEMES,
-  THEME_FILES,
-  parseBlocks,
-  rawTokens,
-  resolveTokens,
-  selectorsOf,
-} from "./support";
-
-describe("struttura dei file CSS", () => {
-  it("le primitive stanno solo in :root e hanno solo nomi --isa-p-*", () => {
-    expect(selectorsOf(PRIMITIVES_CSS)).toEqual([":root"]);
-    for (const b of parseBlocks(PRIMITIVES_CSS)) {
-      for (const name of Object.keys(b.decls)) expect(name).toMatch(/^--isa-p-[a-z0-9-]+$/);
-    }
-  });
-
-  it("le primitive sono in OKLCH", () => {
-    for (const [name, value] of Object.entries(parseBlocks(PRIMITIVES_CSS)[0]!.decls)) {
-      expect(value, name).toMatch(/^oklch\(/);
-    }
-  });
-
-  it("il tema predefinito usa solo :root e .dark; gli altri solo :root[data-theme] (e .dark)", () => {
-    expect(selectorsOf(THEME_FILES.prototipo)).toEqual([":root", ".dark"]);
-    expect(selectorsOf(THEME_FILES.notte)).toEqual([
-      ':root[data-theme="notte"]',
-      ':root.dark[data-theme="notte"]',
-    ]);
-  });
-});
-
-describe("completezza dei temi", () => {
-  const protoLight = new Set(Object.keys(parseBlocks(THEME_FILES.prototipo)[0]!.decls));
-  const protoDark = new Set(Object.keys(parseBlocks(THEME_FILES.prototipo)[1]!.decls));
-
-  it("«notte» assegna ogni token che assegna il tema predefinito, nei due modi", () => {
-    const [light, dark] = parseBlocks(THEME_FILES.notte);
-    expect(Object.keys(light!.decls).sort()).toEqual([...protoLight].sort());
-    // il blocco scuro ridefinisce tutto ciò che cambia col modo nel predefinito
-    for (const name of protoDark) expect(dark!.decls, name).toHaveProperty(name);
-  });
-
-  for (const theme of THEMES) {
-    for (const mode of MODES) {
-      it(`${theme}/${mode}: ogni var() si risolve`, () => {
-        expect(() => resolveTokens(theme, mode)).not.toThrow();
-      });
-    }
-  }
-
-  it("il tema predefinito ha i ruoli richiesti dal sistema", () => {
-    const t = resolveTokens("prototipo", "light");
-    const roles = [
-      "surface-base",
-      "surface-raised",
-      "surface-overlay",
-      "text",
-      "text-secondary",
-      "text-muted",
-      "text-on-accent",
-      "border",
-      "border-strong",
-      "accent",
-      "accent-active",
-      "accent-soft",
-      "focus-ring",
-      "op-filter",
-      "op-filter-soft",
-      "op-transform",
-      "op-transform-soft",
-      "op-merge",
-      "op-merge-soft",
-      "op-output",
-      "op-output-soft",
-      "dataset-fill",
-      "warning",
-      "error",
-      "success",
-      "radius-control",
-      "radius-panel",
-      "shadow-glass",
-      "blur-glass",
-      "duration-fast",
-      "duration-base",
-      "duration-slow",
-    ];
-    for (const r of roles) expect(t, r).toHaveProperty(`--isa-${r}`);
-  });
-});
-
-describe("«notte»: i colori richiesti", () => {
-  const near = (value: string, hex: string) => {
-    const got = parseColor(value);
-    const want = parseColor(hex);
-    for (let i = 0; i < 3; i++) expect(Math.abs(got[i]! - want[i]!)).toBeLessThanOrEqual(1);
-  };
-  const t = resolveTokens("notte", "light");
-
-  it("accento, collegamento, superfici, bordi, testo", () => {
-    near(t["--isa-accent"]!, "#1e3a6e");
-    near(t["--isa-text-link"]!, "#2563eb");
-    near(t["--isa-surface-raised"]!, "#ffffff");
-    near(t["--isa-surface-base"]!, "#f8fafc");
-    near(t["--isa-border"]!, "#e2e8f0");
-    near(t["--isa-text"]!, "#0f172a");
-    near(t["--isa-text-secondary"]!, "#64748b");
-  });
-
-  it("famiglie di operazioni e avviso", () => {
-    near(t["--isa-op-filter"]!, "#2563eb");
-    near(t["--isa-op-transform"]!, "#7c3aed");
-    near(t["--isa-op-merge"]!, "#ea580c");
-    near(t["--isa-op-output"]!, "#16a34a");
-    near(t["--isa-warning"]!, "#f59e0b");
-  });
-
-  it("ogni famiglia ha la propria tinta tenue, diversa dalle altre", () => {
-    const softs = ["filter", "transform", "merge", "output"].map((f) => t[`--isa-op-${f}-soft`]);
-    expect(new Set(softs).size).toBe(4);
-  });
-
-  it("nel tema predefinito le quattro famiglie coincidono (aspetto identico a prima)", () => {
-    const p = resolveTokens("prototipo", "light");
-    expect(
-      new Set(["filter", "transform", "merge", "output"].map((f) => p[`--isa-op-${f}`])).size,
-    ).toBe(1);
-    expect(p["--isa-op-filter"]).toBe(p["--isa-tint-ink"]);
-    expect(p["--isa-op-filter-soft"]).toBe(p["--isa-tint"]);
-  });
-
-  it("il tema predefinito non cambia i valori storici", () => {
-    const l = rawTokens("prototipo", "light");
-    expect(l["--isa-surface-base"]).toBe("#f5f3ee");
-    expect(l["--isa-accent"]).toBe("#6c63ff");
-    expect(l["--background"]).toBe("oklch(0.978 0.004 250)");
-    expect(l["--primary"]).toBe("oklch(0.52 0.11 272)");
-    const d = rawTokens("prototipo", "dark");
-    expect(d["--background"]).toBe("oklch(0.19 0.008 260)");
-    expect(d["--isa-surface-base"]).toBe("#17181d");
-  });
-});
 ```
 

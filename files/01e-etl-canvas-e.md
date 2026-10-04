@@ -2,1623 +2,1810 @@
 
 File in questo blocco:
 
-- `src/etl-canvas/flow.ts`
-- `src/etl-canvas/icons.tsx`
-- `src/etl-canvas/index.ts`
-- `src/etl-canvas/interaction.ts`
-- `src/etl-canvas/loop.ts`
-- `src/etl-canvas/model.ts`
-- `src/etl-canvas/motion.tsx`
-- `src/etl-canvas/panels/ControlBar.tsx`
-- `src/etl-canvas/panels/Dock.tsx`
+- `src/etl-canvas/__tests__/ssr.test.tsx`
+- `src/etl-canvas/__tests__/tokens.test.ts`
+- `src/etl-canvas/__tests__/toolbox-drop.test.ts`
+- `src/etl-canvas/__tests__/toolbox.test.tsx`
+- `src/etl-canvas/__tests__/transitions.test.ts`
+- `src/etl-canvas/__tests__/view.test.ts`
+- `src/etl-canvas/actions.ts`
+- `src/etl-canvas/canvas.css`
+- `src/etl-canvas/contrast.ts`
+- `src/etl-canvas/drop.ts`
 
 ---
 
-### `src/etl-canvas/flow.ts`
+### `src/etl-canvas/__tests__/ssr.test.tsx`
 
-180 righe
-
-```ts
-/**
- * Flusso nei cavi ("tubo elastico") e attesa delle fette vuote: calcolo puro.
- * Nessun React, nessun timer, nessun DOM: il tempo trascorso è un argomento.
- * Semantica del prototipo (docs/prototype/isa-fusion-prototype.html):
- * righe 1415-1424 (costanti e profilo), 1478 (smooth01), 1480-1521
- * (`animateBubbles`), 669-670 (attesa).
- */
-
-/** Spessore del cavo, coincide con il tubo a riposo (riga 1415). */
-export const BASE_W = 2.1;
-/** px al millisecondo: stessa andatura su cavi lunghi e corti (riga 1416). */
-export const SPEED = 0.16;
-/** Rigonfiamento massimo per lato (riga 1417). */
-export const BALL = 4.4;
-/** Apertura rapida davanti, richiusura più lenta dietro (riga 1418). */
-export const FRONT = 7.5;
-export const BACK = 19;
-/** Il tubo emerge dalla porta e vi rientra su questo tratto (riga 1510: `/ 22`). */
-export const EDGE_FADE = 22;
-/** Sotto questa lunghezza il tratto non si disegna (riga 1497: `s1 - s0 < 2`). */
-export const MIN_VISIBLE = 2;
-/** Campionamento del contorno: un punto ogni 1,6 px, almeno 10 (riga 1500). */
-export const SAMPLE_STEP = 1.6;
-export const MIN_SAMPLES = 10;
-
-/** Riga 1478. */
-export function smooth01(x: number): number {
-  const c = Math.max(0, Math.min(1, x));
-  return c * c * (3 - 2 * c);
-}
-
-/** Profilo gaussiano asimmetrico attorno al punto che avanza (righe 1419-1422). */
-export function tubeProfile(u: number): number {
-  const sg = u >= 0 ? FRONT : BACK;
-  return Math.exp(-(u * u) / (sg * sg));
-}
-
-/** Tratto del cavo occupato dal tubo: `sb` è il punto che avanza (riga 1489-1495). */
-export interface FlowWindow {
-  readonly cycle: number;
-  readonly sb: number;
-  readonly s0: number;
-  readonly s1: number;
-}
-
-/**
- * Finestra del tubo a `elapsedMs` dall'inizio del cavo (`now - st.t0`), su
- * un cavo lungo `len`. `null` se non c'è nulla da disegnare (righe 1488,
- * 1497). Il ciclo è `len + BACK * 3.2`: la pallina entra dalla porta di
- * uscita, sparisce oltre quella di ingresso e riparte.
- */
-export function flowWindow(len: number, elapsedMs: number): FlowWindow | null {
-  if (!(len > 0)) return null;
-  const cycle = len + BACK * 3.2;
-  const sb = ((elapsedMs * SPEED) % cycle) - BACK * 1.1;
-  const s0 = Math.max(0, sb - BACK * 3);
-  const s1 = Math.min(len, sb + FRONT * 3.2);
-  if (s1 - s0 < MIN_VISIBLE) return null;
-  return { cycle, sb, s0, s1 };
-}
-
-/**
- * Indicazione statica per chi preferisce meno movimento: lo stesso tubo,
- * fermo a metà cavo. Non esiste nel prototipo (NOTE_DIVERGENZE.md).
- */
-export function staticFlowWindow(len: number): FlowWindow | null {
-  if (!(len > 0)) return null;
-  const sb = len / 2;
-  return {
-    cycle: len + BACK * 3.2,
-    sb,
-    s0: Math.max(0, sb - BACK * 3),
-    s1: Math.min(len, sb + FRONT * 3.2),
-  };
-}
-
-/** Finestra da mostrare: quella animata, o quella statica con movimento ridotto. */
-export function flowWindowFor(len: number, elapsedMs: number, reduced: boolean): FlowWindow | null {
-  return reduced ? staticFlowWindow(len) : flowWindow(len, elapsedMs);
-}
-
-export type Sampler = (s: number) => { readonly x: number; readonly y: number };
-
-/**
- * Contorno chiuso del tubo (righe 1500-1516): campiona il percorso `d`
- * già calcolato con `sample` (in un browser `path.getPointAtLength`) e
- * allarga il tratto secondo `tubeProfile`. Non tocca mai il percorso.
- */
-export function tubeOutline(sample: Sampler, len: number, win: FlowWindow): string {
-  const n = Math.max(MIN_SAMPLES, Math.ceil((win.s1 - win.s0) / SAMPLE_STEP));
-  const pts: { x: number; y: number; s: number }[] = [];
-  for (let k = 0; k <= n; k++) {
-    const s = win.s0 + ((win.s1 - win.s0) * k) / n;
-    const q = sample(s);
-    pts.push({ x: q.x, y: q.y, s });
-  }
-  const left: string[] = [];
-  const right: string[] = [];
-  for (let k = 0; k <= n; k++) {
-    const a = pts[Math.max(0, k - 1)] as { x: number; y: number; s: number };
-    const b = pts[Math.min(n, k + 1)] as { x: number; y: number; s: number };
-    const p = pts[k] as { x: number; y: number; s: number };
-    let tx = b.x - a.x;
-    let ty = b.y - a.y;
-    const tl = Math.hypot(tx, ty) || 1;
-    tx /= tl;
-    ty /= tl;
-    const edge = smooth01(Math.min(p.s, len - p.s) / EDGE_FADE);
-    const w = BASE_W / 2 + BALL * tubeProfile(p.s - win.sb) * edge;
-    left.push((p.x - ty * w).toFixed(2) + " " + (p.y + tx * w).toFixed(2));
-    right.push((p.x + ty * w).toFixed(2) + " " + (p.y - tx * w).toFixed(2));
-  }
-  return "M " + left.concat(right.reverse()).join(" L ") + " Z";
-}
-
-// --- Attesa delle fette vuote --------------------------------------------------
-
-/** `animation: waiting 1.9s ease-in-out infinite` (riga 669). */
-export const WAIT_PERIOD = 1900;
-/** `@keyframes waiting { 0%,100% {opacity:.45} 50% {opacity:.95} }` (riga 670). */
-export const WAIT_LOW = 0.45;
-export const WAIT_HIGH = 0.95;
-/** Opacità a riposo del simbolo (riga 669: `opacity:.85`), anche con movimento ridotto. */
-export const WAIT_REST = 0.85;
-
-/** Funzione di temporizzazione CSS `cubic-bezier(x1, y1, x2, y2)`. */
-export function cubicBezier(x1: number, y1: number, x2: number, y2: number): (x: number) => number {
-  const cx = 3 * x1;
-  const bx = 3 * (x2 - x1) - cx;
-  const ax = 1 - cx - bx;
-  const cy = 3 * y1;
-  const by = 3 * (y2 - y1) - cy;
-  const ay = 1 - cy - by;
-  const bx_ = (t: number) => ((ax * t + bx) * t + cx) * t;
-  const by_ = (t: number) => ((ay * t + by) * t + cy) * t;
-  const dx_ = (t: number) => (3 * ax * t + 2 * bx) * t + cx;
-  return (x) => {
-    if (x <= 0) return 0;
-    if (x >= 1) return 1;
-    let t = x;
-    for (let i = 0; i < 8; i++) {
-      const err = bx_(t) - x;
-      if (Math.abs(err) < 1e-7) return by_(t);
-      const d = dx_(t);
-      if (Math.abs(d) < 1e-6) break;
-      t -= err / d;
-    }
-    let lo = 0;
-    let hi = 1;
-    t = x;
-    for (let i = 0; i < 40; i++) {
-      const v = bx_(t);
-      if (Math.abs(v - x) < 1e-7) break;
-      if (v < x) lo = t;
-      else hi = t;
-      t = (lo + hi) / 2;
-    }
-    return by_(t);
-  };
-}
-
-/** `ease-in-out` di CSS. */
-export const easeInOut = cubicBezier(0.42, 0, 0.58, 1);
-
-/**
- * Opacità del simbolo `<>` di una fetta vuota a `elapsedMs`: dal basso
- * (0,45) all'alto (0,95) a metà periodo e ritorno, con `ease-in-out` su
- * ciascuna metà, come i `@keyframes` del prototipo.
- */
-export function waitingOpacity(elapsedMs: number): number {
-  const phase = (((elapsedMs % WAIT_PERIOD) + WAIT_PERIOD) % WAIT_PERIOD) / WAIT_PERIOD;
-  const u = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
-  return WAIT_LOW + (WAIT_HIGH - WAIT_LOW) * easeInOut(u);
-}
-
-/** Opacità da mostrare: animata, o ferma a riposo con movimento ridotto. */
-export function waitingOpacityFor(elapsedMs: number, reduced: boolean): number {
-  return reduced ? WAIT_REST : waitingOpacity(elapsedMs);
-}
-```
-
-### `src/etl-canvas/icons.tsx`
-
-24 righe
+92 righe
 
 ```tsx
-import { EMPTY_SLOT_ICON, ICONS } from "../etl-core";
-import type { ComponentId } from "../etl-core";
+import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
+import { QueryClient } from "@tanstack/react-query";
+import { createRouter } from "@tanstack/react-router";
+import { createElement } from "react";
+import { renderToString } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+import { createEtlStore } from "../../etl-store";
+import { EtlCanvas } from "../EtlCanvas";
+import { routeTree } from "../../routeTree.gen";
 
-/** Icona del catalogo di etl-core (prototipo `svgTag`, righe 979-981). I tracciati sono costanti del catalogo, mai dati dell'utente. */
-export function Icon(props: {
-  id: ComponentId | "empty";
-  svgRef?: (el: SVGSVGElement | null) => void;
-}) {
-  const inner = props.id === "empty" ? EMPTY_SLOT_ICON : ICONS[props.id];
-  return (
-    <svg
-      ref={props.svgRef}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      dangerouslySetInnerHTML={{ __html: inner }}
-    />
-  );
-}
-```
-
-### `src/etl-canvas/index.ts`
-
-21 righe
-
-```ts
-/**
- * etl-canvas — Fase 4a: resa visiva del canvas ETL. Importa da etl-core,
- * etl-layout ed etl-store; nessuno di questi importa da qui.
- */
-export { EtlCanvas, CanvasSurface } from "./EtlCanvas";
-export type { CanvasSurfaceProps } from "./EtlCanvas";
-export { prototypeScene } from "./seed";
-export { fit, zoomIn, zoomOut, zoomReset, zoomAtPoint } from "./actions";
-export { fitView, zoomAt, minimapFrame, bounds } from "./view";
-export { nodeView, countClass, isPartial, slicesOf } from "./model";
-export { createInteractionController } from "./interaction";
-export type {
-  InteractionController,
-  InteractionUi,
-  DownTarget,
-  PointerInput,
-  KeyInput,
-} from "./interaction";
-export { handleCanvasDrop, previewCanvasDrop } from "./drop";
-export type { CanvasDropPayload, DropPreview } from "./drop";
-```
-
-### `src/etl-canvas/interaction.ts`
-
-667 righe
-
-```ts
-/**
- * Il livello dei gesti del canvas: dal puntatore e dalla tastiera ai comandi
- * di etl-store. TypeScript puro, senza DOM né React: gli eventi arrivano già
- * tradotti (coordinate relative all'area, bersaglio classificato), così si
- * può provare con eventi simulati.
- *
- * Questo livello NON contiene logica di dominio. Ogni gesto chiama una
- * funzione che esiste già:
- *   trascinamento     → store.beginGesture / updateGesture / commitGesture / cancelGesture
- *   esito del rilascio → etl-core `relation`, `insertable`; etl-layout `nodeAt`, `linkAt`
- *   porte             → comando `connect`; geometria `nodePorts`
- *   selezione         → comandi `select` e `inspect`; geometria `nodeRect`
- *   tastiera          → comandi `deleteNodes`, `duplicate`, `moveNodes`, `select`; `undo`/`redo`
- *   anteprima eliminazione → etl-core `nodesRemovedBy`
- * Vedi la tabella nel README.
- */
-import { boxCapacity, inputsOf, insertable, nodesRemovedBy, relation } from "../etl-core";
-import type { Graph, Link } from "../etl-core";
-import {
-  DRAG_THRESHOLD_PX,
-  GRID,
-  linkAt,
-  linkKey,
-  nodeAt,
-  nodePorts,
-  nodeRect,
-} from "../etl-layout";
-import type { LinkRoutes, Point, Rect } from "../etl-layout";
-import type { CommandResult, EtlStore } from "../etl-store";
-import { handleCanvasDrop, previewCanvasDrop } from "./drop";
-import type { CanvasDropPayload, DropPreview } from "./drop";
-import { toWorld } from "./view";
-
-/** Soglia del riquadro di selezione (prototipo, riga 4064). */
-export const MARQUEE_THRESHOLD = 4;
-/** Passo singolo delle frecce (prototipo, riga 4638: `GRID` con Maiusc, altrimenti 2). */
-export const NUDGE_STEP = 2;
-
-/** Esito mostrato su un nodo durante un trascinamento. */
-export type DragOutcome = "merge" | "link" | "link-reverse" | "displace" | "reject";
-
-/** Dove è iniziato il gesto, classificato dal livello che legge il DOM. */
-export type DownTarget =
-  | { readonly kind: "node"; readonly id: string }
-  | { readonly kind: "port"; readonly id: string; readonly side: PortSide }
-  | { readonly kind: "background" }
-  | { readonly kind: "ignore" };
-
-export type PortSide = "r" | "b" | "l" | "t";
-/** Ordine di `PORTS` (etl-layout): destra, sotto, sinistra, sopra. */
-const PORT_INDEX: Readonly<Record<PortSide, number>> = { r: 0, b: 1, l: 2, t: 3 };
-
-/** Puntatore in coordinate dell'area (pixel dello schermo relativi in alto a sinistra dell'area). */
-export interface PointerInput {
-  readonly x: number;
-  readonly y: number;
-  readonly shiftKey?: boolean;
-  readonly button?: number;
-}
-
-export interface KeyInput {
-  readonly key: string;
-  readonly metaKey?: boolean;
-  readonly ctrlKey?: boolean;
-  readonly shiftKey?: boolean;
-  /** Il fuoco è in un campo di testo: le scorciatoie non si applicano. */
-  readonly typing?: boolean;
-}
-
-export interface ConfirmState {
-  /** «delete» (Canc, Fase 5) o «clear» (Svuota, Fase 6a.2: `ids` è vuoto, tutto il canvas sparisce). */
-  readonly kind?: "delete" | "clear";
-  readonly ids: readonly string[];
-  /** Tutto ciò che sparirebbe: i nodi scelti e gli output a valle (etl-core `nodesRemovedBy`). */
-  readonly removed: readonly string[];
-  readonly title: string;
-  readonly text: string;
-}
-
-export interface InteractionUi {
-  /** Nodi in movimento. */
-  readonly dragging: readonly string[];
-  /** Nodo sotto il puntatore e cosa succederebbe al rilascio. */
-  readonly drop: { readonly id: string; readonly outcome: DragOutcome } | null;
-  /** Chiave (`da|a`) del cavo in cui si inserirebbe la lavorazione. */
-  readonly insertLink: string | null;
-  /** Cavo provvisorio tirato da una porta (coordinate del mondo). */
-  readonly tempLink: { readonly from: Point; readonly to: Point; readonly valid: boolean } | null;
-  /** Riquadro di selezione (coordinate dell'area) e nodi che comprende. */
-  readonly marquee: { readonly rect: Rect; readonly ids: readonly string[] } | null;
-  readonly confirm: ConfirmState | null;
-  readonly hint: string | null;
-}
-
-export const IDLE_UI: InteractionUi = {
-  dragging: [],
-  drop: null,
-  insertLink: null,
-  tempLink: null,
-  marquee: null,
-  confirm: null,
-  hint: null,
-};
-
-type Active =
-  | {
-      readonly kind: "node";
-      readonly id: string;
-      readonly start: Point;
-      readonly shift: boolean;
-      readonly group: readonly string[] | null;
-      readonly canInsert: boolean;
-      moved: boolean;
-      /** Esito mostrato nell'ultimo aggiornamento: è quello applicato al rilascio. */
-      drop: { id: string; outcome: DragOutcome } | null;
-      insertLink: Link | null;
-      /** Percorsi dei cavi prima del gesto (vedi `moveNode`). */
-      startRoutes: LinkRoutes | null;
-    }
-  | {
-      readonly kind: "port";
-      readonly id: string;
-      readonly from: Point;
-      rel: "link" | "link-reverse" | null;
-      target: string | null;
-    }
-  | {
-      /** Pressione su un cavo: un click lo elimina (prototipo, righe 4575-4580). */
-      readonly kind: "link";
-      readonly link: Link;
-      readonly start: Point;
-      moved: boolean;
-    }
-  | {
-      readonly kind: "marquee";
-      readonly start: Point;
-      readonly base: readonly string[];
-      moved: boolean;
-      ids: readonly string[];
-    };
-
-export interface InteractionController {
-  getUi(): InteractionUi;
-  subscribe(listener: () => void): () => void;
-  /** Un gesto è in corso (il livello DOM ascolta i movimenti finché è vero). */
-  isActive(): boolean;
-  /** Barra spaziatrice premuta: navigazione, nessun gesto di selezione. */
-  setSpace(down: boolean): void;
-  down(target: DownTarget, input: PointerInput): boolean;
-  move(input: PointerInput): void;
-  up(input: PointerInput): void;
-  /** Interrompe il gesto (pointercancel, Esc). */
-  cancel(): void;
-  key(input: KeyInput): boolean;
-  confirmDelete(): CommandResult | null;
-  cancelConfirm(): void;
-  /** Chiede conferma per svuotare il canvas (comando `clearAll`); non fa nulla se è già vuoto. */
-  requestClearAll(): void;
-  /**
-   * Un clic su un nodo (rilascio senza trascinamento) che lascia selezionato
-   * solo quel nodo: è l'unico evento che apre l'Inspector. `id` è il nodo.
-   */
-  subscribeClick(listener: (id: string) => void): () => void;
-  /** Punto dell'area → coordinate del mondo (per chi rilascia dalla cassetta). */
-  toWorld(x: number, y: number): Point;
-  /** Rilascio di un nuovo elemento: vedi drop.ts. */
-  handleCanvasDrop(payload: CanvasDropPayload, point: Point): CommandResult;
-  previewCanvasDrop(payload: CanvasDropPayload, point: Point): DropPreview;
-  /**
-   * Un elemento trascinato da fuori (la cassetta) passa sopra il canvas:
-   * mostra gli stessi contorni del trascinamento tra nodi. `point` è in
-   * coordinate dell'area, `null` se il puntatore è fuori dall'area.
-   */
-  hoverExternal(payload: CanvasDropPayload, point: Point | null): void;
-  /** Rilascio dell'elemento trascinato da fuori; `null` se il puntatore è fuori dall'area. */
-  dropExternal(payload: CanvasDropPayload, point: Point | null): CommandResult | null;
-}
-
-function sameIds(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && a.every((id, i) => id === b[i]);
-}
-
-/** Testi della conferma (prototipo, righe 4509-4552). */
-function confirmCopy(
-  ids: readonly string[],
-  removedCount: number,
-): { title: string; text: string } {
-  const downstream = removedCount - ids.length;
-  if (ids.length === 1) {
-    const n = downstream;
-    return {
-      title: "Eliminare il nodo?",
-      text:
-        n > 0
-          ? `Fa parte del flusso. Verranno rimossi i suoi collegamenti e ${n}${n > 1 ? " risultati a valle." : " risultato a valle."}`
-          : "Fa parte del flusso: i suoi collegamenti verranno rimossi.",
-    };
-  }
+// Le soluzioni vivono nel browser (localStorage): sul server non ce n'è nessuna e la
+// rotta mostrerebbe "Soluzione non trovata". Se ne simula una per rendere davvero la pagina.
+vi.mock("@/lib/solutions-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/solutions-store")>();
   return {
-    title: `Eliminare ${ids.length} nodi?`,
-    text:
-      "Alcuni fanno parte del flusso: verranno rimossi i loro collegamenti" +
-      (downstream > 0
-        ? ` e ${downstream} ${downstream > 1 ? "risultati" : "risultato"} a valle.`
-        : "."),
+    ...actual,
+    useSolutions: () => ({
+      ...actual.useSolutions(),
+      solutions: [
+        {
+          id: "demo",
+          name: "Demo",
+          version: "v1",
+          modules: { etl: "draft" },
+          shares: [],
+          parameters: [],
+          series: [],
+        },
+      ],
+    }),
   };
+});
+
+/**
+ * In vitest `styles.css?url` vale "": React se ne lamenta per il link della
+ * radice, per qualunque rotta. Non dipende dal canvas, quindi si ignora.
+ */
+function relevant(calls: unknown[][]): unknown[][] {
+  return calls.filter((c) => !/precedence|empty string/.test(String(c[0])));
 }
 
-export function createInteractionController(store: EtlStore): InteractionController {
-  let ui: InteractionUi = IDLE_UI;
-  let active: Active | null = null;
-  let space = false;
-  const listeners = new Set<() => void>();
-  const clickListeners = new Set<(id: string) => void>();
+async function renderRoute(url: string): Promise<string> {
+  const router = createRouter({
+    routeTree,
+    context: { queryClient: new QueryClient() },
+    history: createMemoryHistory({ initialEntries: [url] }),
+  });
+  await router.load();
+  return renderToString(createElement(RouterProvider, { router }));
+}
 
-  const setUi = (patch: Partial<InteractionUi>): void => {
-    const next = { ...ui, ...patch };
-    const keys = Object.keys(next) as (keyof InteractionUi)[];
-    if (keys.every((k) => next[k] === ui[k])) return;
-    ui = next;
-    for (const l of [...listeners]) l();
-  };
-  const graph = (): Graph => store.getState().graph;
-  const worldOf = (p: Point): Point => toWorld(store.getState().view, p.x, p.y);
-  const linkOfKey = (key: string): Link | null =>
-    graph().links.find((l) => linkKey(l) === key) ?? null;
-
-  /** `select` + `inspect`: l'Inspector segue la selezione (nessun pannello, solo stato). */
-  const applySelection = (ids: readonly string[]): void => {
-    const s = store.getState();
-    const unique = Array.from(new Set(ids));
-    if (!sameIds(s.selection, unique)) store.dispatch({ type: "select", payload: { ids: unique } });
-    const keep = s.inspector.nodeId && unique.includes(s.inspector.nodeId);
-    const node = unique.length ? (keep ? s.inspector.nodeId : (unique[0] as string)) : null;
-    if (node !== s.inspector.nodeId || (node !== null && s.inspector.step !== 0 && !keep)) {
-      store.dispatch({ type: "inspect", payload: { node, step: 0 } });
-    }
-  };
-
-  const hintForLink = (g: Graph, dragged: string, over: string): string => {
-    const boxId = relation(g, dragged, over).relation === "link" ? over : dragged;
-    const box = g.cards[boxId];
-    const need = box ? boxCapacity(box) - inputsOf(g, boxId).length : 1;
-    return need > 1
-      ? "Rilascia: sarà la tabella di sinistra, poi servirà la seconda"
-      : "Rilascia per collegare e generare l’output";
-  };
-
-  // --- trascinamento di un nodo ---------------------------------------------------
-
-  const moveNode = (a: Extract<Active, { kind: "node" }>, input: PointerInput): void => {
-    const view = store.getState().view;
-    const sx = input.x - a.start.x;
-    const sy = input.y - a.start.y;
-    if (!a.moved) {
-      if (Math.hypot(sx, sy) < DRAG_THRESHOLD_PX) return;
-      const ids = a.group ?? [a.id];
-      if (a.canInsert) a.startRoutes = store.getRoutes();
-      const r = store.beginGesture({ ids });
-      if (!r.ok) {
-        active = null;
-        return;
-      }
-      a.moved = true;
-      setUi({ dragging: ids });
-    }
-    const dx = sx / view.zoom;
-    const dy = sy / view.zoom;
-    if (a.group) {
-      store.updateGesture({ dx, dy });
-      return;
-    }
-    const p = worldOf(input);
-    const over = nodeAt(graph(), p, a.id);
-    // l'esito si calcola sul grafo PRIMA dell'aggiornamento: l'aggiornamento può spingere via l'altro nodo
-    const rel = over ? relation(graph(), a.id, over) : null;
-    store.updateGesture({ dx, dy, over });
-
-    if (over && rel) {
-      const outcome: DragOutcome = rel.relation ?? "reject";
-      a.drop = { id: over, outcome };
-      a.insertLink = null;
-      setUi({
-        drop: a.drop,
-        insertLink: null,
-        hint:
-          outcome === "merge"
-            ? "Rilascia per fondere le lavorazioni"
-            : outcome === "link" || outcome === "link-reverse"
-              ? hintForLink(graph(), a.id, over)
-              : (rel.displaceReason ?? null),
-      });
-      return;
-    }
-    a.drop = null;
-    // sopra un cavo, senza un nodo sotto: una lavorazione slegata si inserisce nel collegamento
-    let insert: Link | null = null;
-    if (a.canInsert) {
-      // il nodo in mano è un ostacolo e fa scansare i cavi: si prova anche sui percorsi di prima del gesto
-      const key = linkAt(store.getRoutes(), p) ?? (a.startRoutes ? linkAt(a.startRoutes, p) : null);
-      const link = key ? linkOfKey(key) : null;
-      if (link && insertable(graph(), link, a.id)) insert = link;
-    }
-    a.insertLink = insert;
-    setUi({
-      drop: null,
-      insertLink: insert ? linkKey(insert) : null,
-      hint: insert ? "Rilascia per inserire la lavorazione nel collegamento" : null,
-    });
-  };
-
-  const releaseNode = (a: Extract<Active, { kind: "node" }>, input: PointerInput): void => {
-    if (!a.moved) {
-      // un click: Maiusc aggiunge o toglie; altrimenti seleziona solo questo (riga 2069)
-      if (a.shift || input.shiftKey) {
-        const sel = store.getState().selection;
-        applySelection(sel.includes(a.id) ? sel.filter((x) => x !== a.id) : [...sel, a.id]);
-      } else applySelection([a.id]);
-      const sel = store.getState().selection;
-      if (!a.shift && !input.shiftKey && sel.length === 1 && sel[0] === a.id)
-        for (const l of [...clickListeners]) l(a.id);
-      return;
-    }
-    const outcome = a.drop?.outcome;
-    const target =
-      a.drop && (outcome === "merge" || outcome === "link" || outcome === "link-reverse")
-        ? { node: a.drop.id }
-        : a.insertLink
-          ? { link: a.insertLink }
-          : undefined;
-    store.commitGesture(target ? { target } : {});
-  };
-
-  // --- porte ----------------------------------------------------------------------
-
-  const movePort = (a: Extract<Active, { kind: "port" }>, input: PointerInput): void => {
-    const p = worldOf(input);
-    const g = graph();
-    const over = nodeAt(g, p, a.id);
-    const r = over ? relation(g, a.id, over) : null;
-    // dalle porte si collega soltanto: fusione e spostamento diventano rifiuto (riga 3990)
-    const rel = r && (r.relation === "link" || r.relation === "link-reverse") ? r.relation : null;
-    a.rel = rel;
-    a.target = rel ? over : null;
-    setUi({
-      tempLink: { from: a.from, to: p, valid: !!rel },
-      drop: over ? { id: over, outcome: rel ?? "reject" } : null,
-      hint: rel
-        ? "Rilascia per collegare"
-        : over
-          ? (r?.displaceReason ?? "Questi due nodi non si possono collegare")
-          : "Trascina fino al nodo da collegare",
-    });
-  };
-
-  const releasePort = (a: Extract<Active, { kind: "port" }>): void => {
-    if (a.rel && a.target) {
-      if (a.rel === "link")
-        store.dispatch({ type: "connect", payload: { from: a.id, to: a.target } });
-      else store.dispatch({ type: "connect", payload: { from: a.target, to: a.id } });
-    }
-  };
-
-  // --- riquadro di selezione ------------------------------------------------------
-
-  const marqueeRect = (a: Extract<Active, { kind: "marquee" }>, input: PointerInput): Rect => ({
-    x: Math.min(a.start.x, input.x),
-    y: Math.min(a.start.y, input.y),
-    w: Math.abs(input.x - a.start.x),
-    h: Math.abs(input.y - a.start.y),
+describe("rendering lato server", () => {
+  it("EtlCanvas sul server produce solo il contenitore, senza canvas né errori", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = renderToString(createElement(EtlCanvas, { store: createEtlStore() }));
+    expect(out).toContain("etl-canvas-host");
+    expect(out).not.toContain("ec-stage");
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
   });
 
-  /** Nodi il cui quadrato tocca il riquadro (prototipo, righe 4071-4076: il riquadro è in coordinate dello schermo). */
-  const idsInRect = (rect: Rect): string[] => {
-    const a = worldOf({ x: rect.x, y: rect.y });
-    const b = worldOf({ x: rect.x + rect.w, y: rect.y + rect.h });
-    const out: string[] = [];
-    for (const c of Object.values(graph().cards)) {
-      const r = nodeRect(c);
-      if (r.x + r.w > a.x && r.x < b.x && r.y + r.h > a.y && r.y < b.y) out.push(c.id);
-    }
-    return out;
-  };
-
-  // --- eliminazione ---------------------------------------------------------------
-
-  const requestDelete = (): void => {
-    const ids = store.getState().selection.filter((id) => !!graph().cards[id]);
-    if (!ids.length) return;
-    const attached = graph().links.some((l) => ids.includes(l.from) || ids.includes(l.to));
-    if (!attached) {
-      store.dispatch({ type: "deleteNodes", payload: { ids } });
-      return;
-    }
-    const removed = [...nodesRemovedBy(graph(), ids)];
-    setUi({ confirm: { ids, removed, ...confirmCopy(ids, removed.length) } });
-  };
-
-  const requestClearAll = (): void => {
-    const removed = Object.keys(graph().cards);
-    if (!removed.length) return;
-    setUi({
-      confirm: {
-        kind: "clear",
-        ids: [],
-        removed,
-        title: "Svuotare il canvas?",
-        text: "Eliminare tutti i nodi e i collegamenti? Puoi annullare con Cmd/Ctrl+Z.",
-      },
-    });
-  };
-
-  const nudge = (dx: number, dy: number): void => {
-    const ids = store.getState().selection;
-    if (ids.length) store.dispatch({ type: "moveNodes", payload: { ids, dx, dy } });
-  };
-
-  const finish = (): void => {
-    active = null;
-    setUi({
-      dragging: [],
-      drop: null,
-      insertLink: null,
-      tempLink: null,
-      marquee: null,
-      hint: null,
-    });
-  };
-
-  const controller: InteractionController = {
-    getUi: () => ui,
-    subscribe(l) {
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
-    isActive: () => active !== null,
-    setSpace(down) {
-      space = down;
-    },
-
-    down(target, input) {
-      if (active) return false;
-      if (input.button !== undefined && input.button !== 0) return false;
-      if (target.kind === "ignore") return false;
-      if (ui.confirm) setUi({ confirm: null });
-      if (space) return false;
-      const start = { x: input.x, y: input.y };
-
-      if (target.kind === "port") {
-        const card = graph().cards[target.id];
-        if (!card) return false;
-        const port = nodePorts(card)[PORT_INDEX[target.side]];
-        if (!port) return false;
-        const from = { x: port.anchor.x, y: port.anchor.y };
-        active = { kind: "port", id: target.id, from, rel: null, target: null };
-        setUi({
-          dragging: [target.id],
-          tempLink: { from, to: worldOf(start), valid: false },
-          hint: "Trascina fino al nodo da collegare",
-        });
-        return true;
-      }
-
-      if (target.kind === "node") {
-        const card = graph().cards[target.id];
-        if (!card) return false;
-        const sel = store.getState().selection;
-        const group =
-          sel.includes(target.id) && sel.length > 1
-            ? sel.filter((id) => !!graph().cards[id])
-            : null;
-        const canInsert =
-          !group &&
-          card.kind === "op" &&
-          !graph().links.some((l) => l.from === target.id || l.to === target.id);
-        active = {
-          kind: "node",
-          id: target.id,
-          start,
-          shift: !!input.shiftKey,
-          group,
-          canInsert,
-          moved: false,
-          drop: null,
-          insertLink: null,
-          startRoutes: null,
-        };
-        return true;
-      }
-
-      // su un cavo: niente riquadro, il click lo elimina (nel prototipo il cavo non è "sfondo", riga 4033)
-      const hit = linkAt(store.getRoutes(), worldOf(start));
-      const link = hit ? linkOfKey(hit) : null;
-      if (link) {
-        active = { kind: "link", link, start, moved: false };
-        return true;
-      }
-
-      // sfondo: riquadro di selezione (Maiusc = si aggiunge alla selezione)
-      const base = input.shiftKey ? [...store.getState().selection] : [];
-      active = { kind: "marquee", start, base, moved: false, ids: base };
-      return true;
-    },
-
-    move(input) {
-      const a = active;
-      if (!a) return;
-      if (a.kind === "node") moveNode(a, input);
-      else if (a.kind === "link") {
-        if (Math.hypot(input.x - a.start.x, input.y - a.start.y) >= DRAG_THRESHOLD_PX)
-          a.moved = true;
-      } else if (a.kind === "port") movePort(a, input);
-      else {
-        if (!a.moved && Math.hypot(input.x - a.start.x, input.y - a.start.y) < MARQUEE_THRESHOLD)
-          return;
-        a.moved = true;
-        const rect = marqueeRect(a, input);
-        const ids = Array.from(new Set([...a.base, ...idsInRect(rect)]));
-        a.ids = ids;
-        setUi({ marquee: { rect, ids } });
-      }
-    },
-
-    up(input) {
-      const a = active;
-      if (!a) return;
-      if (a.kind === "node") {
-        releaseNode(a, input);
-      } else if (a.kind === "port") {
-        releasePort(a);
-      } else if (a.kind === "link") {
-        if (!a.moved) store.dispatch({ type: "deleteLink", payload: { link: a.link } });
-      } else if (a.moved) {
-        applySelection(a.ids);
-      } else if (store.getState().selection.length || store.getState().inspector.nodeId) {
-        // un click sul vuoto deseleziona (riga 4584)
-        applySelection([]);
-      }
-      finish();
-    },
-
-    cancel() {
-      const a = active;
-      if (!a) return;
-      if (a.kind === "node" && a.moved) store.cancelGesture();
-      finish();
-    },
-
-    key(e) {
-      if (e.typing) return false;
-      const mod = !!(e.metaKey || e.ctrlKey);
-      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      // con una conferma aperta restano attivi solo Esc (annulla) e il normale uso da tastiera della finestra
-      if (ui.confirm && k !== "Escape") return false;
-      if (!mod) {
-        if (k === "Delete" || k === "Backspace") {
-          if (!store.getState().selection.length) return false;
-          requestDelete();
-          return true;
-        }
-        if (k === "Escape") {
-          if (active) {
-            controller.cancel();
-            return true;
-          }
-          if (ui.confirm) {
-            setUi({ confirm: null });
-            return true;
-          }
-          applySelection([]);
-          return true;
-        }
-        const step = e.shiftKey ? GRID : NUDGE_STEP;
-        const arrows: Record<string, [number, number]> = {
-          ArrowLeft: [-step, 0],
-          ArrowRight: [step, 0],
-          ArrowUp: [0, -step],
-          ArrowDown: [0, step],
-        };
-        const d = arrows[k];
-        if (d && store.getState().selection.length) {
-          nudge(d[0], d[1]);
-          return true;
-        }
-        return false;
-      }
-      if (k === "d") {
-        const r = store.dispatch({
-          type: "duplicate",
-          payload: { ids: store.getState().selection },
-        });
-        if (r.ok) applySelection(store.getState().selection);
-        return true;
-      }
-      if (k === "a") {
-        applySelection(Object.keys(graph().cards));
-        return true;
-      }
-      if (k === "z" && e.shiftKey) {
-        store.redo();
-        return true;
-      }
-      if (k === "z") {
-        store.undo();
-        return true;
-      }
-      if (k === "y") {
-        store.redo();
-        return true;
-      }
-      return false;
-    },
-
-    confirmDelete() {
-      const c = ui.confirm;
-      if (!c) return null;
-      setUi({ confirm: null });
-      if (c.kind === "clear") return store.dispatch({ type: "clearAll", payload: {} });
-      return store.dispatch({ type: "deleteNodes", payload: { ids: c.ids } });
-    },
-    cancelConfirm() {
-      setUi({ confirm: null });
-    },
-    requestClearAll,
-
-    hoverExternal(payload, point) {
-      if (active) return;
-      if (!point) {
-        setUi({ drop: null, insertLink: null, hint: null });
-        return;
-      }
-      const preview = previewCanvasDrop(store, payload, worldOf(point));
-      const outcome = preview.outcome;
-      setUi({
-        drop:
-          preview.nodeId &&
-          (outcome === "merge" || outcome === "link" || outcome === "link-reverse")
-            ? { id: preview.nodeId, outcome }
-            : null,
-        insertLink: preview.linkKey ?? null,
-        hint:
-          outcome === "merge"
-            ? "Rilascia per fondere direttamente nel box"
-            : outcome === "link" || outcome === "link-reverse"
-              ? "Rilascia per collegare"
-              : outcome === "insert"
-                ? "Rilascia per inserire la lavorazione nel collegamento"
-                : null,
-      });
-    },
-    dropExternal(payload, point) {
-      setUi({ drop: null, insertLink: null, hint: null });
-      return point ? handleCanvasDrop(store, payload, worldOf(point)) : null;
-    },
-
-    subscribeClick(l) {
-      clickListeners.add(l);
-      return () => clickListeners.delete(l);
-    },
-
-    toWorld: (x, y) => toWorld(store.getState().view, x, y),
-    handleCanvasDrop: (payload, point) => handleCanvasDrop(store, payload, point),
-    previewCanvasDrop: (payload, point) => previewCanvasDrop(store, payload, point),
-  };
-  return controller;
-}
-```
-
-### `src/etl-canvas/loop.ts`
-
-118 righe
-
-```ts
-/**
- * Un solo ciclo requestAnimationFrame per tutto il canvas. Si ferma
- * quando la scheda è nascosta e quando nessun compito ha nulla da
- * animare; con `prefers-reduced-motion` non parte mai (i compiti
- * mostrano lo stato finale con `settle`). Tutto ciò che tocca il browser
- * passa da `LoopEnv`, quindi nei test si sostituisce.
- */
-
-export interface LoopEnv {
-  raf(cb: () => void): number;
-  caf(id: number): void;
-  /** Orologio in millisecondi (nel browser `performance.now`). */
-  now(): number;
-  hidden(): boolean;
-  reducedMotion(): boolean;
-  onVisibilityChange(cb: () => void): () => void;
-  onReducedMotionChange(cb: () => void): () => void;
-}
-
-export interface Task {
-  /** Disegna il frame a `now`; `true` se ha ancora qualcosa da animare. */
-  frame(now: number): boolean;
-  /** Mostra lo stato finale, senza movimento (movimento ridotto). */
-  settle(): void;
-}
-
-export interface Loop {
-  add(task: Task): () => void;
-  /** C'è (forse) lavoro nuovo: se serve, il ciclo riparte. */
-  wake(): void;
-  running(): boolean;
-  dispose(): void;
-}
-
-export function createLoop(env: LoopEnv): Loop {
-  const tasks = new Set<Task>();
-  let id: number | null = null;
-
-  const cancel = (): void => {
-    if (id !== null) {
-      env.caf(id);
-      id = null;
-    }
-  };
-
-  const settleAll = (): void => {
-    for (const t of [...tasks]) t.settle();
-  };
-
-  const tick = (): void => {
-    id = null;
-    const now = env.now();
-    let busy = false;
-    for (const t of [...tasks]) if (t.frame(now)) busy = true;
-    if (busy && !env.hidden() && !env.reducedMotion()) id = env.raf(tick);
-  };
-
-  const schedule = (): void => {
-    if (id !== null || tasks.size === 0) return;
-    if (env.hidden()) return;
-    if (env.reducedMotion()) {
-      settleAll();
-      return;
-    }
-    id = env.raf(tick);
-  };
-
-  const offVisibility = env.onVisibilityChange(() => {
-    if (env.hidden()) cancel();
-    else schedule();
-  });
-  const offMotion = env.onReducedMotionChange(() => {
-    if (env.reducedMotion()) {
-      cancel();
-      settleAll();
-    } else schedule();
+  it("la rotta senza parametri rende il canvas nuovo (predefinito), senza errori", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warns = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const out = await renderRoute("/solutions/demo/etl");
+    expect(relevant(errors.mock.calls)).toEqual([]);
+    expect(relevant(warns.mock.calls)).toEqual([]);
+    expect(out).toContain("etl-canvas-host");
+    expect(out).not.toContain("Saved ·");
+    expect(out).not.toContain("ec-stage");
+    errors.mockRestore();
+    warns.mockRestore();
   });
 
-  return {
-    add(task) {
-      tasks.add(task);
-      schedule();
-      return () => {
-        tasks.delete(task);
-        if (tasks.size === 0) cancel();
-      };
-    },
-    wake: schedule,
-    running: () => id !== null,
-    dispose() {
-      cancel();
-      tasks.clear();
-      offVisibility();
-      offMotion();
-    },
-  };
-}
+  it("con ?seed=prototype si rende senza errori", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await renderRoute("/solutions/demo/etl?seed=prototype");
+    expect(out).toContain("etl-canvas-host");
+    expect(relevant(errors.mock.calls)).toEqual([]);
+    errors.mockRestore();
+  });
 
-/** Ambiente reale. Va creato solo nel browser (in un effetto), mai durante il rendering. */
-export function browserEnv(): LoopEnv {
-  const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-  return {
-    raf: (cb) => requestAnimationFrame(() => cb()),
-    caf: (id) => cancelAnimationFrame(id),
-    now: () => performance.now(),
-    hidden: () => document.hidden,
-    reducedMotion: () => mq.matches,
-    onVisibilityChange(cb) {
-      document.addEventListener("visibilitychange", cb);
-      return () => document.removeEventListener("visibilitychange", cb);
-    },
-    onReducedMotionChange(cb) {
-      mq.addEventListener("change", cb);
-      return () => mq.removeEventListener("change", cb);
-    },
-  };
-}
+  it("con ?canvas=v1 resta raggiungibile il canvas vecchio", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await renderRoute("/solutions/demo/etl?canvas=v1");
+    expect(out).toContain("Saved ·");
+    expect(out).not.toContain("etl-canvas-host");
+    expect(relevant(errors.mock.calls)).toEqual([]);
+    errors.mockRestore();
+  });
+});
 ```
 
-### `src/etl-canvas/model.ts`
+### `src/etl-canvas/__tests__/tokens.test.ts`
 
-112 righe
+114 righe
 
 ```ts
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { resolveTokens } from "../../theme/__tests__/support";
+import { PAIRS, measure, readTokens } from "../contrast";
+
+const css = readFileSync(new URL("../tokens.css", import.meta.url), "utf8");
+const prototype = readFileSync(
+  new URL("../../../docs/prototype/isa-fusion-prototype.html", import.meta.url),
+  "utf8",
+);
+const light = readTokens(css, resolveTokens("prototipo", "light"));
+const dark = readTokens(css, resolveTokens("prototipo", "dark"));
+
+/** Il prototipo scrive i colori in forme diverse (`#E1DCF0`, `rgba(108,99,255,0.34)`): si confrontano normalizzati. */
+function norm(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/0\.(\d)0+\b/g, "0.$1");
+}
+const proto = norm(prototype);
+
+/** Token del tema chiaro che non vengono dal prototipo (nuovi o di misura). */
+const NEW_TOKENS = new Set([
+  "--ec-node-op-border",
+  "--ec-empty-ink",
+  "--ec-accent-text",
+  "--ec-font",
+  "--ec-glass-shadow",
+  "--ec-glass-blur",
+  "--ec-r-op",
+  "--ec-r-fill",
+  "--ec-r-stage",
+  "--ec-r-minimap",
+  "--ec-r-pill",
+  "--ec-node-fill-ink",
+  "--ec-output-opacity",
+  "--ec-link-dot-fill",
+  "--ec-link-dot-op",
+  "--ec-select",
+  "--ec-mm-node-ds",
+  "--ec-mm-view-line",
+  "--ec-node-op-ink",
+  "--ec-ink",
+  "--ec-accent",
+]);
+
+describe("tema chiaro: valori del prototipo", () => {
+  it("ogni colore chiaro è scritto nel prototipo", () => {
+    for (const [name, value] of Object.entries(light)) {
+      if (NEW_TOKENS.has(name) || !/^(#|rgba?\()/.test(value)) continue;
+      expect(proto, `${name}: ${value}`).toContain(norm(value));
+    }
+  });
+
+  it("i valori chiave coincidono con le variabili CSS del prototipo", () => {
+    expect(light["--ec-bg"]).toBe("#f5f3ee");
+    expect(light["--ec-ink"]).toBe("#262420");
+    expect(light["--ec-muted"]).toBe("#847e74");
+    expect(light["--ec-accent"]).toBe("#6c63ff");
+    expect(light["--ec-accent-soft"]).toBe("rgba(108, 99, 255, 0.16)");
+    expect(light["--ec-accent-soft-2"]).toBe("rgba(108, 99, 255, 0.34)");
+    expect(light["--ec-surface-strong"]).toBe("rgba(255, 255, 255, 0.92)");
+    expect(light["--ec-panel-border"]).toBe("rgba(38, 36, 32, 0.06)");
+    expect(light["--ec-r-op"]).toBe("22px");
+    expect(light["--ec-r-fill"]).toBe("26px");
+  });
+});
+
+describe("tema scuro: contrasto", () => {
+  for (const pair of PAIRS) {
+    it(`${pair.role}: almeno ${pair.min}:1`, () => {
+      expect(measure(dark, pair)).toBeGreaterThanOrEqual(pair.min);
+    });
+  }
+
+  it("l'accento resta #6C63FF sui riempimenti", () => {
+    expect(dark["--ec-accent"]).toBe("#6c63ff");
+    expect(dark["--ec-node-fill"]).toBe("#6c63ff");
+  });
+});
+
 /**
- * Dal grafo di etl-core a ciò che il canvas disegna: classi e icone di ogni
- * nodo, fette di un output parziale. Funzioni pure.
+ * Deroghe note del tema «notte». Stessa disciplina bidirezionale di
+ * KNOWN_EXCEPTIONS (src/theme/__tests__/checks.ts): `floor` è il rapporto
+ * misurato; il test fallisce se peggiora e fallisce anche se la coppia torna
+ * a rispettare la soglia senza che la deroga sia stata tolta a mano.
+ * Avviso #F59E0B (colore richiesto dalla specifica) sul fondo chiaro: 2,1476:1.
+ * NOTA: rivedere nella revisione di stile dopo la Fase 6.
  */
-import { sectionOf } from "../etl-core";
-import type { Card, ComponentId } from "../etl-core";
+const NOTTE_EXCEPTIONS = new Map([["light: Indicatore ambra", { floor: 2.1476 }]]);
 
-/** Classe di conteggio per la disposizione delle icone (prototipo `countClass`, righe 982-985). */
-export function countClass(n: number): string {
-  if (n <= 1) return "count-1";
-  if (n === 2) return "count-2";
-  if (n <= 3) return "count-3";
-  if (n <= 6) return "count-6";
-  return "count-many";
-}
-
-/** Un output è "parziale" se attende altre tabelle (riga 1620). */
-export function isPartial(card: Card): boolean {
-  return (
-    card.kind === "dataset" &&
-    card.isOutput === true &&
-    card.capacity !== undefined &&
-    card.capacity > 1 &&
-    (card.filled ?? 0) < card.capacity
-  );
-}
-
-export interface Slice {
-  readonly full: boolean;
-}
-
-/** Le fette di un output parziale, riempite da sinistra (righe 1622-1627). */
-export function slicesOf(card: Card): Slice[] {
-  const n = card.capacity ?? 0;
-  const f = card.filled ?? 0;
-  return Array.from({ length: n }, (_, i) => ({ full: i < f }));
-}
-
-/** Famiglia di operazioni (colore del nodo): una per sezione della cassetta, tranne i dataset. */
-export type OpFamily = "filter" | "transform" | "merge" | "output";
-
-const FAMILY_OF_SECTION: Readonly<Record<string, OpFamily>> = {
-  rows: "filter",
-  xform: "transform",
-  merge: "merge",
-  out: "output",
-};
-
-/** La famiglia di un nodo lavorazione (quella della prima operazione); i dataset non ne hanno. */
-export function familyOf(card: Card): OpFamily | undefined {
-  if (card.kind !== "op") return undefined;
-  const first = card.components[0];
-  const section = first === undefined ? null : sectionOf(first);
-  return section ? FAMILY_OF_SECTION[section.id] : undefined;
-}
-
-export interface NodeView {
-  readonly id: string;
-  readonly card: Card;
-  /** Classi del contenitore del nodo. */
-  readonly className: string;
-  readonly iconClass: string;
-  readonly partial: boolean;
-  readonly slices: readonly Slice[];
-  readonly family: OpFamily | undefined;
-  readonly icons: readonly ComponentId[];
-  readonly warn: string | null;
-  readonly selected: boolean;
-}
-
-/** Classi del nodo (prototipo `createCardEl`, righe 1003-1004, più `partial`, `warn`, `selected`). */
-/** Stato dei gesti che cambia l'aspetto di un nodo (classi `ec-dragging`, `ec-drop-*`, `ec-doomed`). */
-export interface NodeGestureState {
-  readonly dragging?: boolean;
-  readonly drop?: "merge" | "link" | "link-reverse" | "displace" | "reject" | null;
-  readonly doomed?: boolean;
-}
-
-export function nodeView(
-  card: Card,
-  warn: string | null,
-  selected: boolean,
-  gesture: NodeGestureState = {},
-): NodeView {
-  const combined = card.kind === "op" && card.components.length > 1;
-  const partial = isPartial(card);
-  const classes = ["ec-card"];
-  if (card.kind === "dataset") classes.push("ec-dataset");
-  if (card.kind === "dataset" && card.isOutput) classes.push("ec-output");
-  if (combined) classes.push("ec-combined");
-  if (partial) classes.push("ec-partial");
-  if (warn) classes.push("ec-warn");
-  if (selected) classes.push("ec-selected");
-  if (gesture.dragging) classes.push("ec-dragging");
-  if (gesture.drop) classes.push(`ec-drop-${gesture.drop}`);
-  if (gesture.doomed) classes.push("ec-doomed");
-  const icons: ComponentId[] =
-    card.kind === "dataset" && card.isOutput ? ["dataset"] : [...card.components];
-  return {
-    id: card.id,
-    card,
-    className: classes.join(" "),
-    iconClass: partial ? "ec-icon-wrap ec-split" : `ec-icon-wrap ec-${countClass(icons.length)}`,
-    partial,
-    slices: partial ? slicesOf(card) : [],
-    family: familyOf(card),
-    icons,
-    warn,
-    selected,
-  };
-}
-```
-
-### `src/etl-canvas/motion.tsx`
-
-10 righe
-
-```tsx
-import { createContext, useContext } from "react";
-import type { MotionEngine } from "./engine";
-
-/** Il motore delle animazioni, raggiungibile da cavi e nodi per registrare i propri elementi. */
-export const MotionContext = createContext<MotionEngine | null>(null);
-
-export function useMotion(): MotionEngine | null {
-  return useContext(MotionContext);
-}
-```
-
-### `src/etl-canvas/panels/ControlBar.tsx`
-
-97 righe
-
-```tsx
-/**
- * La barra dei controlli: una riga fissa sopra l'area del canvas, dentro lo
- * spazio di lavoro (non in sovrimpressione ai nodi). Interruttore
- * Libero/Organizzato (`setMode`), Riordina (`autoLayout`), Annulla e
- * Ripristina (disabilitati senza cronologia), Svuota (`clearAll`, sempre con
- * conferma). Nel prototipo i pulsanti «Funzionalità» e «Reimposta» non sono
- * portati: tutte le funzionalità sono sempre attive.
- */
-import type { Size } from "../../etl-layout";
-import type { EtlStore } from "../../etl-store";
-import { useEtlState } from "../../etl-store/react";
-import type { InteractionController } from "../interaction";
-import { RedoIcon, ReorderIcon, TrashIcon, UndoIcon } from "./ui-icons";
-
-export function ControlBar(props: {
-  store: EtlStore;
-  controller: InteractionController;
-  /** Area del canvas: serve a «Riordina»; `null` finché non è misurata. */
-  area: Size | null;
-}) {
-  const { store, controller, area } = props;
-  // ogni cambio di stato (anche annulla e ripristina) ridisegna la barra
-  const state = useEtlState((s) => s, store);
-  const hasNodes = Object.keys(state.graph.cards).length > 0;
-  const canUndo = store.canUndo();
-  const canRedo = store.canRedo();
-
-  return (
-    <div className="ec-bar" role="toolbar" aria-label="Controlli del canvas" data-testid="ec-bar">
-      <div className="ec-seg" role="group" aria-label="Disposizione dei nodi">
-        <button
-          type="button"
-          className={"ec-seg-btn" + (state.mode === "free" ? " ec-on" : "")}
-          aria-pressed={state.mode === "free"}
-          title="Libero: i nodi stanno dove li lasci"
-          onClick={() => store.dispatch({ type: "setMode", payload: { mode: "free" } })}
-        >
-          Libero
-        </button>
-        <button
-          type="button"
-          className={"ec-seg-btn" + (state.mode === "grid" ? " ec-on" : "")}
-          aria-pressed={state.mode === "grid"}
-          title="Organizzato: i nodi si allineano alla griglia"
-          onClick={() => store.dispatch({ type: "setMode", payload: { mode: "grid" } })}
-        >
-          Organizzato
-        </button>
-      </div>
-      <button
-        type="button"
-        className="ec-bar-btn"
-        title="Riordina i nodi"
-        disabled={!hasNodes || !area}
-        onClick={() => {
-          if (area) store.dispatch({ type: "autoLayout", payload: { viewport: area } });
-        }}
-      >
-        <ReorderIcon />
-        <span>Riordina</span>
-      </button>
-      <span className="ec-bar-sep" aria-hidden="true" />
-      <button
-        type="button"
-        className="ec-bar-btn ec-bar-icon"
-        aria-label="Annulla"
-        title="Annulla (Cmd/Ctrl+Z)"
-        disabled={!canUndo}
-        onClick={() => store.undo()}
-      >
-        <UndoIcon />
-      </button>
-      <button
-        type="button"
-        className="ec-bar-btn ec-bar-icon"
-        aria-label="Ripristina"
-        title="Ripristina (Cmd/Ctrl+Maiusc+Z)"
-        disabled={!canRedo}
-        onClick={() => store.redo()}
-      >
-        <RedoIcon />
-      </button>
-      <span className="ec-bar-sep" aria-hidden="true" />
-      <button
-        type="button"
-        className="ec-bar-btn ec-bar-icon ec-bar-danger"
-        aria-label="Svuota il canvas"
-        title="Svuota il canvas: elimina tutti i nodi e i collegamenti"
-        disabled={!hasNodes}
-        onClick={() => controller.requestClearAll()}
-      >
-        <TrashIcon />
-      </button>
-    </div>
-  );
-}
-```
-
-### `src/etl-canvas/panels/Dock.tsx`
-
-325 righe
-
-```tsx
-/**
- * Il guscio comune dei pannelli: quattro approdi attorno al canvas (sopra,
- * sinistra, destra, sotto), tacca quando un pannello è chiuso, trascinamento
- * della tacca su un altro bordo, schede condivise quando due pannelli stanno
- * sullo stesso bordo (prototipo, righe 4756-4905, CSS 211-346).
- *
- * Lo stato (lato, aperto/chiuso, scheda attiva = il pannello aperto sul
- * bordo) è in etl-store; qui si legge e si cambia solo con i comandi
- * `setPanel`/`setView` (vedi actions.ts). Niente accesso a window/document
- * durante il rendering: gli ascoltatori nascono nei gestori degli eventi.
- */
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import type { Size } from "../../etl-layout";
-import type { EtlStore, PanelKey, Panels, Side } from "../../etl-store";
-import { useEtlState } from "../../etl-store/react";
-import type { InteractionController } from "../interaction";
-import type { PanelActions } from "./actions";
-import { ControlBar } from "./ControlBar";
-import {
-  MIN_CANVAS_HEIGHT,
-  PANEL_KEYS,
-  PANEL_LABEL,
-  PANEL_NAME,
-  SIDES,
-  SIDE_NAME,
-  isGrouped,
-  isVertical,
-  keepVisible,
-  nearestSide,
-  notchHidden,
-  notchOffset,
-  panelSize,
-} from "./layout";
-import { overlayLayout } from "./overlayLayout";
-import type { OverlayLayout } from "./overlayLayout";
-import "./panels.css";
-import { InspectorIcon, ToolsIcon } from "./ui-icons";
-
-/** Soglia prima che la tacca si stacchi dal bordo (prototipo, riga 4884). */
-const NOTCH_DRAG_THRESHOLD = 5;
-/** Durata della dissolvenza del contenuto al cambio di scheda (riga 4809). */
-const TAB_IN_MS = 280;
-
-const TAB_ICON: Record<PanelKey, () => ReactNode> = {
-  tools: () => <ToolsIcon />,
-  insp: () => <InspectorIcon />,
-};
-
-export interface DockLayoutProps {
-  readonly store: EtlStore;
-  readonly actions: PanelActions;
-  /** Controller dei gesti: la barra dei controlli chiede la conferma di «Svuota» al canvas. */
-  readonly controller: InteractionController;
-  /** Il canvas, al centro; riceve la disposizione dei widget in sovrimpressione, quando l'area è misurata. */
-  readonly canvas: (overlay: OverlayLayout | undefined) => ReactNode;
-  /** Contenuto di ciascun pannello; `side` è il bordo corrente, `horiz` l'orientamento. */
-  readonly content: Readonly<Record<PanelKey, (ctx: { side: Side; horiz: boolean }) => ReactNode>>;
-  /** Altro da disegnare sopra lo spazio di lavoro (per esempio l'anteprima del trascinamento). */
-  readonly overlay?: ReactNode;
-}
-
-interface NotchDrag {
-  readonly key: PanelKey;
-  readonly x: number;
-  readonly y: number;
-  readonly side: Side;
-}
-
-export function DockLayout(props: DockLayoutProps) {
-  const { store, actions, controller, canvas, content, overlay } = props;
-  const panels = useEtlState((s) => s.panels, store);
-  const centerRef = useRef<HTMLDivElement>(null);
-  // misura dell'area del canvas (la riga centrale): da qui la disposizione dei widget e la visibilità dei nodi
-  const [area, setArea] = useState<Size | null>(null);
-  useEffect(() => {
-    const el = centerRef.current;
-    if (!el) return;
-    const measure = () => {
-      const w = el.clientWidth;
-      const h = el.clientHeight;
-      setArea((prev) => (prev && prev.w === w && prev.h === h ? prev : { w, h }));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  const openSide =
-    PANEL_KEYS.map((k) => (panels[k].open ? panels[k].side : null)).find(Boolean) ?? null;
-  const layout = useMemo(
-    () =>
-      area
-        ? overlayLayout({
-            area,
-            openSide,
-            notches: PANEL_KEYS.map((k) => ({
-              key: k,
-              side: panels[k].side,
-              offset: notchOffset(panels, k),
-              visible: !notchHidden(panels, k),
-            })),
-          })
-        : undefined,
-    [area, openSide, panels],
-  );
-  // dopo ogni cambio (apertura, chiusura, scheda, bordo, finestra) i nodi che erano interamente visibili lo restano
-  const lastVisibility = useRef<{ size: Size; insets: OverlayLayout["insets"] } | null>(null);
-  useEffect(() => {
-    if (!area || !layout) return;
-    const next = { size: area, insets: layout.insets };
-    const prev = lastVisibility.current;
-    lastVisibility.current = next;
-    if (!prev) return;
-    const st = store.getState();
-    const view = keepVisible(Object.values(st.graph.cards), st.view, prev, next);
-    if (view !== st.view) store.dispatch({ type: "setView", payload: { x: view.x, y: view.y } });
-  }, [area, layout, store]);
-  const [drag, setDrag] = useState<NotchDrag | null>(null);
-  // cambiare scheda sostituisce il contenuto sul posto: niente animazione di larghezza, solo una dissolvenza
-  const [instant, setInstant] = useState(false);
-  const [tabIn, setTabIn] = useState<PanelKey | null>(null);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const cleanup = useRef<(() => void) | null>(null);
-
-  useEffect(
-    () => () => {
-      timers.current.forEach(clearTimeout);
-      cleanup.current?.();
-    },
-    [],
-  );
-
-  const switchTab = (key: PanelKey) => {
-    setInstant(true);
-    actions.open(key);
-    setTabIn(key);
-    timers.current.push(setTimeout(() => setTabIn(null), TAB_IN_MS));
-    // il ripristino delle transizioni avviene dopo due disegni (riga 4811)
-    timers.current.push(setTimeout(() => setInstant(false), 60));
-  };
-
-  const onNotchPointerDown = (key: PanelKey, e: ReactPointerEvent<HTMLButtonElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const sx = e.clientX;
-    const sy = e.clientY;
-    let moved = false;
-    const sideAt = (cx: number, cy: number): Side => {
-      const r = centerRef.current?.getBoundingClientRect();
-      return r ? nearestSide({ x: cx, y: cy }, r) : panels[key].side;
-    };
-    const move = (ev: PointerEvent) => {
-      if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < NOTCH_DRAG_THRESHOLD) return;
-      moved = true;
-      setDrag({ key, x: ev.clientX, y: ev.clientY, side: sideAt(ev.clientX, ev.clientY) });
-    };
-    const stop = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", abort);
-      cleanup.current = null;
-      setDrag(null);
-    };
-    const up = (ev: PointerEvent) => {
-      stop();
-      // un click apre soltanto
-      if (!moved) {
-        actions.open(key);
-        return;
-      }
-      const side = sideAt(ev.clientX, ev.clientY);
-      if (side === store.getState().panels[key].side) actions.open(key);
-      else actions.moveTo(key, side);
-    };
-    const abort = () => stop();
-    cleanup.current = abort;
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", abort);
-  };
-
-  return (
-    <div
-      className="ec-workspace"
-      data-testid="ec-workspace"
-      // l'area di lavoro ha l'altezza del contenitore: i pannelli in alto e in basso la sottraggono al canvas
-      style={{ "--ec-canvas-min-h": `${MIN_CANVAS_HEIGHT}px` } as CSSProperties}
-    >
-      {SIDES.map((side) => (
-        <div key={side} className={`ec-dock ec-dock-${side}`} data-dock={side}>
-          {PANEL_KEYS.filter((k) => panels[k].side === side).map((k) => (
-            <PanelShell
-              key={k}
-              pkey={k}
-              panels={panels}
-              instant={instant}
-              tabIn={tabIn === k}
-              onSwitch={switchTab}
-            >
-              {content[k]({ side, horiz: !isVertical(side) })}
-            </PanelShell>
-          ))}
-        </div>
-      ))}
-      <div className="ec-bar-row">
-        <ControlBar store={store} controller={controller} area={area} />
-      </div>
-      <div className="ec-center" ref={centerRef}>
-        {canvas(layout)}
-        <div
-          className={"ec-edge-hint" + (drag ? ` ec-on ec-e-${drag.side}` : "")}
-          data-testid="ec-edge-hint"
-        />
-        {PANEL_KEYS.map((k) => {
-          const dragging = drag?.key === k;
-          const hidden = !dragging && notchHidden(panels, k);
-          const side = panels[k].side;
-          const rect = layout?.notches[k];
-          const pos: CSSProperties = dragging
-            ? { left: (drag?.x ?? 0) - 17, top: (drag?.y ?? 0) - 17 }
-            : rect
-              ? { left: rect.x, top: rect.y }
-              : {};
-          return (
-            <button
-              key={k}
-              type="button"
-              className={
-                `ec-notch ec-notch-${side}` +
-                (hidden ? " ec-hidden" : "") +
-                (dragging ? " ec-dragging" : "")
-              }
-              style={pos}
-              data-notch={k}
-              tabIndex={hidden ? -1 : 0}
-              aria-hidden={hidden || undefined}
-              aria-label={`${PANEL_LABEL[k]}: clicca per aprire, trascina per spostarlo`}
-              onPointerDown={(e) => onNotchPointerDown(k, e)}
-              onClick={(e) => {
-                e.stopPropagation();
-                // da tastiera (detail 0) il clic apre; col puntatore ha già aperto il rilascio
-                if (e.detail === 0) actions.open(k);
-              }}
-            >
-              {TAB_ICON[k]()}
-            </button>
+describe("tema notte: contrasto del canvas", () => {
+  for (const mode of ["light", "dark"] as const) {
+    const tokens = readTokens(css, resolveTokens("notte", mode));
+    for (const pair of PAIRS) {
+      const exception = NOTTE_EXCEPTIONS.get(`${mode}: ${pair.role}`);
+      if (exception) {
+        it(`${mode}: ${pair.role}: deroga nota (rivedere dopo la Fase 6), non deve peggiorare`, () => {
+          const ratio = measure(tokens, pair);
+          expect(ratio, "la coppia ora rispetta la soglia: togliere la deroga").toBeLessThan(
+            pair.min,
           );
-        })}
-        {drag && layout?.hint ? (
-          <div
-            className="ec-hint"
-            role="status"
-            style={{
-              left: layout.hint.x,
-              top: layout.hint.y,
-              width: layout.hint.w,
-              height: layout.hint.h,
-            }}
-          >
-            Rilascia per agganciare {PANEL_NAME[drag.key]} al bordo {SIDE_NAME[drag.side]}
-          </div>
-        ) : null}
-      </div>
-      {overlay}
-    </div>
+          expect(ratio).toBeGreaterThanOrEqual(exception.floor);
+        });
+        continue;
+      }
+      it(`${mode}: ${pair.role}: almeno ${pair.min}:1`, () => {
+        expect(measure(tokens, pair)).toBeGreaterThanOrEqual(pair.min);
+      });
+    }
+  }
+});
+```
+
+### `src/etl-canvas/__tests__/toolbox-drop.test.ts`
+
+115 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import { nodeCenter } from "../../etl-layout";
+import type { EtlStore } from "../../etl-store";
+import { createInteractionController } from "../interaction";
+import type { InteractionController } from "../interaction";
+import { loadCsvText } from "../panels/csv";
+import { storeWith } from "./helpers";
+
+function setup(): { store: EtlStore; c: InteractionController } {
+  const store = storeWith();
+  return { store, c: createInteractionController(store) };
+}
+const count = (s: EtlStore) => Object.keys(s.getState().graph.cards).length;
+const centerOf = (s: EtlStore, id: string) => nodeCenter(s.getState().graph.cards[id]!);
+
+describe("trascinamento dalla cassetta al canvas (un nodo esterno)", () => {
+  it("sul vuoto crea un nodo isolato, in un passo di cronologia", () => {
+    const { store, c } = setup();
+    const n = count(store);
+    c.hoverExternal({ component: "limit" }, { x: 900, y: 700 });
+    expect(c.getUi().drop).toBeNull();
+    expect(c.getUi().insertLink).toBeNull();
+    const r = c.dropExternal({ component: "limit" }, { x: 900, y: 700 });
+    expect(r?.ok).toBe(true);
+    expect(count(store)).toBe(n + 1);
+    expect(store.getState().graph.links).toEqual([]);
+    expect(store.historySize().past).toBe(1);
+    expect(c.getUi().drop).toBeNull();
+  });
+
+  it("sopra un box compatibile mostra il contorno di fusione e al rilascio si fonde", () => {
+    const { store, c } = setup();
+    const p = centerOf(store, "op-sort");
+    c.hoverExternal({ component: "filter" }, p);
+    expect(c.getUi().drop).toEqual({ id: "op-sort", outcome: "merge" });
+    expect(c.getUi().hint).toBe("Rilascia per fondere direttamente nel box");
+    const n = count(store);
+    c.dropExternal({ component: "filter" }, p);
+    expect(count(store)).toBe(n);
+    expect(store.getState().graph.cards["op-sort"]!.components).toEqual(["sort", "filter"]);
+    expect(c.getUi().drop).toBeNull();
+    expect(c.getUi().hint).toBeNull();
+  });
+
+  it("un dataset della libreria sopra una lavorazione mostra il collegamento e si collega", () => {
+    const { store, c } = setup();
+    loadCsvText(store, "clienti.csv", "id,nome\n1,Acme\n2,Delta");
+    const payload = { component: "dataset", libraryId: "lib-1" } as const;
+    const p = centerOf(store, "op-join");
+    c.hoverExternal(payload, p);
+    expect(c.getUi().drop).toEqual({ id: "op-join", outcome: "link" });
+    c.dropExternal(payload, p);
+    const g = store.getState().graph;
+    const created = Object.values(g.cards).find((k) => k.name === "clienti")!;
+    expect(created).toBeDefined();
+    expect(g.links).toContainEqual({ from: created.id, to: "op-join" });
+  });
+
+  it("una lavorazione sopra un dataset mostra il collegamento inverso", () => {
+    const { store, c } = setup();
+    c.hoverExternal({ component: "sort" }, centerOf(store, "ds1"));
+    expect(c.getUi().drop).toEqual({ id: "ds1", outcome: "link-reverse" });
+    c.dropExternal({ component: "sort" }, centerOf(store, "ds1"));
+    expect(store.getState().graph.links.some((l) => l.from === "ds1")).toBe(true);
+  });
+
+  it("su un cavo dataset→lavorazione evidenzia il cavo e vi si inserisce", () => {
+    const { store, c } = setup();
+    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
+    const pts = store.getRoutes()["ds1|op-join"]!.pts;
+    const mid = { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 };
+    c.hoverExternal({ component: "sort" }, mid);
+    expect(c.getUi().insertLink).toBe("ds1|op-join");
+    expect(c.getUi().hint).toContain("inserire");
+    c.dropExternal({ component: "sort" }, mid);
+    expect(store.getState().graph.links).not.toContainEqual({ from: "ds1", to: "op-join" });
+    expect(store.getState().graph.links.some((l) => l.from === "ds1" && l.to !== "op-join")).toBe(
+      true,
+    );
+  });
+
+  it("un dataset non si inserisce in un cavo: nessuna anteprima", () => {
+    const { store, c } = setup();
+    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
+    const pts = store.getRoutes()["ds1|op-join"]!.pts;
+    c.hoverExternal({ component: "dataset" }, { x: (pts[0]!.x + pts[1]!.x) / 2, y: pts[0]!.y });
+    expect(c.getUi().insertLink).toBeNull();
+  });
+
+  it("fuori dall'area non succede nulla e le anteprime si cancellano", () => {
+    const { store, c } = setup();
+    c.hoverExternal({ component: "filter" }, centerOf(store, "op-sort"));
+    c.hoverExternal({ component: "filter" }, null);
+    expect(c.getUi().drop).toBeNull();
+    const n = count(store);
+    expect(c.dropExternal({ component: "filter" }, null)).toBeNull();
+    expect(count(store)).toBe(n);
+    expect(store.historySize().past).toBe(0);
+  });
+
+  it("l'anteprima è la stessa del trascinamento tra nodi (stessa forma dello stato)", () => {
+    const { store, c } = setup();
+    c.hoverExternal({ component: "filter" }, centerOf(store, "op-sort"));
+    const external = c.getUi().drop;
+    c.hoverExternal({ component: "filter" }, null);
+    const from = centerOf(store, "op-filter");
+    c.down({ kind: "node", id: "op-filter" }, from);
+    c.move({ x: from.x + 10, y: from.y });
+    const to = centerOf(store, "op-sort");
+    c.move(to);
+    expect(c.getUi().drop).toEqual(external);
+    c.cancel();
+  });
+});
+```
+
+### `src/etl-canvas/__tests__/toolbox.test.tsx`
+
+190 righe
+
+```tsx
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { META, SECTIONS } from "../../etl-core";
+import { createEtlStore } from "../../etl-store";
+import { createInteractionController } from "../interaction";
+import { createPanelActions } from "../panels/actions";
+import { DockLayout } from "../panels/Dock";
+import { InspectorShell } from "../panels/InspectorShell";
+import { Toolbox } from "../panels/Toolbox";
+import { loadCsvText } from "../panels/csv";
+import { storeWith } from "./helpers";
+
+const noop = () => {};
+const render = (store = createEtlStore(), side: "left" | "top" = "left") =>
+  renderToStaticMarkup(
+    createElement(Toolbox, { store, side, onClose: noop, onItemPointerDown: noop }),
   );
+
+/** Le sezioni nel markup, nell'ordine: id e voci (tipo). */
+function parse(markup: string): { id: string; types: string[]; labels: string[] }[] {
+  return markup
+    .split(/<div class="ec-tb-sec(?: ec-open)?" data-sec/)
+    .slice(1)
+    .map((chunk) => ({
+      id: /^="([^"]+)"/.exec(chunk)![1]!,
+      types: [...chunk.matchAll(/data-type="([^"]+)"/g)].map((m) => m[1]!),
+      labels: [...chunk.matchAll(/class="ec-pal-label">([^<]*)</g)].map((m) => m[1]!),
+    }));
 }
 
-/** Un pannello nel suo approdo: si apre e si chiude cedendo spazio al canvas; in gruppo mostra le schede. */
-function PanelShell(props: {
-  pkey: PanelKey;
-  panels: Panels;
-  instant: boolean;
-  tabIn: boolean;
-  onSwitch: (key: PanelKey) => void;
-  children: ReactNode;
-}) {
-  const { pkey, panels, instant, tabIn, onSwitch } = props;
-  const { side, open } = panels[pkey];
-  const grouped = isGrouped(panels);
-  const size = panelSize(panels, pkey);
-  const cls = [
-    "ec-panel",
-    `ec-side-${side}`,
-    open ? "ec-open" : "",
-    grouped ? "ec-grouped" : "",
-    isVertical(side) ? "" : "ec-horiz",
-    instant ? "ec-instant" : "",
-    tabIn ? "ec-tab-in" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-  return (
-    <aside
-      className={cls}
-      data-panel={pkey}
-      data-side={side}
-      aria-label={PANEL_LABEL[pkey]}
-      inert={!open}
-      style={{ "--pw": `${size.w}px`, "--ph": `${size.h}px` } as CSSProperties}
-    >
-      {grouped ? (
-        <nav className="ec-dock-tabs" aria-label="Pannelli">
-          {PANEL_KEYS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={"ec-dock-tab" + (t === pkey ? " ec-on" : "")}
-              aria-pressed={t === pkey}
-              title={PANEL_LABEL[t]}
-              onClick={() => t !== pkey && onSwitch(t)}
-            >
-              {TAB_ICON[t]()}
-              <span>{PANEL_LABEL[t]}</span>
-            </button>
-          ))}
-        </nav>
-      ) : null}
-      <div className="ec-panel-body">{props.children}</div>
-    </aside>
-  );
+describe("la cassetta deriva dal catalogo di etl-core", () => {
+  it("le sezioni e le voci corrispondono uno a uno a SECTIONS e META, nello stesso ordine", () => {
+    const rendered = parse(render());
+    // il catalogo, non una lista scritta nel test
+    const expected = SECTIONS.map((s) => ({
+      id: s.id,
+      types: s.items ? [...s.items] : [],
+      labels: s.items ? s.items.map((t) => META[t].label) : [],
+    }));
+    expect(rendered).toEqual(expected);
+  });
+
+  it("ogni operazione del catalogo compare in una sezione (e nessuna è inventata)", () => {
+    const inToolbox = parse(render()).flatMap((s) => s.types);
+    const catalog = (Object.keys(META) as (keyof typeof META)[]).filter((k) => k !== "dataset");
+    expect(inToolbox.slice().sort()).toEqual(catalog.slice().sort());
+  });
+
+  it("ogni sezione ha il suo nome del catalogo ed è comprimibile", () => {
+    const markup = render();
+    for (const s of SECTIONS) expect(markup).toContain(`>${s.name}<`);
+    expect(markup.match(/aria-expanded="true"/g)).toHaveLength(SECTIONS.length);
+    expect(markup.match(/class="ec-tb-sec-head"/g)).toHaveLength(SECTIONS.length);
+  });
+
+  it("le voci delle operazioni hanno la famiglia di colore della loro sezione", () => {
+    const markup = render();
+    expect(markup).toMatch(/data-type="filter"[^>]*data-family="filter"/);
+    expect(markup).toMatch(/data-type="join"[^>]*data-family="merge"/);
+    expect(markup).toMatch(/data-type="exportOp"[^>]*data-family="output"/);
+  });
+});
+
+describe("sezione Dataset e libreria", () => {
+  it("senza dataset caricati: il pulsante di caricamento e il messaggio", () => {
+    const markup = render();
+    expect(markup).toContain("Carica dataset");
+    expect(markup).toContain("Nessun dataset caricato");
+    expect(markup).toContain('accept=".csv,.tsv,.txt"');
+  });
+
+  it("un CSV di prova produce le colonne e i tipi attesi e compare nella libreria e nella cassetta", () => {
+    const store = createEtlStore();
+    const csv = [
+      "id;cliente;importo;data;peso",
+      "1;Acme;10,5;2026-01-03;1.5",
+      "2;Borealis;20;2026-01-04;2",
+      "3;Acme;30,25;2026-02-01;3",
+    ].join("\n");
+    const out = loadCsvText(store, "vendite.csv", csv);
+    expect(out.ok).toBe(true);
+    expect(out.message).toBe("vendite.csv caricato: 5 colonne, 3 righe. Trascinalo sul canvas.");
+    const lib = store.getState().library;
+    expect(lib).toHaveLength(1);
+    expect(lib[0]).toMatchObject({ id: "lib-1", name: "vendite", path: "vendite.csv", rows: 3 });
+    expect(lib[0]!.columns.map((c) => [c.name, c.type])).toEqual([
+      ["id", "integer"],
+      ["cliente", "stringa"],
+      ["importo", "numerico"],
+      ["data", "data"],
+      ["peso", "numerico"],
+    ]);
+    expect(lib[0]!.columns[1]!.values).toEqual(["Acme", "Borealis"]);
+    // compare come voce trascinabile nella sezione Dataset
+    const markup = render(store);
+    expect(markup).toContain('data-lib="lib-1"');
+    expect(markup).toContain(">vendite<");
+    expect(markup).toContain("5 col · 3 righe");
+    expect(markup).not.toContain("Nessun dataset caricato");
+  });
+
+  it("un file senza colonne leggibili non entra nella libreria e dà il messaggio del prototipo", () => {
+    const store = createEtlStore();
+    const out = loadCsvText(store, "vuoto.csv", "\n\n");
+    expect(out).toEqual({ ok: false, message: "Il file non contiene colonne leggibili" });
+    expect(store.getState().library).toEqual([]);
+  });
+
+  it("la libreria non conserva il contenuto del file, solo metadati", () => {
+    const store = createEtlStore();
+    loadCsvText(store, "a.csv", "x,y\n1,2\n3,4");
+    const item = store.getState().library[0]!;
+    expect(Object.keys(item).sort()).toEqual(["columns", "id", "name", "path", "rows"]);
+  });
+});
+
+describe("orientamento e schede", () => {
+  const content = {
+    tools: () => createElement("div", { "data-x": "tools" }),
+    insp: () => createElement("div", { "data-x": "insp" }),
+  };
+  const layout = (store: ReturnType<typeof createEtlStore>) =>
+    renderToStaticMarkup(
+      createElement(DockLayout, {
+        store,
+        actions: createPanelActions(store),
+        controller: createInteractionController(store),
+        canvas: () => createElement("div", { "data-x": "canvas" }),
+        content,
+      }),
+    );
+
+  it("a sinistra la cassetta è una colonna aperta; l'Inspector, chiuso a destra, ha la tacca visibile", () => {
+    const markup = layout(createEtlStore());
+    expect(markup).toMatch(/class="ec-panel ec-side-left ec-open"/);
+    expect(markup).toMatch(/class="ec-panel ec-side-right"/);
+    expect(markup).not.toContain("ec-horiz");
+    expect(markup).not.toContain("ec-dock-tabs");
+    // tacca della cassetta nascosta (aperta), quella dell'Inspector no
+    expect(markup).toMatch(/ec-notch ec-notch-left ec-hidden/);
+    expect(markup).toMatch(/ec-notch ec-notch-right"/);
+  });
+
+  it("sui bordi orizzontali il pannello è una fascia (ec-horiz) e l'area di lavoro non cresce", () => {
+    const store = createEtlStore();
+    createPanelActions(store).moveTo("tools", "bottom");
+    const markup = layout(store);
+    expect(markup).toMatch(/class="ec-panel ec-side-bottom ec-open ec-horiz"/);
+    // l'area di lavoro ha l'altezza del contenitore: il pannello sottrae altezza al canvas
+    expect(markup).not.toContain("calc(100% +");
+    expect(markup).toContain("--ec-canvas-min-h:");
+  });
+
+  it("due pannelli sullo stesso bordo mostrano le schede, con quella attiva evidenziata", () => {
+    const store = createEtlStore();
+    createPanelActions(store).moveTo("insp", "left");
+    const markup = layout(store);
+    expect(markup).toContain("ec-dock-tabs");
+    expect(markup.match(/class="ec-dock-tab( ec-on)?"/g)).toHaveLength(4); // due schede in ciascuno dei due pannelli
+    expect(markup).toMatch(/class="ec-dock-tab ec-on"[^>]*aria-pressed="true"/);
+    expect(markup).toContain("ec-grouped");
+  });
+
+  it("un pannello chiuso non è raggiungibile da tastiera (inert)", () => {
+    const markup = layout(createEtlStore());
+    expect(markup).toMatch(/<aside[^>]*data-panel="insp"[^>]*inert/);
+    expect(markup).not.toMatch(/<aside[^>]*data-panel="tools"[^>]*inert/);
+  });
+});
+
+describe("guscio dell'Inspector", () => {
+  it("mostra il nome del nodo selezionato nell'intestazione, senza controlli nativi", () => {
+    const store = storeWith();
+    store.dispatch({ type: "inspect", payload: { node: "op-join" } });
+    const markup = renderToStaticMarkup(
+      createElement(InspectorShell, { store, side: "right", onClose: noop }),
+    );
+    expect(markup).toContain('value="Unisci (Join)"');
+    expect(markup).not.toContain("<select");
+  });
+
+  it("senza selezione dice che non c'è nessun nodo", () => {
+    const markup = renderToStaticMarkup(
+      createElement(InspectorShell, { store: storeWith(), side: "right", onClose: noop }),
+    );
+    expect(markup).toContain("Nessun nodo selezionato");
+  });
+});
+```
+
+### `src/etl-canvas/__tests__/transitions.test.ts`
+
+142 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import {
+  TRANSITION_MS,
+  crossfade,
+  interpolatePoints,
+  planTransition,
+  progress,
+  sampleTransition,
+  samePoints,
+} from "../transitions";
+import type { Pt } from "../transitions";
+
+const A: Pt[] = [
+  { x: 0, y: 0 },
+  { x: 100, y: 0 },
+  { x: 100, y: 60 },
+];
+const B: Pt[] = [
+  { x: 10, y: 20 },
+  { x: 120, y: 40 },
+  { x: 100, y: 200 },
+];
+const STRAIGHT: Pt[] = [
+  { x: 0, y: 0 },
+  { x: 100, y: 60 },
+];
+
+describe("interpolazione dei punti", () => {
+  it("a metà transizione ogni punto è la media; all'inizio è il vecchio; alla fine il nuovo", () => {
+    const mid = interpolatePoints(A, B, 0.5);
+    A.forEach((p, i) => {
+      const q = B[i] as Pt;
+      expect(mid[i]).toEqual({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
+    });
+    expect(interpolatePoints(A, B, 0)).toEqual(A);
+    expect(interpolatePoints(A, B, 1)).toEqual(B);
+  });
+
+  it("alla fine coincide esattamente con il nuovo percorso, anche con decimali", () => {
+    const from = [
+      { x: 0.1, y: 0.7 },
+      { x: 33.3, y: 9.9 },
+    ];
+    const to = [
+      { x: 0.3, y: 0.2 },
+      { x: 33.34, y: 9.91 },
+    ];
+    expect(interpolatePoints(from, to, 1)).toEqual(to);
+  });
+
+  it("un numero diverso di punti non si interpola", () => {
+    expect(() => interpolatePoints(A, STRAIGHT, 0.5)).toThrow();
+  });
+
+  it("non modifica i percorsi di partenza", () => {
+    const a = JSON.stringify(A);
+    const b = JSON.stringify(B);
+    interpolatePoints(A, B, 0.3);
+    expect(JSON.stringify(A)).toBe(a);
+    expect(JSON.stringify(B)).toBe(b);
+  });
+});
+
+describe("dissolvenza incrociata", () => {
+  it("le opacità sommano a 1 a ogni istante; a metà valgono 0,5 e 0,5", () => {
+    for (let i = 0; i <= 20; i++) {
+      const f = crossfade(i / 20);
+      expect(f.old + f.next).toBeCloseTo(1, 12);
+    }
+    expect(crossfade(0.5)).toEqual({ old: 0.5, next: 0.5 });
+    expect(crossfade(0)).toEqual({ old: 1, next: 0 });
+    expect(crossfade(1)).toEqual({ old: 0, next: 1 });
+  });
+});
+
+describe("avanzamento", () => {
+  it("è lineare, limitato a 0..1, e dura 380 ms", () => {
+    expect(TRANSITION_MS).toBe(380);
+    expect(progress(0)).toBe(0);
+    expect(progress(190)).toBe(0.5);
+    expect(progress(380)).toBe(1);
+    expect(progress(9999)).toBe(1);
+    expect(progress(-5)).toBe(0);
+    expect(progress(10, 0)).toBe(1);
+  });
+});
+
+describe("quando c'è una transizione", () => {
+  const base = { gesturing: false, reduced: false };
+
+  it("cavo nuovo o percorso identico: nessuna", () => {
+    expect(planTransition({ ...base, prev: null, next: A }).kind).toBe("none");
+    expect(planTransition({ ...base, prev: A, next: A.map((p) => ({ ...p })) }).kind).toBe("none");
+    expect(samePoints(A, B)).toBe(false);
+  });
+
+  it("stesso numero di punti: si interpola; numero diverso: dissolvenza", () => {
+    expect(planTransition({ ...base, prev: A, next: B }).kind).toBe("morph");
+    expect(planTransition({ ...base, prev: A, next: STRAIGHT }).kind).toBe("fade");
+  });
+
+  it("durante un gesto di trascinamento: nessuna, anche se il percorso cambia", () => {
+    expect(planTransition({ prev: A, next: B, gesturing: true, reduced: false }).kind).toBe("none");
+    expect(planTransition({ prev: A, next: STRAIGHT, gesturing: true, reduced: false }).kind).toBe(
+      "none",
+    );
+  });
+
+  it("con movimento ridotto: istantanea", () => {
+    expect(planTransition({ prev: A, next: B, gesturing: false, reduced: true }).kind).toBe("none");
+  });
+});
+
+describe("stato visivo nel tempo", () => {
+  it("interpolazione: a metà tempo la media, a fine tempo il nuovo e `done`", () => {
+    const plan = planTransition({ prev: A, next: B, gesturing: false, reduced: false });
+    const mid = sampleTransition(plan, TRANSITION_MS / 2)!;
+    expect(mid).toMatchObject({ kind: "points", done: false });
+    if (mid.kind === "points") expect(mid.pts[0]).toEqual({ x: 5, y: 10 });
+    const end = sampleTransition(plan, TRANSITION_MS)!;
+    expect(end).toMatchObject({ kind: "points", done: true });
+    if (end.kind === "points") expect(end.pts).toEqual(B);
+    expect(sampleTransition(plan, TRANSITION_MS * 5)).toMatchObject({ done: true });
+  });
+
+  it("dissolvenza: a metà tempo 0,5 + 0,5, a fine tempo solo il nuovo", () => {
+    const plan = planTransition({ prev: A, next: STRAIGHT, gesturing: false, reduced: false });
+    const mid = sampleTransition(plan, TRANSITION_MS / 2)!;
+    expect(mid).toMatchObject({ kind: "fade", old: 0.5, next: 0.5, done: false });
+    expect(sampleTransition(plan, TRANSITION_MS)).toMatchObject({
+      kind: "fade",
+      old: 0,
+      next: 1,
+      done: true,
+    });
+  });
+
+  it("nessuna transizione: nessuno stato", () => {
+    expect(sampleTransition({ kind: "none" }, 100)).toBeNull();
+  });
+});
+```
+
+### `src/etl-canvas/__tests__/view.test.ts`
+
+194 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import { CARD, LABEL_H } from "../../etl-layout";
+import { ZOOM_MAX, ZOOM_MIN } from "../../etl-store";
+import { fit, zoomAtPoint, zoomIn, zoomOut, zoomReset } from "../actions";
+import { prototypeScene } from "../seed";
+import { bounds, fitView, minimapFrame, toWorld, viewFromMinimap, wheelPan, zoomAt } from "../view";
+import { SIZE, storeWith } from "./helpers";
+
+function allInside(store: ReturnType<typeof storeWith>, size = SIZE): void {
+  const { view, graph } = store.getState();
+  for (const c of Object.values(graph.cards)) {
+    const x1 = c.x * view.zoom + view.x;
+    const y1 = c.y * view.zoom + view.y;
+    const x2 = (c.x + CARD) * view.zoom + view.x;
+    const y2 = (c.y + CARD + LABEL_H) * view.zoom + view.y;
+    expect(x1, c.id).toBeGreaterThanOrEqual(0);
+    expect(y1, c.id).toBeGreaterThanOrEqual(0);
+    expect(x2, c.id).toBeLessThanOrEqual(size.w);
+    expect(y2, c.id).toBeLessThanOrEqual(size.h);
+  }
+}
+
+describe("Adatta", () => {
+  it("dopo la chiamata tutti i nodi rientrano nell'area visibile", () => {
+    const store = storeWith();
+    store.dispatch({ type: "setView", payload: { x: -900, y: 400, zoom: 2 } });
+    fit(store, SIZE);
+    allInside(store);
+  });
+
+  it("vale per finestre piccole e grandi", () => {
+    for (const size of [
+      { w: 320, h: 240 },
+      { w: 1440, h: 900 },
+      { w: 600, h: 1200 },
+    ]) {
+      const store = storeWith();
+      fit(store, size);
+      allInside(store, size);
+    }
+  });
+
+  it("vale anche per una scena sparsa su tutto il mondo", () => {
+    const size = { w: 1200, h: 800 };
+    const store = storeWith();
+    const s = prototypeScene();
+    const far = { ...s.graph.cards["op-export"]!, x: 2400, y: 1400 };
+    store.replaceState({
+      ...s,
+      graph: { ...s.graph, cards: { ...s.graph.cards, "op-export": far } },
+    });
+    fit(store, size);
+    allInside(store, size);
+  });
+
+  it("oltre il limite di zoom (0,35) Adatta si ferma al limite, come nel prototipo", () => {
+    const store = storeWith();
+    const s = prototypeScene();
+    const far = { ...s.graph.cards["op-export"]!, x: 2400, y: 1400 };
+    store.replaceState({
+      ...s,
+      graph: { ...s.graph, cards: { ...s.graph.cards, "op-export": far } },
+    });
+    fit(store, { w: 320, h: 240 });
+    expect(store.getState().view.zoom).toBe(ZOOM_MIN);
+  });
+
+  it("con il margine del prototipo (48) e zoom al più 1,25", () => {
+    const one = [{ x: 100, y: 100 }];
+    const v = fitView(one, { w: 2000, h: 2000 });
+    expect(v.zoom).toBe(1.25);
+    const b = bounds(one)!;
+    // centrato
+    expect(v.x + b.x1 * v.zoom).toBeCloseTo((2000 - (b.x2 - b.x1) * v.zoom) / 2, 6);
+  });
+
+  it("canvas vuoto: vista di partenza", () => {
+    expect(fitView([], SIZE)).toEqual({ x: 0, y: 0, zoom: 1 });
+  });
+});
+
+describe("zoom", () => {
+  it("limiti del prototipo (0,35 – 2)", () => {
+    const store = storeWith();
+    for (let i = 0; i < 40; i++) zoomIn(store, SIZE);
+    expect(store.getState().view.zoom).toBe(ZOOM_MAX);
+    for (let i = 0; i < 80; i++) zoomOut(store, SIZE);
+    expect(store.getState().view.zoom).toBe(ZOOM_MIN);
+    zoomReset(store, SIZE);
+    expect(store.getState().view.zoom).toBe(1);
+  });
+
+  it("attorno al puntatore il punto del mondo sotto il puntatore non si muove", () => {
+    const store = storeWith();
+    store.dispatch({ type: "setView", payload: { x: 30, y: 50, zoom: 0.8 } });
+    const before = toWorld(store.getState().view, 400, 300);
+    zoomAtPoint(store, 400, 300, 1.7);
+    const after = toWorld(store.getState().view, 400, 300);
+    expect(after.x).toBeCloseTo(before.x, 6);
+    expect(after.y).toBeCloseTo(before.y, 6);
+    expect(store.getState().view.zoom).toBeCloseTo(1.7, 6);
+  });
+
+  it("zoomAt è puro e rispetta i limiti", () => {
+    const v = { x: 0, y: 0, zoom: 1 };
+    expect(zoomAt(v, 10, 10, 99).zoom).toBe(ZOOM_MAX);
+    expect(v).toEqual({ x: 0, y: 0, zoom: 1 });
+  });
+
+  it("la vista passa da etl-store: la modifica notifica gli ascoltatori", () => {
+    const store = storeWith();
+    let n = 0;
+    store.subscribe(() => n++);
+    zoomIn(store, SIZE);
+    expect(n).toBe(1);
+    // e non entra nel registro né nella cronologia
+    expect(store.getLog().some((e) => e.type === "setView")).toBe(false);
+    expect(store.canUndo()).toBe(false);
+  });
+});
+
+describe("minimappa", () => {
+  it("contiene tutti i nodi e la porzione visibile nel riquadro 168 × 104", () => {
+    const store = storeWith();
+    const cards = Object.values(store.getState().graph.cards);
+    const frame = minimapFrame(cards, store.getState().view, SIZE);
+    for (const c of cards) {
+      const l = frame.ox + (c.x - frame.x1) * frame.k;
+      const t = frame.oy + (c.y - frame.y1) * frame.k;
+      expect(l).toBeGreaterThanOrEqual(0);
+      expect(t).toBeGreaterThanOrEqual(0);
+      expect(l + CARD * frame.k).toBeLessThanOrEqual(168 + 1e-9);
+      expect(t + CARD * frame.k).toBeLessThanOrEqual(104 + 1e-9);
+    }
+  });
+
+  it("un clic sulla minimappa porta quel punto al centro dell'area", () => {
+    const store = storeWith();
+    const cards = Object.values(store.getState().graph.cards);
+    const view = store.getState().view;
+    const frame = minimapFrame(cards, view, SIZE);
+    const next = viewFromMinimap(frame, view, SIZE, 84, 52);
+    const center = toWorld(next, SIZE.w / 2, SIZE.h / 2);
+    expect(center.x).toBeCloseTo(frame.x1 + (84 - frame.ox) / frame.k, 6);
+    expect(center.y).toBeCloseTo(frame.y1 + (52 - frame.oy) / frame.k, 6);
+  });
+});
+
+describe("«Adatta» con i margini dei widget e rotella", () => {
+  it("con i margini l'insieme sta nell'area meno i widget", () => {
+    const cards = [
+      { x: 0, y: 0 },
+      { x: 600, y: 300 },
+    ];
+    const size = { w: 1000, h: 600 };
+    const insets = { top: 0, right: 0, bottom: 120, left: 200 };
+    const v = fitView(cards, size, insets);
+    const b = bounds(cards)!;
+    expect(b.x1 * v.zoom + v.x).toBeGreaterThanOrEqual(insets.left - 0.001);
+    expect(b.x2 * v.zoom + v.x).toBeLessThanOrEqual(size.w - insets.right + 0.001);
+    expect(b.y1 * v.zoom + v.y).toBeGreaterThanOrEqual(insets.top - 0.001);
+    expect(b.y2 * v.zoom + v.y).toBeLessThanOrEqual(size.h - insets.bottom + 0.001);
+    // senza margini il risultato è quello di sempre
+    expect(fitView(cards, size)).toEqual(
+      fitView(cards, size, { top: 0, right: 0, bottom: 0, left: 0 }),
+    );
+  });
+
+  it("rotella semplice: pan in verticale (e in orizzontale col trackpad); Maiusc: orizzontale; zoom resta a Cmd/Ctrl", () => {
+    const view = { x: 10, y: 20, zoom: 1.5 };
+    expect(wheelPan(view, { deltaX: 0, deltaY: 30, shiftKey: false })).toEqual({
+      x: 10,
+      y: -10,
+      zoom: 1.5,
+    });
+    expect(wheelPan(view, { deltaX: 8, deltaY: 30, shiftKey: false })).toEqual({
+      x: 2,
+      y: -10,
+      zoom: 1.5,
+    });
+    expect(wheelPan(view, { deltaX: 0, deltaY: 30, shiftKey: true })).toEqual({
+      x: -20,
+      y: 20,
+      zoom: 1.5,
+    });
+    // Maiusc con un trackpad che già invia deltaX: si usa deltaX
+    expect(wheelPan(view, { deltaX: 12, deltaY: 5, shiftKey: true })).toEqual({
+      x: -2,
+      y: 15,
+      zoom: 1.5,
+    });
+  });
+});
+```
+
+### `src/etl-canvas/actions.ts`
+
+42 righe
+
+```ts
+/** Azioni sulla vista, applicate attraverso etl-store (`setView`). */
+import type { Size } from "../etl-layout";
+import type { EtlStore } from "../etl-store";
+import { fitView, zoomAt, zoomCentered, ZOOM_STEP } from "./view";
+import type { Insets } from "./view";
+
+/** "Adatta": inquadra tutti i nodi, evitando lo spazio dei widget in sovrimpressione. */
+export function fit(store: EtlStore, size: Size, insets?: Insets): void {
+  store.dispatch({
+    type: "setView",
+    payload: fitView(Object.values(store.getState().graph.cards), size, insets),
+  });
+}
+
+export function zoomBy(store: EtlStore, size: Size, factor: number): void {
+  const view = store.getState().view;
+  store.dispatch({ type: "setView", payload: zoomCentered(view, size, view.zoom * factor) });
+}
+
+export function zoomIn(store: EtlStore, size: Size): void {
+  zoomBy(store, size, ZOOM_STEP);
+}
+
+export function zoomOut(store: EtlStore, size: Size): void {
+  zoomBy(store, size, 1 / ZOOM_STEP);
+}
+
+export function zoomReset(store: EtlStore, size: Size): void {
+  store.dispatch({
+    type: "setView",
+    payload: zoomCentered(store.getState().view, size, 1),
+  });
+}
+
+/** Zoom attorno al puntatore (`px`, `py` relativi all'area). */
+export function zoomAtPoint(store: EtlStore, px: number, py: number, zoom: number): void {
+  store.dispatch({
+    type: "setView",
+    payload: zoomAt(store.getState().view, px, py, zoom),
+  });
+}
+```
+
+### `src/etl-canvas/canvas.css`
+
+658 righe
+
+```css
+/*
+ * Aspetto del canvas ETL (Fase 4a): nodi, cavi, controlli, minimappa.
+ * Misure e classi del prototipo (docs/prototype/isa-fusion-prototype.html,
+ * righe indicate); colori solo dai token di tokens.css. Tutte le regole
+ * sono limitate a `.etl-canvas`. Il carattere (Manrope) è quello di tutta l'app,
+ * caricato da src/styles.css.
+ */
+@import "./tokens.css";
+
+.etl-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 520px;
+  box-sizing: border-box;
+  padding: 0;
+  background: var(--ec-bg);
+  color: var(--ec-ink);
+  font-family: var(--ec-font);
+  border-radius: var(--ec-r-stage);
+}
+.etl-canvas *,
+.etl-canvas *::before,
+.etl-canvas *::after {
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+/* riga 621-624 */
+.etl-canvas .ec-stage {
+  position: absolute;
+  inset: 0;
+  user-select: none;
+  touch-action: none;
+  border-radius: var(--ec-r-stage);
+  background: var(--ec-stage);
+  overflow: hidden;
+}
+.etl-canvas .ec-stage.ec-pannable {
+  cursor: grab;
+}
+.etl-canvas .ec-stage.ec-panning {
+  cursor: grabbing;
+}
+
+/* righe 3-4 di .world e .links (righe 205-206) */
+.etl-canvas .ec-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+.etl-canvas .ec-links {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* nodo — riga 626 */
+.etl-canvas .ec-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 88px;
+  z-index: 2;
+}
+.etl-canvas .ec-icon-wrap {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  border-radius: var(--ec-r-op);
+  background: var(--ec-node-op);
+  color: var(--ec-node-op-ink);
+  box-shadow: var(--ec-node-op-outline);
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  align-items: center;
+  gap: 6px;
+  padding: 7px;
+}
+.etl-canvas .ec-dataset .ec-icon-wrap {
+  background: var(--ec-node-fill);
+  color: var(--ec-node-fill-ink);
+  border-radius: var(--ec-r-fill);
+  box-shadow: none;
+}
+.etl-canvas .ec-output .ec-icon-wrap {
+  opacity: var(--ec-output-opacity);
+}
+.etl-canvas .ec-selected .ec-icon-wrap {
+  box-shadow: var(--ec-select-ring);
+}
+.etl-canvas .ec-icon-wrap svg {
+  display: block;
+  flex-shrink: 0;
+}
+.etl-canvas .ec-count-1 {
+  grid-template-columns: repeat(1, auto);
+}
+.etl-canvas .ec-count-2 {
+  grid-template-columns: repeat(2, auto);
+}
+.etl-canvas .ec-count-3,
+.etl-canvas .ec-count-6,
+.etl-canvas .ec-count-many {
+  grid-template-columns: repeat(3, auto);
+}
+.etl-canvas .ec-count-1 svg {
+  width: 26px;
+  height: 26px;
+}
+.etl-canvas .ec-count-2 svg {
+  width: 20px;
+  height: 20px;
+}
+.etl-canvas .ec-count-3 svg {
+  width: 17px;
+  height: 17px;
+}
+.etl-canvas .ec-count-6 svg {
+  width: 15px;
+  height: 15px;
+}
+.etl-canvas .ec-count-many svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* output parziale: una fetta per tabella attesa — righe 656-669 */
+.etl-canvas .ec-dataset .ec-icon-wrap.ec-split {
+  padding: 0;
+  display: flex;
+  overflow: hidden;
+  background: var(--ec-split-bg);
+  gap: 0;
+}
+.etl-canvas .ec-split .ec-slice {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.etl-canvas .ec-split .ec-slice.ec-slice-full {
+  background: var(--ec-node-fill);
+  color: var(--ec-node-fill-ink);
+}
+.etl-canvas .ec-split .ec-slice.ec-slice-empty {
+  background: var(--ec-split-empty);
+  color: var(--ec-split-empty-ink);
+}
+.etl-canvas .ec-split .ec-slice + .ec-slice {
+  border-left: 1.5px dashed var(--ec-split-line);
+}
+.etl-canvas .ec-split .ec-slice svg {
+  width: 100%;
+  height: auto;
+  max-width: 22px;
+  max-height: 100%;
+}
+.etl-canvas .ec-split .ec-slice.ec-slice-empty svg {
+  opacity: 0.85;
+}
+
+/* etichetta — righe 680-683 */
+.etl-canvas .ec-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.25;
+  color: var(--ec-ink);
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 2px;
+}
+.etl-canvas .ec-dataset .ec-label {
+  color: var(--ec-accent-text);
+}
+.etl-canvas .ec-partial .ec-label {
+  color: var(--ec-muted);
+  font-style: italic;
+}
+
+/* indicatore ambra — righe 183-187 */
+.etl-canvas .ec-state-dot {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 13px;
+  height: 13px;
+  border-radius: var(--ec-r-pill);
+  background: var(--ec-warn);
+  border: 2.5px solid var(--ec-warn-ring);
+  z-index: 4;
+}
+
+/* cavi — righe 1404-1408 */
+.etl-canvas .ec-link {
+  fill: none;
+  stroke: var(--ec-link);
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.etl-canvas .ec-link-dot-ds {
+  fill: var(--ec-link-dot-fill);
+}
+.etl-canvas .ec-link-dot-op {
+  fill: var(--ec-link-dot-op);
+}
+
+/* flusso nei cavi (riga 1517: fill rgba(108,99,255,0.6)) e tracciato uscente di una dissolvenza */
+.etl-canvas .ec-flow {
+  fill: var(--ec-flow);
+  pointer-events: none;
+}
+.etl-canvas .ec-link-ghost {
+  fill: none;
+  stroke: var(--ec-link);
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* controlli di zoom — righe 138-150 */
+.etl-canvas .ec-zoom {
+  position: absolute;
+  /* posizione e misura: inline, da panels/overlayLayout.ts */
+  box-sizing: border-box;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--ec-r-pill);
+  background: var(--ec-surface-strong);
+  backdrop-filter: blur(var(--ec-glass-blur));
+  border: 1px solid var(--ec-panel-border);
+  box-shadow: var(--ec-glass-shadow);
+}
+.etl-canvas .ec-zoom button {
+  all: unset;
+  cursor: pointer;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ec-r-pill);
+  font-family: var(--ec-font);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ec-ink);
+}
+.etl-canvas .ec-zoom button:hover {
+  background: var(--ec-accent-soft);
+  color: var(--ec-accent-text);
+}
+.etl-canvas .ec-zoom button:focus-visible {
+  outline: 2px solid var(--ec-accent-text);
+  outline-offset: 1px;
+}
+.etl-canvas .ec-zoom .ec-fit {
+  color: var(--ec-accent-text);
+}
+
+/* minimappa — righe 152-161 */
+.etl-canvas .ec-minimap {
+  position: absolute;
+  /* posizione e misura: inline, da panels/overlayLayout.ts */
+  box-sizing: border-box;
+  z-index: 15;
+  border-radius: var(--ec-r-minimap);
+  background: var(--ec-surface-strong);
+  backdrop-filter: blur(var(--ec-glass-blur));
+  border: 1px solid var(--ec-panel-border);
+  box-shadow: var(--ec-glass-shadow);
+  overflow: hidden;
+  cursor: pointer;
+}
+.etl-canvas .ec-mm-node {
+  position: absolute;
+  border-radius: var(--ec-r-xs);
+  background: var(--ec-mm-node);
+}
+.etl-canvas .ec-mm-node.ec-ds {
+  background: var(--ec-mm-node-ds);
+}
+.etl-canvas .ec-mm-view {
+  position: absolute;
+  border: 1.5px solid var(--ec-mm-view-line);
+  border-radius: var(--ec-r-sm);
+  background: var(--ec-mm-view-bg);
+  pointer-events: none;
+}
+
+/* stato vuoto */
+.etl-canvas .ec-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 1;
+}
+.etl-canvas .ec-empty-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ec-ink);
+}
+.etl-canvas .ec-empty-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ec-empty-ink);
+}
+
+/* ── Gesti (Fase 5): a riposo non cambia nulla, tutto compare solo durante il gesto ── */
+
+/* nodo in movimento — righe 627, 639 */
+.etl-canvas .ec-card.ec-dragging {
+  cursor: grabbing;
+  z-index: 20;
+}
+.etl-canvas .ec-card.ec-dragging .ec-icon-wrap {
+  box-shadow: var(--ec-drag-shadow);
+  transform: scale(1.05);
+}
+
+/* esiti del rilascio: ciascuno ha colore e stile di contorno propri (righe 640-642 per fusione e collegamento) */
+.etl-canvas .ec-card.ec-drop-merge .ec-icon-wrap {
+  box-shadow: var(--ec-drop-merge-ring);
+  transform: scale(1.09);
+}
+.etl-canvas .ec-card.ec-drop-merge .ec-icon-wrap svg {
+  transform: scale(0.88);
+}
+.etl-canvas .ec-card.ec-drop-link .ec-icon-wrap {
+  box-shadow: var(--ec-drop-link-ring);
+  transform: scale(1.04);
+}
+.etl-canvas .ec-card.ec-drop-link-reverse .ec-icon-wrap {
+  outline: 3px dashed var(--ec-drop-link-reverse);
+  outline-offset: 3px;
+  transform: scale(1.04);
+}
+.etl-canvas .ec-card.ec-drop-displace .ec-icon-wrap {
+  outline: 3px dotted var(--ec-drop-displace);
+  outline-offset: 3px;
+}
+.etl-canvas .ec-card.ec-drop-reject .ec-icon-wrap {
+  outline: 3px solid var(--ec-drop-reject);
+  outline-offset: 3px;
+}
+
+/* nodi che sparirebbero se si confermasse l'eliminazione */
+.etl-canvas .ec-card.ec-doomed .ec-icon-wrap {
+  outline: 3px dashed var(--ec-doomed);
+  outline-offset: 3px;
+  opacity: 0.55;
+}
+
+/* cavo in cui si inserirebbe la lavorazione (riga 1403, `hot`) */
+.etl-canvas .ec-link.ec-link-hot {
+  stroke: var(--ec-link-insert);
+  stroke-width: 3.4;
+}
+
+/* porte — righe 168-181: compaiono al passaggio del puntatore */
+.etl-canvas .ec-port {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: var(--ec-r-pill);
+  box-sizing: border-box;
+  background: var(--ec-port-fill);
+  border: 2px solid var(--ec-port-line);
+  z-index: 5;
+  cursor: crosshair;
+  opacity: 0;
+  transform: scale(0.5);
+  transition:
+    opacity 0.14s,
+    transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.etl-canvas .ec-card:hover .ec-port {
+  opacity: 1;
+  transform: scale(1);
+}
+.etl-canvas .ec-card.ec-dragging .ec-port {
+  opacity: 0;
+}
+.etl-canvas .ec-port:hover {
+  background: var(--ec-port-line);
+}
+.etl-canvas .ec-port-t {
+  left: calc(44px - 5.5px);
+  top: -5.5px;
+}
+.etl-canvas .ec-port-b {
+  left: calc(44px - 5.5px);
+  top: calc(88px - 5.5px);
+}
+.etl-canvas .ec-port-l {
+  top: calc(44px - 5.5px);
+  left: -5.5px;
+}
+.etl-canvas .ec-port-r {
+  top: calc(44px - 5.5px);
+  left: calc(88px - 5.5px);
+}
+
+/* cavo provvisorio tirato da una porta — riga 3995 */
+.etl-canvas .ec-temp-link {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 19;
+}
+.etl-canvas .ec-temp-link path {
+  fill: none;
+  stroke: var(--ec-temp-link-muted);
+  stroke-width: 2.2;
+  stroke-dasharray: 6 5;
+  stroke-linecap: round;
+}
+.etl-canvas .ec-temp-link circle {
+  fill: var(--ec-temp-link-muted);
+}
+.etl-canvas .ec-temp-link.ec-valid path {
+  stroke: var(--ec-temp-link);
+}
+.etl-canvas .ec-temp-link.ec-valid circle {
+  fill: var(--ec-temp-link);
+}
+
+/* riquadro di selezione — riga 163 */
+.etl-canvas .ec-marquee {
+  position: absolute;
+  z-index: 14;
+  pointer-events: none;
+  border: 1.5px dashed var(--ec-marquee-line);
+  background: var(--ec-marquee-fill);
+  border-radius: var(--ec-r-sm);
+}
+
+/* suggerimento durante un gesto (prototipo: `hint`) */
+.etl-canvas .ec-hint {
+  position: absolute;
+  /* posizione e misura: inline, da panels/overlayLayout.ts */
+  box-sizing: border-box;
+  z-index: 16;
+  padding: 0 14px;
+  line-height: 28px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: var(--ec-r-pill);
+  background: var(--ec-surface-strong);
+  border: 1px solid var(--ec-panel-border);
+  box-shadow: var(--ec-glass-shadow);
+  color: var(--ec-ink);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* conferma di eliminazione — righe 112-132 */
+.etl-canvas .ec-confirm {
+  position: absolute;
+  z-index: 30;
+  width: 246px;
+  padding: 22px;
+  border-radius: var(--ec-r-fill);
+  background: var(--ec-surface-strong);
+  backdrop-filter: blur(var(--ec-glass-blur));
+  border: 1px solid var(--ec-panel-border);
+  box-shadow: var(--ec-overlay-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.etl-canvas .ec-confirm-title {
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--ec-ink);
+}
+.etl-canvas .ec-confirm-text {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ec-empty-ink);
+  margin-top: 3px;
+}
+.etl-canvas .ec-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.etl-canvas .ec-confirm-actions button {
+  all: unset;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 9px 15px;
+  border-radius: var(--ec-r-pill);
+}
+.etl-canvas .ec-confirm-actions button:focus-visible {
+  outline: 2px solid var(--ec-select);
+  outline-offset: 2px;
+}
+.etl-canvas .ec-confirm-actions .ec-confirm-cancel {
+  color: var(--ec-empty-ink);
+  background: var(--ec-accent-soft);
+}
+.etl-canvas .ec-confirm-actions .ec-confirm-cancel:hover {
+  color: var(--ec-ink);
+}
+.etl-canvas .ec-confirm-actions .ec-confirm-ok {
+  background: var(--ec-danger);
+  color: var(--ec-text-on-danger);
+}
+
+/* minimappa ridotta a un pulsante, quando l'area è troppo piccola per ospitarla (Fase 6a.2) */
+.etl-canvas .ec-minimap-toggle {
+  all: unset;
+  cursor: pointer;
+  position: absolute;
+  box-sizing: border-box;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ec-r-minimap);
+  background: var(--ec-surface-strong);
+  backdrop-filter: blur(var(--ec-glass-blur));
+  border: 1px solid var(--ec-panel-border);
+  box-shadow: var(--ec-glass-shadow);
+  color: var(--ec-accent-text);
+}
+.etl-canvas .ec-minimap-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+.etl-canvas .ec-minimap-toggle:focus-visible {
+  outline: 2px solid var(--ec-select);
+  outline-offset: 2px;
+}
+.etl-canvas .ec-mm-close {
+  all: unset;
+  cursor: pointer;
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  z-index: 1;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  color: var(--ec-empty-ink);
+}
+.etl-canvas .ec-mm-close:focus-visible {
+  outline: 2px solid var(--ec-select);
+}
+
+/* pulsanti sul nodo (Fase 6b.1): elimina (×) ed espansione dei box combinati — righe 89-102, 685-694 */
+.etl-canvas .ec-node-btn {
+  all: unset;
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: var(--ec-r-pill);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.7);
+  box-shadow: var(--ec-glass-shadow);
+  transition:
+    opacity 0.16s,
+    transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background 0.16s;
+}
+/* l'area che si può premere è di almeno 32 px, anche se il disegno è più piccolo */
+.etl-canvas .ec-node-btn::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+}
+.etl-canvas .ec-node-btn svg {
+  width: 9px;
+  height: 9px;
+}
+.etl-canvas .ec-del-btn {
+  top: -5px;
+  left: -5px;
+  background: var(--isa-text);
+  color: var(--isa-surface-overlay);
+}
+.etl-canvas .ec-del-btn:hover {
+  background: var(--isa-danger);
+  color: var(--isa-text-on-danger);
+}
+.etl-canvas .ec-expand-btn {
+  top: -7px;
+  right: -7px;
+  width: 24px;
+  height: 24px;
+  background: var(--isa-accent);
+  color: var(--isa-text-on-accent);
+}
+.etl-canvas .ec-expand-btn svg {
+  width: 12px;
+  height: 12px;
+}
+.etl-canvas .ec-card:hover .ec-node-btn,
+.etl-canvas .ec-card:focus-within .ec-node-btn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
+.etl-canvas .ec-card.ec-dragging .ec-node-btn,
+.etl-canvas .ec-card.ec-drop-target .ec-node-btn {
+  opacity: 0;
+  pointer-events: none;
+}
+.etl-canvas .ec-node-btn:focus-visible {
+  outline: 2px solid var(--ec-select);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .etl-canvas .ec-node-btn {
+    transition: none;
+  }
+}
+```
+
+### `src/etl-canvas/contrast.ts`
+
+93 righe
+
+```ts
+/**
+ * Contrasto WCAG tra i token di `tokens.css`. Usato dai test. I colori e il
+ * calcolo del contrasto sono in src/theme/color.ts.
+ */
+import { contrast, over, parseColor } from "../theme/color";
+import type { Rgba } from "../theme/color";
+
+export { contrast, luminance, over, parseColor } from "../theme/color";
+export type { Rgba } from "../theme/color";
+
+function readBlock(css: string, selector: string, prefix: string): Record<string, string> {
+  // il selettore può essere seguito da altri in lista (`.etl-canvas,\n.ec-workspace {`)
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const found = new RegExp(`\\n${escaped}(?:,[^{}]*)?\\s*\\{`).exec(css);
+  if (!found) throw new Error(`blocco non trovato: ${selector}`);
+  const start = found.index;
+  const end = css.indexOf("\n}", start);
+  const out: Record<string, string> = {};
+  for (const m of css
+    .slice(start, end)
+    .matchAll(new RegExp(`(${prefix}[a-z0-9-]+):\\s*([^;]+);`, "g"))) {
+    out[m[1] as string] = (m[2] as string).trim();
+  }
+  return out;
+}
+
+/**
+ * Legge i token del canvas (`--ec-*`) da tokens.css e li risolve con i token
+ * semantici (`--isa-*`) di un tema e di un modo, già risolti in valori (vedi
+ * src/theme/__tests__/support.ts: `resolveTokens`).
+ */
+export function readTokens(css: string, semantic: Record<string, string>): Record<string, string> {
+  const tokens = readBlock(css, ".etl-canvas", "--ec-");
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(tokens)) {
+    out[name] = value.replace(/var\((--isa-[a-z0-9-]+)\)/g, (_, ref: string) => {
+      const resolved = semantic[ref];
+      if (resolved === undefined) throw new Error(`token semantico non trovato: ${ref}`);
+      return resolved;
+    });
+  }
+  return out;
+}
+
+export interface ContrastPair {
+  readonly role: string;
+  /** Token in primo piano e token di sfondo. */
+  readonly fg: string;
+  readonly bg: string;
+  /** 4.5 per il testo, 3 per gli elementi non testuali. */
+  readonly min: number;
+}
+
+/**
+ * Coppie da verificare. Il fondo del canvas è `--ec-bg` con sopra
+ * `--ec-stage`; il vetro è `--ec-surface-strong` sopra il canvas.
+ */
+export const PAIRS: readonly ContrastPair[] = [
+  { role: "Etichetta dataset/output", fg: "--ec-accent-text", bg: "canvas", min: 4.5 },
+  { role: "Etichetta lavorazione", fg: "--ec-ink", bg: "canvas", min: 4.5 },
+  { role: "Etichetta output parziale", fg: "--ec-muted", bg: "canvas", min: 4.5 },
+  { role: "Icona su nodo pieno", fg: "--ec-node-fill-ink", bg: "--ec-node-fill", min: 3 },
+  { role: "Icona su nodo lavorazione", fg: "--ec-node-op-ink", bg: "--ec-node-op", min: 3 },
+  { role: "Nodo pieno su canvas", fg: "--ec-node-fill", bg: "canvas", min: 3 },
+  { role: "Bordo del nodo lavorazione", fg: "--ec-node-op-border", bg: "canvas", min: 3 },
+  { role: "Icona fetta vuota", fg: "--ec-split-empty-ink", bg: "--ec-split-empty", min: 3 },
+  { role: "Cavo", fg: "--ec-link", bg: "canvas", min: 3 },
+  { role: "Indicatore ambra", fg: "--ec-warn", bg: "canvas", min: 3 },
+  { role: "Contorno di selezione", fg: "--ec-select", bg: "canvas", min: 3 },
+  { role: "Testo dei controlli di zoom", fg: "--ec-ink", bg: "glass", min: 4.5 },
+  { role: "«Adatta»", fg: "--ec-accent-text", bg: "glass", min: 4.5 },
+  { role: "Flusso nei cavi", fg: "--ec-flow", bg: "canvas", min: 3 },
+  { role: "Nodo nella minimappa", fg: "--ec-mm-node", bg: "glass", min: 3 },
+  { role: "Nodo dataset nella minimappa", fg: "--ec-mm-node-ds", bg: "glass", min: 3 },
+  { role: "Riquadro visibile (minimappa)", fg: "--ec-mm-view-line", bg: "glass", min: 3 },
+  { role: "Testo dello stato vuoto", fg: "--ec-empty-ink", bg: "canvas", min: 4.5 },
+  { role: "Titolo dello stato vuoto", fg: "--ec-ink", bg: "canvas", min: 4.5 },
+];
+
+export function measure(tokens: Record<string, string>, pair: ContrastPair): number {
+  const get = (name: string): Rgba => {
+    const value = tokens[name];
+    if (value === undefined) throw new Error(`token mancante: ${name}`);
+    return parseColor(value);
+  };
+  const canvas = over(get("--ec-stage"), over(get("--ec-bg"), [255, 255, 255, 1]));
+  const glass = over(get("--ec-surface-strong"), canvas);
+  const bg =
+    pair.bg === "canvas" ? canvas : pair.bg === "glass" ? glass : over(get(pair.bg), canvas);
+  const fg = over(get(pair.fg), bg);
+  return contrast(fg, bg);
+}
+```
+
+### `src/etl-canvas/drop.ts`
+
+94 righe
+
+```ts
+/**
+ * Rilascio di un nuovo elemento sul canvas (prototipo `paletteEl` →
+ * `onUp`, righe 4939-5069). La cassetta degli strumenti arriva nella Fase 6:
+ * questa funzione contiene già tutta la logica di rilascio, così la Fase 6
+ * deve solo chiamarla con il payload e il punto (coordinate del MONDO; da un
+ * punto dello schermo si passa con `toWorld` di view.ts).
+ *
+ * Nessuna logica di dominio nuova: il bersaglio si individua con la
+ * geometria di etl-layout (`nodeAt`, `linkAt`) e le regole sono quelle di
+ * etl-core (`insertable`) e del comando `addNode` di etl-store, che decide
+ * fusione, collegamento, inserimento o rilascio nel vuoto.
+ */
+import { insertable } from "../etl-core";
+import type { Card, ComponentId, Graph, Link } from "../etl-core";
+import { linkAt, nodeAt } from "../etl-layout";
+import type { Point } from "../etl-layout";
+import { paletteRelation } from "../etl-store";
+import type { CommandResult, DropTarget, EtlStore } from "../etl-store";
+
+/** Ciò che si rilascia: un componente della cassetta o un dataset della libreria. */
+export interface CanvasDropPayload {
+  readonly component: ComponentId;
+  readonly libraryId?: string;
+}
+
+export type DropOutcome = "merge" | "link" | "link-reverse" | "insert";
+
+export interface DropPreview {
+  /** Bersaglio da passare ad `addNode`, se ce n'è uno valido. */
+  readonly target: DropTarget | null;
+  /** Cosa succederebbe al rilascio, o `null` (nel vuoto). */
+  readonly outcome: DropOutcome | null;
+  readonly nodeId?: string;
+  readonly linkKey?: string;
+}
+
+const NEW_NODE = "__nuovo__";
+
+function kindOf(component: ComponentId): Card["kind"] {
+  return component === "dataset" ? "dataset" : "op";
+}
+
+function linkByKey(graph: Graph, key: string): Link | undefined {
+  return graph.links.find((l) => l.from + "|" + l.to === key);
+}
+
+/** Cosa troverebbe un rilascio in `point` (coordinate del mondo), senza modificare nulla. */
+export function previewCanvasDrop(
+  store: EtlStore,
+  payload: CanvasDropPayload,
+  point: Point,
+): DropPreview {
+  const graph = store.getState().graph;
+  const kind = kindOf(payload.component);
+  const nodeId = nodeAt(graph, point);
+  if (nodeId) {
+    const rel = paletteRelation(graph, kind, nodeId);
+    // senza una relazione possibile `addNode` rilascia come nel vuoto (prototipo, riga 5046)
+    return rel
+      ? { target: { node: nodeId }, outcome: rel, nodeId }
+      : { target: null, outcome: null };
+  }
+  if (kind === "op") {
+    const key = linkAt(store.getRoutes(), point);
+    const link = key ? linkByKey(graph, key) : undefined;
+    if (key && link && insertable(graph, link, NEW_NODE)) {
+      return { target: { link }, outcome: "insert", linkKey: key };
+    }
+  }
+  return { target: null, outcome: null };
+}
+
+/**
+ * Rilascia `payload` in `point` (coordinate del mondo): crea il nodo e, se il
+ * punto è su un nodo o su un cavo, lo fonde, lo collega o lo inserisce.
+ * Un solo comando `addNode`: un solo passo di cronologia.
+ */
+export function handleCanvasDrop(
+  store: EtlStore,
+  payload: CanvasDropPayload,
+  point: Point,
+): CommandResult {
+  const { target } = previewCanvasDrop(store, payload, point);
+  return store.dispatch({
+    type: "addNode",
+    payload: {
+      component: payload.component,
+      ...(payload.libraryId !== undefined ? { libraryId: payload.libraryId } : {}),
+      point,
+      ...(target ? { target } : {}),
+    },
+  });
 }
 ```
 

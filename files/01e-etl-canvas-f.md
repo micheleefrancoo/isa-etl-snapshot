@@ -2,1926 +2,1712 @@
 
 File in questo blocco:
 
-- `src/etl-canvas/panels/EtlWorkspace.tsx`
-- `src/etl-canvas/panels/InspectorShell.tsx`
-- `src/etl-canvas/panels/Toolbox.tsx`
-- `src/etl-canvas/panels/actions.ts`
-- `src/etl-canvas/panels/csv.ts`
-- `src/etl-canvas/panels/families.ts`
-- `src/etl-canvas/panels/layout.ts`
-- `src/etl-canvas/panels/overlayLayout.ts`
-- `src/etl-canvas/panels/panels.css`
-- `src/etl-canvas/panels/ui-icons.tsx`
-- `src/etl-canvas/seed.ts`
+- `src/etl-canvas/engine.ts`
+- `src/etl-canvas/flow.ts`
+- `src/etl-canvas/icons.tsx`
+- `src/etl-canvas/index.ts`
+- `src/etl-canvas/inspector/ActionMenu.tsx`
+- `src/etl-canvas/inspector/BlockedNotice.tsx`
+- `src/etl-canvas/inspector/ColumnPicker.tsx`
+- `src/etl-canvas/inspector/ExpandedPanel.tsx`
+- `src/etl-canvas/inspector/Field.tsx`
+- `src/etl-canvas/inspector/Header.tsx`
+- `src/etl-canvas/inspector/Inspector.tsx`
+- `src/etl-canvas/inspector/Menu.tsx`
 
 ---
 
-### `src/etl-canvas/panels/EtlWorkspace.tsx`
+### `src/etl-canvas/engine.ts`
 
-125 righe
+335 righe
 
-```tsx
+```ts
 /**
- * Lo spazio di lavoro: il canvas al centro, i pannelli (cassetta e Inspector)
- * agganciati ai bordi. È ciò che la rotta ETL monta al posto del solo canvas.
+ * Il livello sottile tra le funzioni pure (flow.ts, transitions.ts) e il
+ * DOM: ad ogni frame del ciclo condiviso calcola lo stato visivo e ne
+ * aggiorna solo gli attributi SVG che cambiano (il tracciato del flusso,
+ * l'opacità dell'attesa, `d` durante una transizione). Non ridisegna
+ * l'albero React.
  *
- * Come il canvas, si monta solo nel browser: sul server e nel primo rendering
- * di idratazione produce lo stesso segnaposto (i pannelli dipendono dallo
- * stato salvato nel browser).
+ * VINCOLO: qui si legge `route.pts` e `route.d` di `getRoutes()` e non si
+ * scrive né si ricalcola mai un percorso. Nessuna chiamata a `settleLinks`
+ * o a funzioni di etl-layout che instradano (i test lo verificano). Per
+ * disegnare i punti interpolati si usa solo `roundedPath`, che arrotonda
+ * punti dati e non sceglie nulla.
  */
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
-import type { EtlStore } from "../../etl-store";
-import { EtlCanvas } from "../EtlCanvas";
-import { Icon } from "../icons";
-import type { CanvasDropPayload } from "../drop";
-import { createInteractionController } from "../interaction";
-import { createPanelActions, followInspector } from "./actions";
-import { DockLayout } from "./Dock";
-import { familyOfType } from "./families";
-import { InspectorShell } from "./InspectorShell";
-import { Toolbox } from "./Toolbox";
+import { ELBOW_R, roundedPath } from "../etl-layout";
+import { flowWindowFor, tubeOutline, waitingOpacityFor } from "./flow";
+import type { Sampler } from "./flow";
+import { createLoop } from "./loop";
+import type { Loop, LoopEnv } from "./loop";
+import { planTransition, sampleTransition } from "./transitions";
+import type { Plan, Pt, Visual } from "./transitions";
 
-const noopSubscribe = () => () => {};
-
-interface Ghost {
-  readonly x: number;
-  readonly y: number;
-  readonly payload: CanvasDropPayload;
+/** Il minimo di un elemento SVG che serve qui (un vero elemento, o un finto nei test). */
+export interface AttrEl {
+  setAttribute(name: string, value: string): void;
+  style: { opacity: string };
+}
+export interface PathEl extends AttrEl {
+  getTotalLength(): number;
+  getPointAtLength(s: number): { x: number; y: number };
+}
+export interface GroupLike {
+  querySelector(selector: string): unknown;
 }
 
-export function EtlWorkspace(props: { store: EtlStore }) {
-  const { store } = props;
-  const isClient = useSyncExternalStore(
-    noopSubscribe,
-    () => true,
-    () => false,
-  );
-  const [controller] = useState(() => createInteractionController(store));
-  const actions = useMemo(() => createPanelActions(store), [store]);
-  const [ghost, setGhost] = useState<Ghost | null>(null);
-  const hostRef = useRef<HTMLDivElement>(null);
-  const cleanup = useRef<(() => void) | null>(null);
+export interface LinkInput {
+  readonly key: string;
+  /** `linkLive` di etl-store: solo i cavi attivi hanno il flusso. */
+  readonly live: boolean;
+  /** `route.pts` e `route.d` di getRoutes, in sola lettura. */
+  readonly pts: readonly Pt[];
+  readonly d: string;
+  readonly pa: Pt;
+  readonly pb: Pt;
+}
 
-  // l'Inspector si apre con la selezione e si chiude con la deselezione
-  useEffect(() => followInspector(store, controller, actions), [store, controller, actions]);
-  useEffect(() => () => cleanup.current?.(), []);
+export interface UpdateInput {
+  readonly links: readonly LinkInput[];
+  /** Un gesto di trascinamento è in corso (`store.isGesturing()`). */
+  readonly gesturing: boolean;
+}
 
-  /** Trascinamento di una voce della cassetta (prototipo, righe 4939-5067): un nodo esterno, con la stessa anteprima del trascinamento tra nodi. */
-  const onItemPointerDown = (payload: CanvasDropPayload, e: ReactPointerEvent<HTMLElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    setGhost({ x: e.clientX, y: e.clientY, payload });
-    const stagePoint = (cx: number, cy: number) => {
-      const r = hostRef.current?.querySelector(".ec-stage")?.getBoundingClientRect();
-      if (!r) return null;
-      const inside = cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
-      return inside ? { x: cx - r.left, y: cy - r.top } : null;
+interface Handles {
+  readonly path: PathEl;
+  readonly ghost: AttrEl;
+  readonly flow: AttrEl;
+  readonly dotA: AttrEl;
+  readonly dotB: AttrEl;
+}
+
+interface Target {
+  readonly pts: readonly Pt[];
+  readonly d: string;
+  readonly pa: Pt;
+  readonly pb: Pt;
+}
+
+interface Rec {
+  group: GroupLike | null;
+  handles: Handles | null;
+  live: boolean;
+  t0: number | null;
+  /** Punti mostrati ora (a metà transizione, quelli interpolati). */
+  shown: readonly Pt[] | null;
+  target: Target | null;
+  tr: { plan: Plan; start: number; oldD: string } | null;
+  /** Abbiamo scritto `d`/opacità a mano: a fine transizione si ripristinano. */
+  dirty: boolean;
+}
+
+export interface MotionEngine {
+  registerLink(key: string, group: GroupLike | null): void;
+  registerSlice(id: string, el: AttrEl | null): void;
+  start(env: LoopEnv): void;
+  stop(): void;
+  update(input: UpdateInput): void;
+  setGesturing(gesturing: boolean): void;
+  /** Solo per i test. */
+  debug(): { links: number; slices: number; running: boolean };
+}
+
+function handlesOf(g: GroupLike): Handles | null {
+  const path = g.querySelector(".ec-link") as PathEl | null;
+  const ghost = g.querySelector(".ec-link-ghost") as AttrEl | null;
+  const flow = g.querySelector(".ec-flow") as AttrEl | null;
+  const dotA = g.querySelector('[data-dot="a"]') as AttrEl | null;
+  const dotB = g.querySelector('[data-dot="b"]') as AttrEl | null;
+  if (!path || !ghost || !flow || !dotA || !dotB) return null;
+  return { path, ghost, flow, dotA, dotB };
+}
+
+function setDot(el: AttrEl, p: Pt): void {
+  el.setAttribute("cx", String(p.x));
+  el.setAttribute("cy", String(p.y));
+}
+
+export function createMotionEngine(): MotionEngine {
+  const links = new Map<string, Rec>();
+  const slices = new Map<string, { el: AttrEl | null; t0: number | null }>();
+  let env: LoopEnv | null = null;
+  let loop: Loop | null = null;
+  let off: (() => void) | null = null;
+  let gesturing = false;
+  let last: UpdateInput | null = null;
+
+  const reduced = (): boolean => (env ? env.reducedMotion() : false);
+
+  function clearFlow(rec: Rec): void {
+    rec.handles?.flow.setAttribute("d", "");
+  }
+
+  function restore(rec: Rec): void {
+    const h = rec.handles;
+    const t = rec.target;
+    if (!h || !t || !rec.dirty) return;
+    h.path.setAttribute("d", t.d);
+    h.path.style.opacity = "";
+    h.ghost.setAttribute("d", "");
+    h.ghost.style.opacity = "0";
+    setDot(h.dotA, t.pa);
+    setDot(h.dotB, t.pb);
+    rec.dirty = false;
+  }
+
+  function apply(rec: Rec, v: Visual): void {
+    const h = rec.handles;
+    const t = rec.target;
+    const tr = rec.tr;
+    if (!h || !t || !tr) return;
+    rec.dirty = true;
+    if (v.kind === "points") {
+      rec.shown = v.pts;
+      h.path.setAttribute("d", roundedPath(v.pts, ELBOW_R));
+      const a = v.pts[0];
+      const b = v.pts[v.pts.length - 1];
+      if (a) setDot(h.dotA, a);
+      if (b) setDot(h.dotB, b);
+    } else {
+      // dissolvenza incrociata: il vecchio tracciato svanisce, il nuovo compare
+      h.ghost.setAttribute("d", tr.oldD);
+      h.ghost.style.opacity = String(v.old);
+      h.path.style.opacity = String(v.next);
+    }
+  }
+
+  function finish(rec: Rec): void {
+    rec.tr = null;
+    rec.shown = rec.target ? rec.target.pts : null;
+    restore(rec);
+  }
+
+  function renderFlow(rec: Rec, now: number): boolean {
+    const h = rec.handles;
+    if (!h) return false;
+    if (!rec.live || gesturing) {
+      clearFlow(rec);
+      return false;
+    }
+    let len = 0;
+    try {
+      len = h.path.getTotalLength();
+    } catch {
+      len = 0;
+    }
+    const win = flowWindowFor(len, now - (rec.t0 ?? now), reduced());
+    if (!win) {
+      clearFlow(rec);
+      return true;
+    }
+    const sample: Sampler = (s) => h.path.getPointAtLength(s);
+    h.flow.setAttribute("d", tubeOutline(sample, len, win));
+    return true;
+  }
+
+  function renderSlices(now: number): void {
+    for (const s of slices.values()) {
+      s.t0 ??= now;
+      if (s.el) s.el.style.opacity = String(waitingOpacityFor(now - s.t0, reduced()));
+    }
+  }
+
+  function frame(now: number): boolean {
+    let busy = false;
+    for (const rec of links.values()) {
+      if (rec.tr) {
+        const v = sampleTransition(rec.tr.plan, now - rec.tr.start);
+        if (v) apply(rec, v);
+        if (!v || v.done) finish(rec);
+        else busy = true;
+      }
+      if (renderFlow(rec, now)) busy = true;
+    }
+    if ([...slices.values()].some((s) => s.el)) {
+      renderSlices(now);
+      busy = true;
+    }
+    return busy;
+  }
+
+  /** Stato finale, senza movimento: transizioni concluse, flusso fermo a metà cavo, attesa a riposo. */
+  function settle(): void {
+    const now = env ? env.now() : 0;
+    for (const rec of links.values()) {
+      if (rec.tr) finish(rec);
+      renderFlow(rec, now);
+    }
+    for (const s of slices.values()) if (s.el) s.el.style.opacity = "";
+  }
+
+  function applyUpdate(input: UpdateInput): void {
+    if (!env) return;
+    const now = env.now();
+    gesturing = input.gesturing;
+    const seen = new Set<string>();
+    for (const l of input.links) {
+      seen.add(l.key);
+      const rec = links.get(l.key) ?? newRec();
+      links.set(l.key, rec);
+      rec.live = l.live;
+      rec.t0 ??= now;
+      const prev = rec.shown ?? rec.target?.pts ?? null;
+      const plan = planTransition({
+        prev,
+        next: l.pts,
+        gesturing: input.gesturing,
+        reduced: env.reducedMotion(),
+      });
+      const oldD = rec.target?.d ?? l.d;
+      rec.target = { pts: l.pts, d: l.d, pa: l.pa, pb: l.pb };
+      if (plan.kind === "none") {
+        rec.tr = null;
+        rec.shown = l.pts;
+        restore(rec);
+      } else {
+        rec.tr = { plan, start: now, oldD };
+        const v = sampleTransition(plan, 0);
+        if (v) apply(rec, v);
+      }
+    }
+    for (const key of [...links.keys()]) if (!seen.has(key)) links.delete(key);
+    // le fette smontate (React azzera il riferimento a ogni rendering): ora si dimenticano davvero
+    for (const [id, s] of [...slices]) if (!s.el) slices.delete(id);
+    if (env.reducedMotion()) settle();
+    loop?.wake();
+  }
+
+  function newRec(): Rec {
+    return {
+      group: null,
+      handles: null,
+      live: false,
+      t0: null,
+      shown: null,
+      target: null,
+      tr: null,
+      dirty: false,
     };
-    const move = (ev: PointerEvent) => {
-      setGhost({ x: ev.clientX, y: ev.clientY, payload });
-      controller.hoverExternal(payload, stagePoint(ev.clientX, ev.clientY));
-    };
-    const stop = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", abort);
-      cleanup.current = null;
-      setGhost(null);
-    };
-    const up = (ev: PointerEvent) => {
-      stop();
-      controller.dropExternal(payload, stagePoint(ev.clientX, ev.clientY));
-    };
-    const abort = () => {
-      stop();
-      controller.dropExternal(payload, null);
-    };
-    cleanup.current = abort;
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", abort);
+  }
+
+  return {
+    registerLink(key, group) {
+      if (!group) {
+        // React smonta il gruppo (o ne cambia il riferimento): si dimentica finché non torna
+        const rec = links.get(key);
+        if (rec) {
+          rec.group = null;
+          rec.handles = null;
+        }
+        return;
+      }
+      const rec = links.get(key) ?? newRec();
+      links.set(key, rec);
+      rec.group = group;
+      rec.handles = handlesOf(group);
+      rec.dirty = false;
+    },
+
+    registerSlice(id, el) {
+      // React chiama il vecchio riferimento con null e il nuovo con l'elemento a ogni
+      // rendering del nodo: la fase dell'attesa si conserva per identificativo
+      const known = slices.get(id);
+      if (!el) {
+        if (known) known.el = null;
+        return;
+      }
+      slices.set(id, { el, t0: known?.t0 ?? (env ? env.now() : null) });
+      loop?.wake();
+    },
+
+    start(e) {
+      this.stop();
+      env = e;
+      loop = createLoop(e);
+      off = loop.add({ frame, settle });
+      if (last) applyUpdate(last);
+    },
+
+    stop() {
+      off?.();
+      off = null;
+      loop?.dispose();
+      loop = null;
+      env = null;
+    },
+
+    update(input) {
+      last = input;
+      applyUpdate(input);
+    },
+
+    setGesturing(g) {
+      if (g === gesturing) return;
+      gesturing = g;
+      if (last) last = { ...last, gesturing: g };
+      for (const rec of links.values()) if (g) clearFlow(rec);
+      loop?.wake();
+    },
+
+    debug: () => ({
+      links: links.size,
+      slices: [...slices.values()].filter((s) => s.el).length,
+      running: loop?.running() ?? false,
+    }),
   };
-
-  return (
-    <div ref={hostRef} className="ec-workspace-host">
-      {isClient ? (
-        <DockLayout
-          store={store}
-          actions={actions}
-          controller={controller}
-          canvas={(overlay) => (
-            <EtlCanvas store={store} controller={controller} minHeight={0} overlay={overlay} />
-          )}
-          content={{
-            tools: ({ side }) => (
-              <Toolbox
-                store={store}
-                side={side}
-                onClose={() => actions.close("tools")}
-                onItemPointerDown={onItemPointerDown}
-              />
-            ),
-            insp: ({ side }) => (
-              <InspectorShell store={store} side={side} onClose={() => actions.close("insp")} />
-            ),
-          }}
-          overlay={
-            ghost ? (
-              <div
-                className={"ec-ghost" + (ghost.payload.component === "dataset" ? " ec-source" : "")}
-                data-testid="ec-ghost"
-                data-family={familyOfType(ghost.payload.component)}
-                style={{ left: ghost.x - 44, top: ghost.y - 44 }}
-              >
-                <Icon id={ghost.payload.component} />
-              </div>
-            ) : null
-          }
-        />
-      ) : (
-        <EtlCanvas store={store} />
-      )}
-    </div>
-  );
 }
 ```
 
-### `src/etl-canvas/panels/InspectorShell.tsx`
+### `src/etl-canvas/flow.ts`
 
-40 righe
+180 righe
 
-```tsx
+```ts
 /**
- * Il guscio dell'Inspector (Fase 6a): si apre e si chiude come gli altri
- * pannelli; il suo contenuto è per ora solo il nome del nodo selezionato.
- * Campi, layout a colonne e selettori sono della Fase 6b.
+ * Flusso nei cavi ("tubo elastico") e attesa delle fette vuote: calcolo puro.
+ * Nessun React, nessun timer, nessun DOM: il tempo trascorso è un argomento.
+ * Semantica del prototipo (docs/prototype/isa-fusion-prototype.html):
+ * righe 1415-1424 (costanti e profilo), 1478 (smooth01), 1480-1521
+ * (`animateBubbles`), 669-670 (attesa).
  */
-import type { EtlStore, Side } from "../../etl-store";
-import { useEtlState } from "../../etl-store/react";
-import { CloseArrow } from "./ui-icons";
 
-export function InspectorShell(props: { store: EtlStore; side: Side; onClose: () => void }) {
-  const { store, side } = props;
-  const nodeId = useEtlState((s) => s.inspector.nodeId, store);
-  const name = useEtlState(
-    (s) => (s.inspector.nodeId ? s.graph.cards[s.inspector.nodeId]?.name : undefined),
-    store,
-  );
-  return (
-    <div className="ec-tb-inner" data-testid="ec-inspector">
-      <div className="ec-tb-head">
-        <div className="ec-tb-title">Inspector</div>
-        <button
-          type="button"
-          className="ec-close-btn"
-          aria-label="Nascondi l’inspector"
-          onClick={props.onClose}
-        >
-          <CloseArrow side={side} />
-        </button>
-      </div>
-      {nodeId ? (
-        <div className="ec-insp-name" data-testid="ec-inspector-name">
-          {name ?? nodeId}
-        </div>
-      ) : (
-        <div className="ec-tb-empty">Nessun nodo selezionato</div>
-      )}
-    </div>
-  );
+/** Spessore del cavo, coincide con il tubo a riposo (riga 1415). */
+export const BASE_W = 2.1;
+/** px al millisecondo: stessa andatura su cavi lunghi e corti (riga 1416). */
+export const SPEED = 0.16;
+/** Rigonfiamento massimo per lato (riga 1417). */
+export const BALL = 4.4;
+/** Apertura rapida davanti, richiusura più lenta dietro (riga 1418). */
+export const FRONT = 7.5;
+export const BACK = 19;
+/** Il tubo emerge dalla porta e vi rientra su questo tratto (riga 1510: `/ 22`). */
+export const EDGE_FADE = 22;
+/** Sotto questa lunghezza il tratto non si disegna (riga 1497: `s1 - s0 < 2`). */
+export const MIN_VISIBLE = 2;
+/** Campionamento del contorno: un punto ogni 1,6 px, almeno 10 (riga 1500). */
+export const SAMPLE_STEP = 1.6;
+export const MIN_SAMPLES = 10;
+
+/** Riga 1478. */
+export function smooth01(x: number): number {
+  const c = Math.max(0, Math.min(1, x));
+  return c * c * (3 - 2 * c);
+}
+
+/** Profilo gaussiano asimmetrico attorno al punto che avanza (righe 1419-1422). */
+export function tubeProfile(u: number): number {
+  const sg = u >= 0 ? FRONT : BACK;
+  return Math.exp(-(u * u) / (sg * sg));
+}
+
+/** Tratto del cavo occupato dal tubo: `sb` è il punto che avanza (riga 1489-1495). */
+export interface FlowWindow {
+  readonly cycle: number;
+  readonly sb: number;
+  readonly s0: number;
+  readonly s1: number;
+}
+
+/**
+ * Finestra del tubo a `elapsedMs` dall'inizio del cavo (`now - st.t0`), su
+ * un cavo lungo `len`. `null` se non c'è nulla da disegnare (righe 1488,
+ * 1497). Il ciclo è `len + BACK * 3.2`: la pallina entra dalla porta di
+ * uscita, sparisce oltre quella di ingresso e riparte.
+ */
+export function flowWindow(len: number, elapsedMs: number): FlowWindow | null {
+  if (!(len > 0)) return null;
+  const cycle = len + BACK * 3.2;
+  const sb = ((elapsedMs * SPEED) % cycle) - BACK * 1.1;
+  const s0 = Math.max(0, sb - BACK * 3);
+  const s1 = Math.min(len, sb + FRONT * 3.2);
+  if (s1 - s0 < MIN_VISIBLE) return null;
+  return { cycle, sb, s0, s1 };
+}
+
+/**
+ * Indicazione statica per chi preferisce meno movimento: lo stesso tubo,
+ * fermo a metà cavo. Non esiste nel prototipo (NOTE_DIVERGENZE.md).
+ */
+export function staticFlowWindow(len: number): FlowWindow | null {
+  if (!(len > 0)) return null;
+  const sb = len / 2;
+  return {
+    cycle: len + BACK * 3.2,
+    sb,
+    s0: Math.max(0, sb - BACK * 3),
+    s1: Math.min(len, sb + FRONT * 3.2),
+  };
+}
+
+/** Finestra da mostrare: quella animata, o quella statica con movimento ridotto. */
+export function flowWindowFor(len: number, elapsedMs: number, reduced: boolean): FlowWindow | null {
+  return reduced ? staticFlowWindow(len) : flowWindow(len, elapsedMs);
+}
+
+export type Sampler = (s: number) => { readonly x: number; readonly y: number };
+
+/**
+ * Contorno chiuso del tubo (righe 1500-1516): campiona il percorso `d`
+ * già calcolato con `sample` (in un browser `path.getPointAtLength`) e
+ * allarga il tratto secondo `tubeProfile`. Non tocca mai il percorso.
+ */
+export function tubeOutline(sample: Sampler, len: number, win: FlowWindow): string {
+  const n = Math.max(MIN_SAMPLES, Math.ceil((win.s1 - win.s0) / SAMPLE_STEP));
+  const pts: { x: number; y: number; s: number }[] = [];
+  for (let k = 0; k <= n; k++) {
+    const s = win.s0 + ((win.s1 - win.s0) * k) / n;
+    const q = sample(s);
+    pts.push({ x: q.x, y: q.y, s });
+  }
+  const left: string[] = [];
+  const right: string[] = [];
+  for (let k = 0; k <= n; k++) {
+    const a = pts[Math.max(0, k - 1)] as { x: number; y: number; s: number };
+    const b = pts[Math.min(n, k + 1)] as { x: number; y: number; s: number };
+    const p = pts[k] as { x: number; y: number; s: number };
+    let tx = b.x - a.x;
+    let ty = b.y - a.y;
+    const tl = Math.hypot(tx, ty) || 1;
+    tx /= tl;
+    ty /= tl;
+    const edge = smooth01(Math.min(p.s, len - p.s) / EDGE_FADE);
+    const w = BASE_W / 2 + BALL * tubeProfile(p.s - win.sb) * edge;
+    left.push((p.x - ty * w).toFixed(2) + " " + (p.y + tx * w).toFixed(2));
+    right.push((p.x + ty * w).toFixed(2) + " " + (p.y - tx * w).toFixed(2));
+  }
+  return "M " + left.concat(right.reverse()).join(" L ") + " Z";
+}
+
+// --- Attesa delle fette vuote --------------------------------------------------
+
+/** `animation: waiting 1.9s ease-in-out infinite` (riga 669). */
+export const WAIT_PERIOD = 1900;
+/** `@keyframes waiting { 0%,100% {opacity:.45} 50% {opacity:.95} }` (riga 670). */
+export const WAIT_LOW = 0.45;
+export const WAIT_HIGH = 0.95;
+/** Opacità a riposo del simbolo (riga 669: `opacity:.85`), anche con movimento ridotto. */
+export const WAIT_REST = 0.85;
+
+/** Funzione di temporizzazione CSS `cubic-bezier(x1, y1, x2, y2)`. */
+export function cubicBezier(x1: number, y1: number, x2: number, y2: number): (x: number) => number {
+  const cx = 3 * x1;
+  const bx = 3 * (x2 - x1) - cx;
+  const ax = 1 - cx - bx;
+  const cy = 3 * y1;
+  const by = 3 * (y2 - y1) - cy;
+  const ay = 1 - cy - by;
+  const bx_ = (t: number) => ((ax * t + bx) * t + cx) * t;
+  const by_ = (t: number) => ((ay * t + by) * t + cy) * t;
+  const dx_ = (t: number) => (3 * ax * t + 2 * bx) * t + cx;
+  return (x) => {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    let t = x;
+    for (let i = 0; i < 8; i++) {
+      const err = bx_(t) - x;
+      if (Math.abs(err) < 1e-7) return by_(t);
+      const d = dx_(t);
+      if (Math.abs(d) < 1e-6) break;
+      t -= err / d;
+    }
+    let lo = 0;
+    let hi = 1;
+    t = x;
+    for (let i = 0; i < 40; i++) {
+      const v = bx_(t);
+      if (Math.abs(v - x) < 1e-7) break;
+      if (v < x) lo = t;
+      else hi = t;
+      t = (lo + hi) / 2;
+    }
+    return by_(t);
+  };
+}
+
+/** `ease-in-out` di CSS. */
+export const easeInOut = cubicBezier(0.42, 0, 0.58, 1);
+
+/**
+ * Opacità del simbolo `<>` di una fetta vuota a `elapsedMs`: dal basso
+ * (0,45) all'alto (0,95) a metà periodo e ritorno, con `ease-in-out` su
+ * ciascuna metà, come i `@keyframes` del prototipo.
+ */
+export function waitingOpacity(elapsedMs: number): number {
+  const phase = (((elapsedMs % WAIT_PERIOD) + WAIT_PERIOD) % WAIT_PERIOD) / WAIT_PERIOD;
+  const u = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+  return WAIT_LOW + (WAIT_HIGH - WAIT_LOW) * easeInOut(u);
+}
+
+/** Opacità da mostrare: animata, o ferma a riposo con movimento ridotto. */
+export function waitingOpacityFor(elapsedMs: number, reduced: boolean): number {
+  return reduced ? WAIT_REST : waitingOpacity(elapsedMs);
 }
 ```
 
-### `src/etl-canvas/panels/Toolbox.tsx`
+### `src/etl-canvas/icons.tsx`
 
-166 righe
+24 righe
 
 ```tsx
-/**
- * La cassetta degli strumenti (prototipo, `buildPalette` righe 4727-4752, e i
- * gestori 4912-4937). Le sezioni e le voci NON sono scritte qui: derivano dal
- * catalogo di etl-core (`SECTIONS`, `META`), così un'operazione aggiunta al
- * dominio compare da sola. La sezione Dataset mostra la libreria di etl-store
- * e il caricamento di un CSV.
- */
-import { useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
-import { META, SECTIONS } from "../../etl-core";
-import type { ComponentId } from "../../etl-core";
-import type { EtlStore, Side } from "../../etl-store";
-import { useEtlState } from "../../etl-store/react";
-import { Icon } from "../icons";
-import { FAMILY_OF_SECTION } from "./families";
-import type { CanvasDropPayload } from "../drop";
-import { loadCsvFile } from "./csv";
-import { ChevronIcon, CloseArrow, UploadIcon } from "./ui-icons";
+import { EMPTY_SLOT_ICON, ICONS } from "../etl-core";
+import type { ComponentId } from "../etl-core";
 
-export interface ToolboxProps {
-  readonly store: EtlStore;
-  readonly side: Side;
-  readonly onClose: () => void;
-  /** Inizio del trascinamento di una voce (il canvas ne mostra l'anteprima): vedi EtlWorkspace. */
-  readonly onItemPointerDown: (
-    payload: CanvasDropPayload,
-    e: ReactPointerEvent<HTMLElement>,
-  ) => void;
-}
-
-function Item(props: {
-  type: ComponentId;
-  label: string;
-  meta?: string | undefined;
-  lib?: string | undefined;
-  family?: string | undefined;
-  onPointerDown: ToolboxProps["onItemPointerDown"];
+/** Icona del catalogo di etl-core (prototipo `svgTag`, righe 979-981). I tracciati sono costanti del catalogo, mai dati dell'utente. */
+export function Icon(props: {
+  id: ComponentId | "empty";
+  svgRef?: (el: SVGSVGElement | null) => void;
 }) {
-  const { type, lib } = props;
-  const payload: CanvasDropPayload = lib
-    ? { component: type, libraryId: lib }
-    : { component: type };
+  const inner = props.id === "empty" ? EMPTY_SLOT_ICON : ICONS[props.id];
   return (
-    <div
-      className={"ec-pal-item" + (type === "dataset" ? " ec-source" : "")}
-      data-type={type}
-      data-lib={lib}
-      data-family={props.family}
-      onPointerDown={(e) => props.onPointerDown(payload, e)}
+    <svg
+      ref={props.svgRef}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: inner }}
+    />
+  );
+}
+```
+
+### `src/etl-canvas/index.ts`
+
+21 righe
+
+```ts
+/**
+ * etl-canvas — Fase 4a: resa visiva del canvas ETL. Importa da etl-core,
+ * etl-layout ed etl-store; nessuno di questi importa da qui.
+ */
+export { EtlCanvas, CanvasSurface } from "./EtlCanvas";
+export type { CanvasSurfaceProps } from "./EtlCanvas";
+export { prototypeScene } from "./seed";
+export { fit, zoomIn, zoomOut, zoomReset, zoomAtPoint } from "./actions";
+export { fitView, zoomAt, minimapFrame, bounds } from "./view";
+export { nodeView, countClass, isPartial, slicesOf } from "./model";
+export { createInteractionController } from "./interaction";
+export type {
+  InteractionController,
+  InteractionUi,
+  DownTarget,
+  PointerInput,
+  KeyInput,
+} from "./interaction";
+export { handleCanvasDrop, previewCanvasDrop } from "./drop";
+export type { CanvasDropPayload, DropPreview } from "./drop";
+```
+
+### `src/etl-canvas/inspector/ActionMenu.tsx`
+
+72 righe
+
+```tsx
+/**
+ * Menu di azioni (ruolo menu) in un portale: usato dal pannello espanso per i
+ * passaggi. Frecce, Home, Fine, Invio, Esc; il focus parte dalla prima voce e,
+ * alla chiusura, torna al pulsante che l'ha aperto.
+ */
+import { useEffect, useRef, useState } from "react";
+import type { KeyboardEvent, RefObject } from "react";
+import { copy } from "./copy";
+import { Menu } from "./Menu";
+
+export interface ActionItem {
+  readonly id: string;
+  readonly label: string;
+  readonly danger?: boolean;
+  readonly onSelect: () => void;
+}
+
+export function ActionMenu(props: {
+  readonly anchor: RefObject<HTMLElement | null>;
+  readonly items: readonly ActionItem[];
+  readonly onClose: (returnFocus: boolean) => void;
+  readonly ariaLabel?: string;
+}) {
+  const { items } = props;
+  const [active, setActive] = useState(0);
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  useEffect(() => refs.current[active]?.focus(), [active]);
+  const onKey = (e: KeyboardEvent) => {
+    const n = items.length;
+    if (e.key === "ArrowDown") setActive((a) => (a + 1) % n);
+    else if (e.key === "ArrowUp") setActive((a) => (a - 1 + n) % n);
+    else if (e.key === "Home") setActive(0);
+    else if (e.key === "End") setActive(n - 1);
+    else if (e.key === "Tab") {
+      props.onClose(false);
+      return;
+    } else return;
+    e.preventDefault();
+  };
+  return (
+    <Menu
+      anchor={props.anchor}
+      role="menu"
+      ariaLabel={props.ariaLabel ?? copy.stepsMenuLabel}
+      onClose={() => props.onClose(false)}
+      onEscape={() => props.onClose(true)}
     >
-      <div className="ec-pal-chip">
-        <Icon id={type} />
+      <div className="ei-menu-scroll" data-scroll="" onKeyDown={onKey}>
+        {items.map((it, i) => (
+          <button
+            key={it.id}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
+            type="button"
+            role="menuitem"
+            tabIndex={i === active ? 0 : -1}
+            className={"ei-option ei-menuitem" + (it.danger ? " ei-danger" : "")}
+            onPointerMove={() => setActive(i)}
+            onClick={() => {
+              it.onSelect();
+              props.onClose(false);
+            }}
+          >
+            <span className="ei-option-label">{it.label}</span>
+          </button>
+        ))}
       </div>
-      <div className="ec-pal-label">{props.label}</div>
-      {props.meta ? <div className="ec-lib-meta">{props.meta}</div> : null}
+    </Menu>
+  );
+}
+```
+
+### `src/etl-canvas/inspector/BlockedNotice.tsx`
+
+16 righe
+
+```tsx
+/** Stato bloccato (prototipo, righe 3708-3719): una lavorazione senza tabella in ingresso non ha nulla da configurare. */
+import { copy } from "./copy";
+import { LockIcon } from "./icons";
+
+export function BlockedNotice(props: { readonly capacity: number }) {
+  return (
+    <>
+      <div className="ei-lock" role="status" data-testid="ei-blocked">
+        <LockIcon />
+        <div>{copy.lockedText}</div>
+      </div>
+      {props.capacity > 1 ? <div className="ei-help">{copy.lockedJoin(props.capacity)}</div> : null}
+    </>
+  );
+}
+```
+
+### `src/etl-canvas/inspector/ColumnPicker.tsx`
+
+342 righe
+
+```tsx
+/**
+ * Selettore multiplo di colonne: le scelte sono etichette rimovibili, NELL'ORDINE
+ * DI SCELTA (conta per Ordina, Rimuovi duplicati, Raggruppa), riordinabili con
+ * il trascinamento e con Alt+←/→. Il menu (in un portale) ha ricerca, ogni
+ * colonna col suo tipo, «Tutte» e «Nessuna» (sulle sole colonne visibili dopo
+ * la ricerca) e il conteggio «N colonne su M», annunciato ai lettori di schermo.
+ */
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent, PointerEvent } from "react";
+import type { ColumnDef } from "../../etl-core";
+import { copy } from "./copy";
+import { CheckIcon, PlusIcon, XIcon } from "./icons";
+import {
+  addVisible,
+  canonicalName,
+  clampActive,
+  comboAction,
+  filterByQuery,
+  fold,
+  moveItem,
+  moveTarget,
+  nearestIndex,
+  removeVisible,
+  toggleColumn,
+} from "./logic";
+import { Menu } from "./Menu";
+
+export interface ColumnPickerProps {
+  readonly value: readonly string[];
+  readonly schema: readonly ColumnDef[];
+  readonly onChange: (columns: string[]) => void;
+  readonly labelledBy?: string | undefined;
+  readonly ariaLabel?: string | undefined;
+}
+
+interface Row {
+  readonly name: string;
+  readonly label: string;
+  readonly hint?: string;
+  readonly free?: boolean;
+}
+
+/** Spostamento minimo prima che un clic su un'etichetta diventi un trascinamento. */
+const DRAG_START_PX = 4;
+
+export function ColumnPicker(props: ColumnPickerProps) {
+  const { value, schema, onChange } = props;
+  const id = useId();
+  const listId = `${id}-list`;
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const addRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const chipRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const focusIndex = useRef<number | null>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const [drag, setDrag] = useState<{ index: number; dx: number; dy: number } | null>(null);
+  const names = useMemo(() => schema.map((c) => c.name), [schema]);
+
+  const rows = useMemo<Row[]>(() => {
+    const found: Row[] = filterByQuery(
+      schema.map((c) => ({ name: c.name, label: c.name, hint: c.type })),
+      query,
+    );
+    const typed = query.trim();
+    const exists =
+      names.some((n) => fold(n) === fold(typed)) || value.some((v) => fold(v) === fold(typed));
+    if (typed && !exists)
+      found.push({ name: typed, label: copy.columnsAddTyped(typed), free: true });
+    return found;
+  }, [schema, names, query, value]);
+  const act = clampActive(active, rows.length);
+  const visibleNames = rows.filter((r) => !r.free).map((r) => r.name);
+
+  const setColumns = (next: string[]) => onChange(next);
+  const close = (returnFocus: boolean) => {
+    setOpen(false);
+    setQuery("");
+    if (returnFocus) addRef.current?.focus();
+  };
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+  useEffect(() => {
+    if (!open || act < 0) return;
+    listRef.current?.querySelector(`[data-index="${act}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [open, act, rows.length]);
+  // dopo un riordino da tastiera il focus segue l'etichetta spostata
+  useEffect(() => {
+    if (focusIndex.current !== null) {
+      chipRefs.current[focusIndex.current]?.focus();
+      focusIndex.current = null;
+    }
+  });
+
+  const toggleRow = (r: Row) => {
+    if (r.free) {
+      setColumns([...value, canonicalName(names, r.name)]);
+      setQuery("");
+    } else setColumns(toggleColumn(value, r.name));
+  };
+
+  // il Tab resta nel menu (Tutte, Nessuna); alla fine il menu si chiude da solo
+  const onInputKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    const a = comboAction(e.key, act, rows.length);
+    if (a.kind === "move") {
+      e.preventDefault();
+      setActive(a.to);
+    } else if (a.kind === "commit") {
+      e.preventDefault();
+      const r = rows[act];
+      if (r) toggleRow(r);
+    } else if (a.kind === "close") {
+      e.preventDefault();
+      e.stopPropagation();
+      close(true);
+    }
+  };
+
+  // --- etichette: tastiera e trascinamento -----------------------------------
+  const onChipKey = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
+    if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      const to = moveTarget(i, value.length, e.key);
+      if (to !== null) {
+        focusIndex.current = to;
+        setColumns(moveItem(value, i, to));
+      }
+    } else if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault();
+      setColumns(value.filter((_, k) => k !== i));
+      focusIndex.current = Math.max(0, Math.min(i, value.length - 2));
+      if (value.length <= 1) addRef.current?.focus();
+    }
+  };
+  const onChipPointerDown = (e: PointerEvent<HTMLButtonElement>, i: number) => {
+    if (e.button !== 0) return;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    let moved = false;
+    const el = e.currentTarget;
+    // i centri delle etichette prima che quella trascinata si muova: il suo centro seguirebbe il puntatore
+    const centers = chipRefs.current.slice(0, value.length).map((c) => {
+      const r = c?.getBoundingClientRect();
+      return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : { x: 0, y: 0 };
+    });
+    el.setPointerCapture(e.pointerId);
+    const move = (ev: globalThis.PointerEvent) => {
+      const dx = ev.clientX - sx;
+      const dy = ev.clientY - sy;
+      if (!moved && Math.hypot(dx, dy) < DRAG_START_PX) return;
+      moved = true;
+      setDrag({ index: i, dx, dy });
+    };
+    const up = (ev: globalThis.PointerEvent) => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      setDrag(null);
+      if (!moved) return;
+      const to = nearestIndex(centers, { x: ev.clientX, y: ev.clientY });
+      // il clic che segue un trascinamento non deve fare altro
+      el.addEventListener("click", (c) => c.stopPropagation(), { once: true, capture: true });
+      if (to !== i) {
+        focusIndex.current = to;
+        setColumns(moveItem(value, i, to));
+      }
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  };
+
+  const countText = copy.columnsCount(value.length, schema.length);
+
+  return (
+    <>
+      <div
+        ref={fieldRef}
+        className="ei-field ei-chipsfield"
+        data-picker="columns"
+        data-selected={value.length}
+        data-total={schema.length}
+        role="group"
+        aria-labelledby={props.labelledBy}
+        aria-label={props.labelledBy ? undefined : props.ariaLabel}
+        data-open={open || undefined}
+      >
+        {value.length === 0 ? (
+          <span className="ei-placeholder">{copy.columnsPlaceholder}</span>
+        ) : null}
+        <ul className="ei-chips">
+          {value.map((name, i) => {
+            const known = names.includes(name);
+            const dragging = drag?.index === i;
+            return (
+              <li
+                key={name}
+                className={"ei-chip" + (known ? "" : " ei-free") + (dragging ? " ei-dragging" : "")}
+                style={
+                  dragging && drag
+                    ? { transform: `translate(${drag.dx}px, ${drag.dy}px)` }
+                    : undefined
+                }
+              >
+                <button
+                  ref={(el) => {
+                    chipRefs.current[i] = el;
+                  }}
+                  type="button"
+                  className="ei-chip-label"
+                  title={known ? copy.columnsMoveHelp : copy.columnsFree}
+                  aria-label={copy.columnsPosition(name, i + 1, value.length)}
+                  onKeyDown={(e) => onChipKey(e, i)}
+                  onPointerDown={(e) => onChipPointerDown(e, i)}
+                >
+                  {name}
+                </button>
+                <button
+                  type="button"
+                  className="ei-chip-x"
+                  aria-label={copy.columnsRemove(name)}
+                  onClick={() => setColumns(value.filter((_, k) => k !== i))}
+                >
+                  <XIcon />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <button
+          ref={addRef}
+          type="button"
+          className="ei-add"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={open ? listId : undefined}
+          onClick={() => (open ? close(false) : setOpen(true))}
+        >
+          <PlusIcon />
+          <span>{copy.columnsAdd}</span>
+        </button>
+      </div>
+      {open ? (
+        <Menu
+          anchor={fieldRef}
+          onClose={() => close(false)}
+          onEscape={() => close(true)}
+          ariaLabel={copy.columnsMenu}
+        >
+          <div className="ei-menu-head">
+            <input
+              ref={inputRef}
+              type="text"
+              className="ei-search"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls={listId}
+              aria-autocomplete="list"
+              aria-activedescendant={act >= 0 ? `${id}-opt-${act}` : undefined}
+              aria-label={copy.columnsSearch}
+              placeholder={copy.columnsSearch}
+              autoComplete="off"
+              spellCheck={false}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
+              onKeyDown={onInputKey}
+            />
+          </div>
+          <div
+            ref={listRef}
+            id={listId}
+            className="ei-menu-scroll"
+            role="listbox"
+            aria-multiselectable="true"
+            aria-label={copy.columnsMenu}
+            data-scroll=""
+          >
+            {rows.length === 0 ? <div className="ei-menu-empty">{copy.noResults}</div> : null}
+            {rows.map((r, i) => {
+              const on = !r.free && value.includes(r.name);
+              return (
+                <div
+                  key={`${r.free ? "free:" : ""}${r.name}`}
+                  id={`${id}-opt-${i}`}
+                  data-index={i}
+                  role="option"
+                  aria-selected={on}
+                  className={
+                    "ei-option" +
+                    (i === act ? " ei-active" : "") +
+                    (on ? " ei-selected" : "") +
+                    (r.free ? " ei-free" : "")
+                  }
+                  onPointerDown={(e) => e.preventDefault()}
+                  onPointerMove={() => setActive(i)}
+                  onClick={() => toggleRow(r)}
+                >
+                  {r.free ? null : (
+                    <span className="ei-checkbox" data-on={on || undefined} aria-hidden="true">
+                      {on ? <CheckIcon /> : null}
+                    </span>
+                  )}
+                  <span className="ei-option-label">{r.label}</span>
+                  {r.hint ? <span className="ei-option-hint">{r.hint}</span> : null}
+                </div>
+              );
+            })}
+          </div>
+          <div className="ei-menu-foot">
+            <span className="ei-count" role="status" aria-live="polite">
+              {countText}
+            </span>
+            <span className="ei-menu-actions">
+              <button
+                type="button"
+                className="ei-link-btn"
+                onClick={() => setColumns(addVisible(value, visibleNames))}
+              >
+                {copy.columnsAll}
+              </button>
+              <button
+                type="button"
+                className="ei-link-btn"
+                onClick={() => setColumns(removeVisible(value, visibleNames))}
+              >
+                {copy.columnsNone2}
+              </button>
+            </span>
+          </div>
+        </Menu>
+      ) : null}
+    </>
+  );
+}
+```
+
+### `src/etl-canvas/inspector/ExpandedPanel.tsx`
+
+115 righe
+
+```tsx
+/**
+ * Il pannello espanso di un box combinato (prototipo, righe 855-866, 2117-2135 e
+ * 2250-2400): i passaggi in sequenza, riordinabili; ognuno ha un menu
+ * («Configura parametri», «Sgancia», «Elimina passaggio») e trascinarlo fuori dal
+ * pannello lo sgancia sul canvas, nel punto di rilascio. Si chiude con Esc, con
+ * il pulsante o con un clic sullo sfondo, e da solo se il box non è più combinato.
+ */
+import { useEffect, useRef } from "react";
+import type { KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
+import type { EtlStore } from "../../etl-store";
+import { useEtlState } from "../../etl-store/react";
+import { copy } from "./copy";
+import { XIcon } from "./icons";
+import { NameInput } from "./NameInput";
+import { StepList } from "./StepList";
+
+export function ExpandedPanel(props: {
+  readonly store: EtlStore;
+  readonly nodeId: string;
+  readonly onClose: () => void;
+  /** «Configura parametri»: apre l'Inspector su quel passaggio. */
+  readonly onConfigure: (index: number) => void;
+  /** Rilascio fuori dal pannello: sgancia il passaggio nel punto indicato (coordinate della finestra). */
+  readonly onDetachOutside: (index: number, clientX: number, clientY: number) => void;
+}) {
+  const { store, nodeId } = props;
+  const card = useEtlState((s) => s.graph.cards[nodeId], store);
+  const step = useEtlState((s) => s.inspector.step, store);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const combined = !!card && card.kind === "op" && card.components.length > 1;
+
+  // non più combinato (sgancio dell'ultimo passaggio, eliminazione): si chiude da solo
+  useEffect(() => {
+    if (!combined) props.onClose();
+  }, [combined, props]);
+  useEffect(() => {
+    closeRef.current?.focus();
+  }, []);
+
+  if (!card || !combined || typeof document === "undefined") return null;
+
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      props.onClose();
+    } else if (e.key === "Tab") {
+      // il focus resta dentro il pannello
+      const items = Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), input:not([disabled])",
+        ) ?? [],
+      );
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last?.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first?.focus();
+      }
+    }
+  };
+
+  return createPortal(
+    <div
+      className="ei-expanded-backdrop"
+      data-testid="ei-expanded"
+      onKeyDown={onKey}
+      onPointerDown={(e) => {
+        if (e.target === e.currentTarget) props.onClose();
+      }}
+    >
+      <div
+        ref={panelRef}
+        className="ei-expanded ei-root"
+        role="dialog"
+        aria-modal="true"
+        aria-label={copy.expandedTitle}
+      >
+        <div className="ei-expanded-head">
+          <div>
+            <NameInput store={store} card={card} className="ei-name" testId="ei-expanded-name" />
+            <div className="ei-help">{copy.expandedSub(card.components.length)}</div>
+          </div>
+          <button
+            ref={closeRef}
+            type="button"
+            className="ei-icon-btn"
+            aria-label={copy.expandedClose}
+            onClick={props.onClose}
+          >
+            <XIcon />
+          </button>
+        </div>
+        <div className="ei-help">{copy.expandedNote}</div>
+        <StepList
+          store={store}
+          card={card}
+          selectedStep={step}
+          variant="expanded"
+          containerRef={panelRef}
+          onSelect={() => {}}
+          onConfigure={props.onConfigure}
+          onDetachOutside={props.onDetachOutside}
+        />
+      </div>
+    </div>,
+    document.getElementById("ei-portal") ?? document.body,
+  );
+}
+```
+
+### `src/etl-canvas/inspector/Field.tsx`
+
+47 righe
+
+```tsx
+/** Un campo dell'Inspector: etichetta, controllo, nota; più il campo di testo (senza frecce native). */
+import { useId } from "react";
+import type { ReactNode } from "react";
+
+export function Field(props: {
+  readonly label: string;
+  readonly children: (labelId: string) => ReactNode;
+  readonly help?: ReactNode;
+}) {
+  const labelId = useId();
+  return (
+    <div className="ei-fieldgroup">
+      <div id={labelId} className="ei-label">
+        {props.label}
+      </div>
+      {props.children(labelId)}
+      {props.help ? <div className="ei-help">{props.help}</div> : null}
     </div>
   );
 }
 
-export function Toolbox(props: ToolboxProps) {
-  const { store, side } = props;
-  const library = useEtlState((s) => s.library, store);
-  const horiz = side === "top" || side === "bottom";
-  const [open, setOpen] = useState<Readonly<Record<string, boolean>>>(() =>
-    Object.fromEntries(SECTIONS.map((s) => [s.id, true])),
-  );
-  const [status, setStatus] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const onFile = async (file: File | undefined) => {
-    if (!file) return;
-    const outcome = await loadCsvFile(store, file);
-    setStatus(outcome.message);
-    if (outcome.ok) setOpen((o) => ({ ...o, data: true }));
-  };
-
+export function TextField(props: {
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+  readonly labelledBy?: string | undefined;
+  readonly ariaLabel?: string | undefined;
+  readonly inputMode?: "text" | "numeric" | "decimal";
+  readonly disabled?: boolean;
+  readonly placeholder?: string;
+}) {
   return (
-    <div className="ec-tb-inner" data-testid="ec-toolbox">
-      <div className="ec-tb-head">
-        <div className="ec-tb-title">Strumenti</div>
-        <button
-          type="button"
-          className="ec-close-btn"
-          aria-label="Nascondi la cassetta degli strumenti"
-          onClick={props.onClose}
-        >
-          <CloseArrow side={side} />
-        </button>
+    <input
+      type="text"
+      className="ei-field ei-input"
+      inputMode={props.inputMode ?? "text"}
+      aria-labelledby={props.labelledBy}
+      aria-label={props.labelledBy ? undefined : props.ariaLabel}
+      autoComplete="off"
+      spellCheck={false}
+      disabled={props.disabled}
+      placeholder={props.placeholder}
+      value={props.value}
+      onChange={(e) => props.onChange(e.target.value)}
+    />
+  );
+}
+```
+
+### `src/etl-canvas/inspector/Header.tsx`
+
+22 righe
+
+```tsx
+/** Intestazione dell'Inspector: la famiglia del nodo (testo piccolo in maiuscolo) e il nome, modificabile in linea. */
+import type { Card } from "../../etl-core";
+import type { EtlStore } from "../../etl-store";
+import { familyLabel } from "./family";
+import { NameInput } from "./NameInput";
+
+export function Header(props: { readonly store: EtlStore; readonly card: Card }) {
+  return (
+    <div className="ei-header">
+      <div className="ei-overline" data-testid="ei-family">
+        {familyLabel(props.card)}
       </div>
-      {SECTIONS.map((sec) => {
-        const isOpen = horiz || open[sec.id] !== false;
-        return (
-          <div key={sec.id} className={"ec-tb-sec" + (isOpen ? " ec-open" : "")} data-sec={sec.id}>
-            <button
-              type="button"
-              className="ec-tb-sec-head"
-              aria-expanded={isOpen}
-              onClick={() => setOpen((o) => ({ ...o, [sec.id]: !(o[sec.id] !== false) }))}
-            >
-              <span className="ec-chev">
-                <ChevronIcon />
-              </span>
-              <span className="ec-tb-sec-name">{sec.name}</span>
-            </button>
-            <div className="ec-tb-sec-body">
-              {sec.items ? (
-                sec.items.map((t) => (
-                  <Item
-                    key={t}
-                    type={t}
-                    label={META[t].label}
-                    family={FAMILY_OF_SECTION[sec.id]}
-                    onPointerDown={props.onItemPointerDown}
-                  />
-                ))
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="ec-tb-upload"
-                    onClick={() => fileRef.current?.click()}
-                  >
-                    <UploadIcon />
-                    Carica dataset
-                  </button>
-                  {library.length ? (
-                    library.map((lb) => (
-                      <Item
-                        key={lb.id}
-                        type="dataset"
-                        lib={lb.id}
-                        label={lb.name}
-                        meta={`${lb.columns.length} col · ${lb.rows} righe`}
-                        onPointerDown={props.onItemPointerDown}
-                      />
-                    ))
-                  ) : (
-                    <div className="ec-tb-empty">Nessun dataset caricato</div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        );
-      })}
-      {status ? (
-        <div className="ec-tb-status" role="status">
-          {status}
-        </div>
-      ) : null}
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".csv,.tsv,.txt"
-        hidden
-        data-testid="ec-file-input"
-        onChange={(e) => {
-          const input = e.currentTarget;
-          void onFile(input.files?.[0]);
-          input.value = "";
-        }}
+      <NameInput
+        store={props.store}
+        card={props.card}
+        className="ei-name"
+        testId="ec-inspector-name"
       />
     </div>
   );
 }
 ```
 
-### `src/etl-canvas/panels/actions.ts`
+### `src/etl-canvas/inspector/Inspector.tsx`
 
-88 righe
-
-```ts
-/**
- * Azioni sui pannelli: comandi di etl-store (`setPanel`) più la regola
- * dell'Inspector che segue la selezione. Nessuna logica di dominio e nessun
- * DOM. La vista non si compensa qui: dopo ogni cambio la tiene visibile
- * `keepVisible` (layout.ts), chiamata da chi misura l'area.
- */
-import type { CommandResult, EtlStore, PanelKey, Side } from "../../etl-store";
-import type { InteractionController } from "../interaction";
-
-export interface PanelActions {
-  open(key: PanelKey): CommandResult;
-  close(key: PanelKey): CommandResult;
-  /** Sposta il pannello su un altro bordo: si chiude, si sposta e si riapre (prototipo, `setSide`). */
-  moveTo(key: PanelKey, side: Side): CommandResult;
-  /**
-   * Apertura automatica dell'Inspector (clic su un nodo). Se sostituisce la
-   * cassetta aperta, lo ricorda: alla chiusura automatica la cassetta si
-   * riapre.
-   */
-  autoOpenInspector(): void;
-  /** Chiusura automatica dell'Inspector (deselezione): riapre la cassetta se era stata sostituita. */
-  autoCloseInspector(): void;
-}
-
-export function createPanelActions(store: EtlStore): PanelActions {
-  // la cassetta aperta che l'apertura automatica dell'Inspector ha sostituito
-  let replacedTools = false;
-  const apply = (payload: { panel: PanelKey; open?: boolean; side?: Side }): CommandResult =>
-    store.dispatch({ type: "setPanel", payload });
-  // qualunque azione esplicita dell'utente su un pannello azzera la memoria
-  const explicit = (payload: { panel: PanelKey; open?: boolean; side?: Side }): CommandResult => {
-    replacedTools = false;
-    return apply(payload);
-  };
-  return {
-    open: (key) => explicit({ panel: key, open: true }),
-    close: (key) => explicit({ panel: key, open: false }),
-    moveTo: (key, side) => explicit({ panel: key, side }),
-    autoOpenInspector() {
-      const { panels } = store.getState();
-      if (panels.insp.open) return;
-      replacedTools = panels.tools.open;
-      apply({ panel: "insp", open: true });
-    },
-    autoCloseInspector() {
-      const { panels } = store.getState();
-      const restore = replacedTools;
-      replacedTools = false;
-      if (!panels.insp.open) return;
-      apply({ panel: "insp", open: false });
-      if (restore) apply({ panel: "tools", open: true });
-    },
-  };
-}
-
-/**
- * L'Inspector segue la selezione (prototipo: `selectCard` apre, `deselect`
- * chiude — righe 2694-2727), con due differenze volute (Fase 6a.2):
- *
- * - si apre solo al CLIC su un nodo (rilascio senza trascinamento, con un solo
- *   nodo selezionato): mai alla pressione, durante un trascinamento, un
- *   riquadro di selezione, una selezione multipla o dopo un rilascio dalla
- *   cassetta;
- * - si chiude quando non c'è più un nodo nell'inspector (deselezione) e, se
- *   aveva sostituito la cassetta, la riapre.
- *
- * Se l'utente lo chiude con un nodo ancora selezionato, resta chiuso fino al
- * prossimo clic. Restituisce la funzione per smettere di ascoltare.
- */
-export function followInspector(
-  store: EtlStore,
-  controller: Pick<InteractionController, "subscribeClick">,
-  actions: PanelActions,
-): () => void {
-  let had = store.getState().inspector.nodeId !== null;
-  const offClick = controller.subscribeClick(() => actions.autoOpenInspector());
-  const offStore = store.subscribe(() => {
-    const has = store.getState().inspector.nodeId !== null;
-    if (has === had) return;
-    had = has;
-    if (!has) actions.autoCloseInspector();
-  });
-  return () => {
-    offClick();
-    offStore();
-  };
-}
-```
-
-### `src/etl-canvas/panels/csv.ts`
-
-37 righe
-
-```ts
-/**
- * Caricamento di un dataset dalla cassetta (prototipo, righe 4921-4937): la
- * lettura e la deduzione dei tipi sono `parseCSV` di etl-core, la libreria è
- * quella di etl-store (`loadCsv` → comando `loadDataset`, che conserva solo i
- * metadati: nome, percorso, colonne, righe — mai il contenuto del file).
- */
-import type { EtlStore } from "../../etl-store";
-
-export interface CsvLoadOutcome {
-  readonly ok: boolean;
-  /** Messaggio per l'utente (prototipo, riga 4934 e 4927). */
-  readonly message: string;
-}
-
-/** Carica il testo di un CSV già letto. */
-export function loadCsvText(store: EtlStore, fileName: string, text: string): CsvLoadOutcome {
-  const result = store.loadCsv(text, fileName);
-  if (!result.ok) return { ok: false, message: result.reason };
-  const item = store.getState().library.at(-1);
-  return {
-    ok: true,
-    message: item
-      ? `${fileName} caricato: ${item.columns.length} colonne, ${item.rows} righe. Trascinalo sul canvas.`
-      : `${fileName} caricato.`,
-  };
-}
-
-/** Legge un file scelto dall'utente (solo nel browser: `FileReader`) e lo carica. */
-export function loadCsvFile(store: EtlStore, file: File): Promise<CsvLoadOutcome> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(loadCsvText(store, file.name, String(reader.result ?? "")));
-    reader.onerror = () => resolve({ ok: false, message: "Il file non si può leggere" });
-    reader.readAsText(file);
-  });
-}
-```
-
-### `src/etl-canvas/panels/families.ts`
-
-17 righe
-
-```ts
-import { sectionOf } from "../../etl-core";
-import type { ComponentId } from "../../etl-core";
-
-/** Famiglia di colore di una sezione della cassetta (la stessa dei nodi sul canvas: `data-family`). */
-export const FAMILY_OF_SECTION: Readonly<Record<string, string>> = {
-  rows: "filter",
-  xform: "transform",
-  merge: "merge",
-  out: "output",
-};
-
-/** Famiglia di un componente, o `undefined` per il dataset. */
-export function familyOfType(type: ComponentId): string | undefined {
-  const section = sectionOf(type);
-  return section ? FAMILY_OF_SECTION[section.id] : undefined;
-}
-```
-
-### `src/etl-canvas/panels/layout.ts`
-
-216 righe
-
-```ts
-/**
- * Geometria dei pannelli agganciabili: funzioni pure sullo stato dei pannelli
- * di etl-store (`Panels`: lato e aperto/chiuso di ciascuno). Misure del
- * prototipo (docs/prototype/isa-fusion-prototype.html, righe 4756-4900), salvo
- * la regola della vista (vedi `keepVisible`).
- *
- * Nessuna logica di dominio: misure e posizione della vista sono
- * geometria dell'interfaccia.
- */
-import type { Card } from "../../etl-core";
-import { CARD, LABEL_H } from "../../etl-layout";
-import type { Size } from "../../etl-layout";
-import type { PanelKey, Panels, Side, View } from "../../etl-store";
-import type { Insets } from "../view";
-
-/** I due pannelli, nell'ordine delle schede (prototipo, riga 4797). */
-export const PANEL_KEYS: readonly PanelKey[] = ["tools", "insp"];
-
-export const PANEL_LABEL: Readonly<Record<PanelKey, string>> = {
-  tools: "Strumenti",
-  insp: "Inspector",
-};
-
-/** Nome del pannello nei suggerimenti (riga 4759-4760). */
-export const PANEL_NAME: Readonly<Record<PanelKey, string>> = {
-  tools: "gli strumenti",
-  insp: "l’inspector",
-};
-
-export const SIDE_NAME: Readonly<Record<Side, string>> = {
-  left: "sinistro",
-  right: "destro",
-  top: "superiore",
-  bottom: "inferiore",
-};
-
-export const SIDES: readonly Side[] = ["left", "right", "top", "bottom"];
-
-/** Misure proprie di ciascun pannello: larghezza (bordi verticali) e altezza (orizzontali). Righe 4759-4760. */
-export const PANEL_SIZE: Readonly<Record<PanelKey, { readonly w: number; readonly h: number }>> = {
-  tools: { w: 264, h: 206 },
-  insp: { w: 308, h: 300 },
-};
-
-/** Margine verso il canvas, parte della misura del pannello (CSS `.panel`, riga 227). */
-export const EXTENT_PAD = 16;
-
-/** Distanza tra due tacche sullo stesso bordo (riga 4850). */
-export const NOTCH_SPREAD = 40;
-
-export const isVertical = (side: Side): boolean => side === "left" || side === "right";
-
-/** I due pannelli stanno sullo stesso bordo: diventano schede di un unico pannello. */
-export function isGrouped(panels: Panels): boolean {
-  return panels.tools.side === panels.insp.side;
-}
-
-/** Misura effettiva: in gruppo entrambi prendono la maggiore, così cambiare scheda non sposta il canvas (riga 4772). */
-export function panelSize(panels: Panels, key: PanelKey): { w: number; h: number } {
-  if (!isGrouped(panels)) return { ...PANEL_SIZE[key] };
-  return {
-    w: Math.max(PANEL_SIZE.tools.w, PANEL_SIZE.insp.w),
-    h: Math.max(PANEL_SIZE.tools.h, PANEL_SIZE.insp.h),
-  };
-}
-
-/** Quanto spazio sottrae al canvas un pannello aperto (riga 4763). */
-export function panelExtent(panels: Panels, key: PanelKey): number {
-  const s = panelSize(panels, key);
-  return (isVertical(panels[key].side) ? s.w : s.h) + EXTENT_PAD;
-}
-
-/** Spazio sottratto al canvas dai pannelli aperti sul bordo `side`. */
-export function openExtent(panels: Panels, side: Side): number {
-  return PANEL_KEYS.filter((k) => panels[k].open && panels[k].side === side).reduce(
-    (sum, k) => sum + panelExtent(panels, k),
-    0,
-  );
-}
-
-/** Area visibile con lo spazio dei widget in sovrimpressione già escluso (margine di sicurezza). */
-export interface Visibility {
-  readonly size: Size;
-  readonly insets: Insets;
-}
-
-interface Box {
-  readonly x1: number;
-  readonly y1: number;
-  readonly x2: number;
-  readonly y2: number;
-}
-
-/** Rettangolo di un nodo (quadrato più etichetta) sullo schermo, con la vista data. */
-function screenBox(c: Pick<Card, "x" | "y">, v: View): Box {
-  const x1 = v.x + c.x * v.zoom;
-  const y1 = v.y + c.y * v.zoom;
-  return { x1, y1, x2: x1 + CARD * v.zoom, y2: y1 + (CARD + LABEL_H) * v.zoom };
-}
-
-function safeBox(a: Visibility): Box {
-  return {
-    x1: a.insets.left,
-    y1: a.insets.top,
-    x2: a.size.w - a.insets.right,
-    y2: a.size.h - a.insets.bottom,
-  };
-}
-
-/** Identificativi dei nodi interamente dentro l'area visibile sicura. */
-export function visibleIds(
-  cards: readonly Card[],
-  view: View,
-  area: Visibility,
-): readonly string[] {
-  const safe = safeBox(area);
-  return cards
-    .filter((c) => {
-      const b = screenBox(c, view);
-      return b.x1 >= safe.x1 && b.y1 >= safe.y1 && b.x2 <= safe.x2 && b.y2 <= safe.y2;
-    })
-    .map((c) => c.id);
-}
-
-/** Spostamento minimo di un intervallo [lo, hi] perché stia in [a, b]; se non entra, si allinea ad `a`. */
-function shiftInto(lo: number, hi: number, a: number, b: number): number {
-  if (hi - lo > b - a) return a - lo;
-  if (lo < a) return a - lo;
-  if (hi > b) return b - hi;
-  return 0;
-}
-
-/**
- * Regola dei pannelli (Fase 6a.2, sostituisce quella del prototipo «nodi
- * fermi sullo schermo», righe 4780-4784 e 4818-4821): un pannello aperto
- * riduce l'area del canvas e non copre mai un nodo. Le posizioni nel mondo
- * non cambiano e lo zoom nemmeno; cambia solo la vista. Il canvas si
- * sposta con i suoi bordi (a sinistra e in alto il bordo avanza e i nodi
- * vanno con lui; a destra e in basso restano dove sono rispetto
- * all'origine) e, se l'area si restringe, i nodi che prima erano interamente
- * visibili e ora sarebbero fuori si riportano dentro con lo scorrimento
- * minimo. Se l'insieme non entra nell'area, si allinea al bordo di partenza
- * (sinistra, alto) e il resto resta raggiungibile con scorrimento e
- * minimappa.
- *
- * `prev` è l'area prima del cambio (apertura, chiusura, cambio di scheda,
- * spostamento della tacca, ridimensionamento), `next` quella dopo. Restituisce
- * la stessa vista se non serve scorrere.
- */
-export function keepVisible(
-  cards: readonly Card[],
-  view: View,
-  prev: Visibility,
-  next: Visibility,
-): View {
-  const was = new Set(visibleIds(cards, view, prev));
-  if (was.size === 0) return view;
-  const boxes = cards.filter((c) => was.has(c.id)).map((c) => screenBox(c, view));
-  const lo = {
-    x: Math.min(...boxes.map((b) => b.x1)),
-    y: Math.min(...boxes.map((b) => b.y1)),
-  };
-  const hi = {
-    x: Math.max(...boxes.map((b) => b.x2)),
-    y: Math.max(...boxes.map((b) => b.y2)),
-  };
-  const safe = safeBox(next);
-  const dx = shiftInto(lo.x, hi.x, safe.x1, safe.x2);
-  const dy = shiftInto(lo.y, hi.y, safe.y1, safe.y2);
-  return dx === 0 && dy === 0 ? view : { ...view, x: view.x + dx, y: view.y + dy };
-}
-
-/**
- * Altezza minima del canvas, la riga centrale dello spazio di lavoro. Se i
- * pannelli in alto e in basso lasciano meno spazio, scorre il contenitore
- * dello spazio di lavoro, non la pagina.
- */
-export const MIN_CANVAS_HEIGHT = 160;
-
-/** Il bordo del canvas più vicino a un punto (riga 4851-4856). */
-export function nearestSide(
-  point: { readonly x: number; readonly y: number },
-  rect: {
-    readonly left: number;
-    readonly right: number;
-    readonly top: number;
-    readonly bottom: number;
-  },
-): Side {
-  const d: Record<Side, number> = {
-    left: Math.abs(point.x - rect.left),
-    right: Math.abs(rect.right - point.x),
-    top: Math.abs(point.y - rect.top),
-    bottom: Math.abs(rect.bottom - point.y),
-  };
-  return SIDES.slice().sort((a, b) => d[a] - d[b])[0] as Side;
-}
-
-/** Scostamento della tacca lungo il bordo: due tacche sullo stesso bordo si affiancano (riga 4850). */
-export function notchOffset(panels: Panels, key: PanelKey): number {
-  const mates = PANEL_KEYS.filter((k) => panels[k].side === panels[key].side);
-  if (mates.length < 2) return 0;
-  return mates.indexOf(key) === 0 ? -NOTCH_SPREAD : NOTCH_SPREAD;
-}
-
-/** La tacca si nasconde se il pannello è aperto o se si raggiunge dalla scheda dell'altro, aperto sullo stesso bordo (righe 4856-4858). */
-export function notchHidden(panels: Panels, key: PanelKey): boolean {
-  const other = PANEL_KEYS.find((k) => k !== key) as PanelKey;
-  return panels[key].open || (panels[other].side === panels[key].side && panels[other].open);
-}
-
-/** Il pannello aperto sul bordo `side` (la scheda attiva), se c'è. */
-export function activeTab(panels: Panels, side: Side): PanelKey | null {
-  return PANEL_KEYS.find((k) => panels[k].side === side && panels[k].open) ?? null;
-}
-```
-
-### `src/etl-canvas/panels/overlayLayout.ts`
-
-249 righe
-
-```ts
-/**
- * Disposizione dei widget in sovrimpressione al canvas (minimappa, controlli
- * di zoom, suggerimento di rilascio, tacche dei pannelli chiusi): funzione
- * pura, nessun DOM. Decide le posizioni a partire dalla misura dell'area e dal
- * bordo del pannello aperto, così nessun componente scrive una posizione a
- * mano e due widget non si sovrappongono mai.
- *
- * Regole:
- * - minimappa in basso a sinistra; con il pannello in basso va in alto a
- *   sinistra (lontano dal pannello); con il pannello in alto resta in basso a
- *   sinistra;
- * - controlli di zoom in basso a destra;
- * - se un widget ne tocca un altro (area piccola) la minimappa, nell'ordine,
- *   passa all'angolo opposto, poi si riduce a un pulsante compatto (che si
- *   espande al clic), poi prova gli altri angoli; se nemmeno così c'è posto
- *   non si mostra (`rect: null`);
- * - il suggerimento prova in basso e in alto, al centro, e ovunque si evita
- *   il resto; senza posto non si mostra.
- *
- * Le misure dei widget sono quelle del CSS del canvas (`canvas.css`,
- * `panels.css`), che le prende da qui.
- */
-import type { Size } from "../../etl-layout";
-import type { PanelKey, Side } from "../../etl-store";
-import type { Insets } from "../view";
-
-export interface Rect {
-  readonly x: number;
-  readonly y: number;
-  readonly w: number;
-  readonly h: number;
-}
-
-export type Corner = "bl" | "br" | "tl" | "tr";
-
-/** Distanza dei widget dal bordo dell'area (prototipo: 12 px, riga 152). */
-export const OVERLAY_MARGIN = 12;
-/** Spazio minimo tra due widget. */
-export const OVERLAY_GAP = 4;
-/** Respiro tra un widget e i nodi (margine di sicurezza dell'area visibile). */
-export const SAFE_GAP = 8;
-export const MINIMAP_SIZE = { w: 168, h: 104 } as const;
-export const MINIMAP_COMPACT = 40;
-export const ZOOM_SIZE = { w: 176, h: 38 } as const;
-/** Tacca: lato lungo e lato corto (prototipo, CSS `.notch`, righe 290-293). */
-export const NOTCH_LONG = 66;
-export const NOTCH_SHORT = 24;
-export const HINT_HEIGHT = 30;
-export const HINT_WIDTHS = [360, 240] as const;
-
-export interface NotchInput {
-  readonly key: PanelKey;
-  readonly side: Side;
-  /** Scostamento lungo il bordo (due tacche sullo stesso bordo si affiancano). */
-  readonly offset: number;
-  /** Visibile (pannello chiuso) o nascosta: una tacca nascosta non occupa posto. */
-  readonly visible: boolean;
-}
-
-export interface OverlayInput {
-  /** Area del canvas (senza i pannelli). */
-  readonly area: Size;
-  /** Bordo del pannello aperto, se ce n'è uno. */
-  readonly openSide: Side | null;
-  readonly notches: readonly NotchInput[];
-}
-
-export interface OverlayLayout {
-  readonly minimap: {
-    /** Posizione occupata (piena o compatta); `null` se non c'è posto. */
-    readonly rect: Rect | null;
-    readonly corner: Corner | null;
-    readonly compact: boolean;
-    /** Posizione da piena, ancorata allo stesso angolo: la usa il pulsante compatto quando si espande. */
-    readonly expanded: Rect | null;
-  };
-  readonly zoom: Rect;
-  readonly hint: Rect | null;
-  readonly notches: Readonly<Record<PanelKey, Rect>>;
-  /** Spazio che i nodi devono evitare per restare visibili (anche per «Adatta»). */
-  readonly insets: Insets;
-}
-
-const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
-
-export function intersects(a: Rect, b: Rect): boolean {
-  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-}
-
-const inflate = (r: Rect, by: number): Rect => ({
-  x: r.x - by,
-  y: r.y - by,
-  w: r.w + by * 2,
-  h: r.h + by * 2,
-});
-
-function inside(r: Rect, area: Size): boolean {
-  return r.x >= 0 && r.y >= 0 && r.x + r.w <= area.w && r.y + r.h <= area.h;
-}
-
-/** Angolo dell'area; `inward` allontana il widget dal bordo orizzontale (per scavalcare una tacca). */
-function cornerRect(corner: Corner, size: { w: number; h: number }, area: Size, inward = 0): Rect {
-  const m = OVERLAY_MARGIN;
-  const top = corner === "tl" || corner === "tr";
-  return {
-    x: corner === "bl" || corner === "tl" ? m : area.w - m - size.w,
-    y: top ? m + inward : area.h - m - size.h - inward,
-    w: size.w,
-    h: size.h,
-  };
-}
-
-/** Quanto spostare un widget verso l'interno per scavalcare una tacca (24 px) più il respiro. */
-const CLEAR_NOTCH = NOTCH_SHORT + OVERLAY_GAP * 2;
-
-const OPPOSITE: Record<Corner, Corner> = { bl: "tr", br: "tl", tl: "br", tr: "bl" };
-const ALL_CORNERS: readonly Corner[] = ["bl", "tl", "br", "tr"];
-
-/** Rettangolo di una tacca sul suo bordo, al centro più lo scostamento. */
-export function notchRect(side: Side, offset: number, area: Size): Rect {
-  switch (side) {
-    case "left":
-      return { x: 0, y: area.h / 2 - NOTCH_LONG / 2 + offset, w: NOTCH_SHORT, h: NOTCH_LONG };
-    case "right":
-      return {
-        x: area.w - NOTCH_SHORT,
-        y: area.h / 2 - NOTCH_LONG / 2 + offset,
-        w: NOTCH_SHORT,
-        h: NOTCH_LONG,
-      };
-    case "top":
-      return { x: area.w / 2 - NOTCH_LONG / 2 + offset, y: 0, w: NOTCH_LONG, h: NOTCH_SHORT };
-    case "bottom":
-      return {
-        x: area.w / 2 - NOTCH_LONG / 2 + offset,
-        y: area.h - NOTCH_SHORT,
-        w: NOTCH_LONG,
-        h: NOTCH_SHORT,
-      };
-  }
-}
-
-/** Spazio da riservare ai nodi per un widget: la fascia meno costosa tra quella verticale e quella orizzontale. */
-function insetsFor(rects: readonly Rect[], area: Size): Insets {
-  let top = 0;
-  let right = 0;
-  let bottom = 0;
-  let left = 0;
-  for (const r of rects) {
-    const upper = r.y + r.h / 2 < area.h / 2;
-    const leftSide = r.x + r.w / 2 < area.w / 2;
-    const vertical = (upper ? r.y + r.h : area.h - r.y) + SAFE_GAP;
-    const horizontal = (leftSide ? r.x + r.w : area.w - r.x) + SAFE_GAP;
-    if (vertical / Math.max(1, area.h) <= horizontal / Math.max(1, area.w)) {
-      if (upper) top = Math.max(top, vertical);
-      else bottom = Math.max(bottom, vertical);
-    } else if (leftSide) left = Math.max(left, horizontal);
-    else right = Math.max(right, horizontal);
-  }
-  return { top, right, bottom, left };
-}
-
-export function overlayLayout(input: OverlayInput): OverlayLayout {
-  const { area, openSide } = input;
-
-  const notches = {} as Record<PanelKey, Rect>;
-  const obstacles: Rect[] = [];
-  for (const n of input.notches) {
-    const r = notchRect(n.side, n.offset, area);
-    notches[n.key] = r;
-    if (n.visible) obstacles.push(r);
-  }
-  const free = (r: Rect, others: readonly Rect[]): boolean =>
-    inside(r, area) &&
-    others.every((o) => !intersects(inflate(r, OVERLAY_GAP / 2), inflate(o, OVERLAY_GAP / 2)));
-
-  // controlli di zoom: in basso a destra; solo in aree minuscole provano gli altri angoli
-  let zoom = cornerRect("br", ZOOM_SIZE, area);
-  zoomSearch: for (const inward of [0, CLEAR_NOTCH]) {
-    for (const c of ["br", "bl", "tr", "tl"] as const) {
-      const r = cornerRect(c, ZOOM_SIZE, area, inward);
-      if (free(r, obstacles)) {
-        zoom = r;
-        break zoomSearch;
-      }
-    }
-  }
-  const placed: Rect[] = [...obstacles, zoom];
-
-  // minimappa
-  const preferred: Corner = openSide === "bottom" ? "tl" : "bl";
-  const full = (c: Corner, inward = 0): Rect => cornerRect(c, MINIMAP_SIZE, area, inward);
-  const compact = (c: Corner, inward = 0): Rect =>
-    cornerRect(c, { w: MINIMAP_COMPACT, h: MINIMAP_COMPACT }, area, inward);
-  const others = ALL_CORNERS.filter((c) => c !== preferred && c !== OPPOSITE[preferred]);
-  const sequence: { corner: Corner; compact: boolean }[] = [
-    { corner: preferred, compact: false },
-    { corner: OPPOSITE[preferred], compact: false },
-    { corner: preferred, compact: true },
-    { corner: OPPOSITE[preferred], compact: true },
-    ...others.map((corner) => ({ corner, compact: true })),
-  ];
-  // se nemmeno così c'è posto, si riprova scavalcando le tacche
-  const candidates = [0, CLEAR_NOTCH].flatMap((inward) => sequence.map((c) => ({ ...c, inward })));
-  let minimap: OverlayLayout["minimap"] = {
-    rect: null,
-    corner: null,
-    compact: false,
-    expanded: null,
-  };
-  for (const cand of candidates) {
-    const rect = cand.compact ? compact(cand.corner, cand.inward) : full(cand.corner, cand.inward);
-    if (free(rect, placed)) {
-      minimap = {
-        rect,
-        corner: cand.corner,
-        compact: cand.compact,
-        expanded: cand.compact ? full(cand.corner, cand.inward) : rect,
-      };
-      placed.push(rect);
-      break;
-    }
-  }
-
-  // suggerimento di rilascio: al centro, in basso o in alto
-  let hint: Rect | null = null;
-  search: for (const width of HINT_WIDTHS) {
-    const w = Math.min(width, Math.floor(area.w * 0.7));
-    for (const y of [
-      area.h - OVERLAY_MARGIN - HINT_HEIGHT,
-      OVERLAY_MARGIN,
-      area.h - OVERLAY_MARGIN - HINT_HEIGHT - CLEAR_NOTCH,
-      OVERLAY_MARGIN + CLEAR_NOTCH,
-    ]) {
-      const r = { x: Math.round((area.w - w) / 2), y, w, h: HINT_HEIGHT };
-      if (free(r, placed)) {
-        hint = r;
-        break search;
-      }
-    }
-  }
-
-  const insets = insetsFor(
-    [...(minimap.rect ? [minimap.rect] : []), zoom].filter((r) => inside(r, area)),
-    area,
-  );
-  return { minimap, zoom, hint, notches, insets: area.w > 0 && area.h > 0 ? insets : NO_INSETS };
-}
-```
-
-### `src/etl-canvas/panels/panels.css`
-
-724 righe
-
-```css
-/*
- * Pannelli agganciabili e cassetta degli strumenti (Fase 6a). Misure e
- * transizioni del prototipo (docs/prototype/isa-fusion-prototype.html, righe
- * indicate); colori, raggi e ombre solo dai token di ../tokens.css
- * (`--ec-*`, che leggono i semantici `--isa-*` dei temi). L'orientamento
- * (colonna sui bordi verticali, fascia sugli orizzontali) è la classe
- * `ec-horiz`, scelta dal bordo.
- */
-
-/* spazio di lavoro: il canvas al centro, quattro approdi attorno — righe 211-220 */
-.ec-workspace-host {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  /* se i pannelli in alto e in basso lasciano al canvas meno del minimo, scorre questo contenitore, non la pagina */
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-.ec-workspace {
-  display: grid;
-  width: 100%;
-  /* l'altezza è quella del contenitore: sopra e sotto i pannelli tolgono altezza al canvas (riga centrale) */
-  height: 100%;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: auto auto minmax(var(--ec-canvas-min-h), 1fr) auto;
-  color: var(--ec-ink);
-  font-family: var(--ec-font);
-}
-.ec-workspace * {
-  box-sizing: border-box;
-}
-/* barra dei controlli: una riga fissa sopra tutto, dentro lo spazio di lavoro (Fase 6a.2) */
-.ec-bar-row {
-  grid-column: 1 / 4;
-  grid-row: 1;
-  min-width: 0;
-}
-.ec-dock-top {
-  grid-column: 1 / 4;
-  grid-row: 2;
-  display: flex;
-  flex-direction: column;
-}
-.ec-dock-bottom {
-  grid-column: 1 / 4;
-  grid-row: 4;
-  display: flex;
-  flex-direction: column;
-}
-.ec-dock-left {
-  grid-column: 1;
-  grid-row: 3;
-  display: flex;
-}
-.ec-dock-right {
-  grid-column: 3;
-  grid-row: 3;
-  display: flex;
-}
-.ec-center {
-  grid-column: 2;
-  grid-row: 3;
-  position: relative;
-  min-width: 0;
-  min-height: 0;
-}
-/* dentro lo spazio di lavoro l'altezza minima del canvas è quella della riga centrale (MIN_CANVAS_HEIGHT), non i 520px del canvas isolato */
-.ec-workspace .ec-center .etl-canvas {
-  min-height: 0;
-}
-
-/* un pannello cede spazio aprendosi; il margine verso il canvas fa parte della sua misura — righe 224-240 */
-.ec-panel {
-  overflow: hidden;
-  position: relative;
-  flex: 0 0 auto;
-  transition:
-    width 0.3s cubic-bezier(0.32, 0.72, 0, 1),
-    height 0.3s cubic-bezier(0.32, 0.72, 0, 1);
-}
-.ec-panel.ec-side-left,
-.ec-panel.ec-side-right {
-  width: 0;
-  height: 100%;
-}
-.ec-panel.ec-side-left.ec-open,
-.ec-panel.ec-side-right.ec-open {
-  width: calc(var(--pw) + 16px);
-}
-.ec-panel.ec-side-top,
-.ec-panel.ec-side-bottom {
-  height: 0;
-  width: 100%;
-}
-.ec-panel.ec-side-top.ec-open,
-.ec-panel.ec-side-bottom.ec-open {
-  height: calc(var(--ph) + 16px);
-}
-.ec-panel-body {
-  position: absolute;
-}
-.ec-panel.ec-side-left > .ec-panel-body {
-  left: 0;
-  top: 0;
-  width: var(--pw);
-  height: 100%;
-}
-.ec-panel.ec-side-right > .ec-panel-body {
-  right: 0;
-  top: 0;
-  width: var(--pw);
-  height: 100%;
-}
-.ec-panel.ec-side-top > .ec-panel-body {
-  left: 0;
-  top: 0;
-  height: var(--ph);
-  width: 100%;
-}
-.ec-panel.ec-side-bottom > .ec-panel-body {
-  left: 0;
-  bottom: 0;
-  height: var(--ph);
-  width: 100%;
-}
-.ec-panel.ec-instant {
-  transition: none !important;
-}
-
-/* due pannelli sullo stesso bordo diventano schede di un unico pannello — righe 305-328 */
-.ec-dock-tabs {
-  position: absolute;
-  z-index: 3;
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  background: var(--ec-surface-strong);
-  backdrop-filter: blur(var(--ec-glass-blur));
-  border: 1px solid var(--ec-panel-border);
-  border-radius: var(--ec-r-minimap);
-}
-.ec-dock-tab {
-  all: unset;
-  cursor: pointer;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 7px 10px;
-  border-radius: var(--ec-r-sm);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ec-empty-ink);
-  transition:
-    background 0.18s,
-    color 0.18s;
-}
-.ec-dock-tab svg {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-}
-.ec-dock-tab:hover {
-  color: var(--ec-ink);
-}
-.ec-dock-tab:focus-visible {
-  outline: 2px solid var(--ec-select);
-  outline-offset: 1px;
-}
-.ec-dock-tab.ec-on {
-  background: var(--ec-accent);
-  color: var(--ec-node-fill-ink);
-}
-.ec-panel.ec-grouped.ec-side-left > .ec-dock-tabs {
-  left: 0;
-  top: 0;
-  width: var(--pw);
-  height: 42px;
-}
-.ec-panel.ec-grouped.ec-side-right > .ec-dock-tabs {
-  right: 0;
-  top: 0;
-  width: var(--pw);
-  height: 42px;
-}
-.ec-panel.ec-grouped.ec-side-left > .ec-panel-body,
-.ec-panel.ec-grouped.ec-side-right > .ec-panel-body {
-  top: 50px;
-  height: calc(100% - 50px);
-}
-.ec-panel.ec-grouped.ec-horiz > .ec-dock-tabs {
-  left: 0;
-  width: 48px;
-  height: var(--ph);
-  flex-direction: column;
-}
-.ec-panel.ec-grouped.ec-side-top > .ec-dock-tabs {
-  top: 0;
-}
-.ec-panel.ec-grouped.ec-side-bottom > .ec-dock-tabs {
-  bottom: 0;
-}
-.ec-panel.ec-grouped.ec-horiz > .ec-panel-body {
-  left: 56px;
-  width: calc(100% - 56px);
-}
-.ec-panel.ec-grouped.ec-horiz .ec-dock-tab span {
-  display: none;
-}
-@keyframes ec-tab-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-.ec-panel.ec-tab-in > .ec-panel-body {
-  animation: ec-tab-in 0.26s cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-/* tacca: il pannello chiuso resta raggiungibile, e si trascina su un altro bordo — righe 270-296 */
-.ec-notch {
-  all: unset;
-  cursor: grab;
-  position: absolute;
-  z-index: 16;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--ec-surface-strong);
-  color: var(--ec-accent-text);
-  border: 1px solid var(--ec-panel-border);
-  box-shadow: var(--ec-glass-shadow);
-  transition:
-    opacity 0.2s,
-    transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
-  touch-action: none;
-}
-.ec-notch:focus-visible {
-  outline: 2px solid var(--ec-select);
-  outline-offset: 2px;
-}
-.ec-notch svg {
-  width: 14px;
-  height: 14px;
-}
-.ec-notch-left {
-  left: 0;
-  width: 24px;
-  height: 66px;
-  border-left: 0;
-  border-top-right-radius: var(--ec-r-minimap);
-  border-bottom-right-radius: var(--ec-r-minimap);
-}
-.ec-notch-right {
-  right: 0;
-  width: 24px;
-  height: 66px;
-  border-right: 0;
-  border-top-left-radius: var(--ec-r-minimap);
-  border-bottom-left-radius: var(--ec-r-minimap);
-}
-.ec-notch-top {
-  top: 0;
-  height: 24px;
-  width: 66px;
-  border-top: 0;
-  border-bottom-left-radius: var(--ec-r-minimap);
-  border-bottom-right-radius: var(--ec-r-minimap);
-}
-.ec-notch-bottom {
-  bottom: 0;
-  height: 24px;
-  width: 66px;
-  border-bottom: 0;
-  border-top-left-radius: var(--ec-r-minimap);
-  border-top-right-radius: var(--ec-r-minimap);
-}
-.ec-notch.ec-hidden {
-  opacity: 0;
-  pointer-events: none;
-}
-.ec-notch.ec-dragging {
-  position: fixed;
-  right: auto;
-  bottom: auto;
-  transition: none;
-  cursor: grabbing;
-  border-radius: var(--ec-r-minimap);
-  border: 1px solid var(--ec-accent);
-  width: 34px;
-  height: 34px;
-  box-shadow: var(--ec-drag-shadow);
-}
-.ec-edge-hint {
-  position: absolute;
-  z-index: 15;
-  background: var(--ec-accent);
-  opacity: 0;
-  pointer-events: none;
-  border-radius: var(--ec-r-pill);
-  transition: opacity 0.15s;
-}
-.ec-edge-hint.ec-on {
-  opacity: 0.55;
-}
-.ec-edge-hint.ec-e-left {
-  left: 4px;
-  top: 12%;
-  width: 4px;
-  height: 76%;
-}
-.ec-edge-hint.ec-e-right {
-  right: 4px;
-  top: 12%;
-  width: 4px;
-  height: 76%;
-}
-.ec-edge-hint.ec-e-top {
-  top: 4px;
-  left: 12%;
-  height: 4px;
-  width: 76%;
-}
-.ec-edge-hint.ec-e-bottom {
-  bottom: 4px;
-  left: 12%;
-  height: 4px;
-  width: 76%;
-}
-.ec-workspace .ec-center .ec-hint {
-  position: absolute;
-  /* posizione e misura: inline, da overlayLayout.ts */
-  box-sizing: border-box;
-  z-index: 16;
-  padding: 0 14px;
-  line-height: 28px;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  border-radius: var(--ec-r-pill);
-  background: var(--ec-surface-strong);
-  border: 1px solid var(--ec-panel-border);
-  box-shadow: var(--ec-glass-shadow);
-  color: var(--ec-ink);
-  font-size: 12px;
-  font-weight: 600;
-  pointer-events: none;
-}
-
-/* contenuto del pannello (cassetta e Inspector) — righe 235-268 */
-.ec-tb-inner {
-  box-sizing: border-box;
-  width: 100%;
-  height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  background: var(--ec-surface-strong);
-  backdrop-filter: blur(var(--ec-glass-blur));
-  border: 1px solid var(--ec-panel-border);
-  border-radius: var(--ec-r-fill);
-  padding: 18px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.ec-tb-inner > * {
-  flex: 0 0 auto;
-}
-.ec-tb-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 4px;
-}
-.ec-tb-title {
-  font-weight: 800;
-  font-size: 15px;
-}
-.ec-close-btn {
-  all: unset;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--ec-r-pill);
-  color: var(--ec-empty-ink);
-}
-.ec-close-btn:hover {
-  color: var(--ec-ink);
-  background: var(--ec-accent-soft);
-}
-.ec-close-btn:focus-visible {
-  outline: 2px solid var(--ec-select);
-  outline-offset: 1px;
-}
-.ec-close-arrow {
-  display: inline-flex;
-  transition: transform 0.2s;
-}
-.ec-tb-sec {
-  border-top: 1px solid var(--ec-panel-border);
-  padding-top: 8px;
-}
-.ec-tb-sec:first-of-type {
-  border-top: 0;
-}
-.ec-tb-sec-head {
-  all: unset;
-  cursor: pointer;
-  width: 100%;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 2px 8px;
-}
-.ec-tb-sec-head:focus-visible {
-  outline: 2px solid var(--ec-select);
-  outline-offset: 1px;
-}
-.ec-chev {
-  display: inline-flex;
-  transition: transform 0.2s;
-}
-.ec-chev svg {
-  width: 11px;
-  height: 11px;
-}
-.ec-tb-sec.ec-open .ec-chev {
-  transform: rotate(90deg);
-  color: var(--ec-accent-text);
-}
-.ec-tb-sec-name {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ec-empty-ink);
-}
-.ec-tb-sec-body {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px 4px;
-  max-height: 0;
-  overflow: hidden;
-  opacity: 0;
-  transition:
-    max-height 0.3s cubic-bezier(0.32, 0.72, 0, 1),
-    opacity 0.2s,
-    padding 0.3s;
-}
-.ec-tb-sec.ec-open .ec-tb-sec-body {
-  max-height: 640px;
-  opacity: 1;
-  padding-bottom: 10px;
-}
-
-/* voci — righe 40-53 */
-.ec-pal-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  width: auto;
-  cursor: grab;
-  touch-action: none;
-}
-.ec-pal-item:active {
-  cursor: grabbing;
-}
-.ec-pal-chip {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--ec-r-sm);
-  background: var(--ec-node-op);
-  color: var(--ec-node-op-ink);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.ec-pal-item:hover .ec-pal-chip {
-  transform: translateY(-2px) scale(1.05);
-}
-.ec-pal-item.ec-source .ec-pal-chip {
-  background: var(--ec-node-fill);
-  color: var(--ec-node-fill-ink);
-}
-.ec-pal-chip svg {
-  width: 20px;
-  height: 20px;
-}
-.ec-pal-label {
-  font-size: 9.5px;
-  font-weight: 700;
-  color: var(--ec-empty-ink);
-  text-align: center;
-  line-height: 1.2;
-}
-.ec-lib-meta {
-  font-size: 8.5px;
-  color: var(--ec-empty-ink);
-  font-weight: 600;
-  margin-top: -3px;
-  text-align: center;
-}
-.ec-tb-upload {
-  all: unset;
-  cursor: pointer;
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 9px 12px;
-  border-radius: var(--ec-r-sm);
-  border: 1.5px dashed var(--ec-accent-soft-2);
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ec-accent-text);
-  background: var(--ec-mm-view-bg);
-}
-.ec-tb-upload:hover {
-  background: var(--ec-accent-soft);
-}
-.ec-tb-upload:focus-visible {
-  outline: 2px solid var(--ec-select);
-  outline-offset: 1px;
-}
-.ec-tb-upload svg {
-  width: 14px;
-  height: 14px;
-}
-.ec-tb-empty {
-  grid-column: 1 / -1;
-  font-size: 11px;
-  color: var(--ec-empty-ink);
-  font-weight: 600;
-  text-align: center;
-  padding: 2px 0 4px;
-}
-.ec-tb-status {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--ec-empty-ink);
-  line-height: 1.4;
-}
-.ec-insp-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ec-ink);
-  overflow-wrap: anywhere;
-}
-
-/* anteprima del trascinamento dalla cassetta — righe 55-63 */
-.ec-ghost {
-  position: fixed;
-  z-index: 60;
-  pointer-events: none;
-  width: 88px;
-  height: 88px;
-  border-radius: var(--ec-r-op);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--ec-node-op);
-  color: var(--ec-node-op-ink);
-  opacity: 0.9;
-  box-shadow: var(--ec-drag-shadow);
-}
-.ec-ghost.ec-source {
-  background: var(--ec-node-fill);
-  color: var(--ec-node-fill-ink);
-  border-radius: var(--ec-r-fill);
-}
-.ec-ghost svg {
-  width: 26px;
-  height: 26px;
-}
-
-/* orientamento orizzontale (bordi alto e basso): le sezioni scorrono in fila — righe 329-338 */
-.ec-panel.ec-horiz .ec-tb-inner {
-  flex-direction: row;
-  overflow-x: auto;
-  overflow-y: hidden;
-  gap: 14px;
-  align-items: stretch;
-}
-.ec-panel.ec-horiz .ec-tb-head {
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 8px;
-  margin: 0;
-}
-.ec-panel.ec-horiz .ec-tb-sec {
-  border-top: 0;
-  border-left: 1px solid var(--ec-panel-border);
-  padding: 0 0 0 12px;
-}
-.ec-panel.ec-horiz .ec-tb-sec-head {
-  pointer-events: none;
-}
-.ec-panel.ec-horiz .ec-chev {
-  display: none;
-}
-.ec-panel.ec-horiz .ec-tb-sec-body {
-  max-height: none;
-  opacity: 1;
-  padding: 0;
-  grid-template-columns: none;
-  grid-template-rows: repeat(2, auto);
-  grid-auto-flow: column;
-  grid-auto-columns: 66px;
-}
-.ec-panel.ec-horiz .ec-tb-upload {
-  grid-column: auto;
-  grid-row: span 2;
-  flex-direction: column;
-  width: 66px;
-  padding: 8px 4px;
-  text-align: center;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ec-workspace,
-  .ec-panel,
-  .ec-notch,
-  .ec-tb-sec-body,
-  .ec-pal-chip {
-    transition: none;
-  }
-  .ec-panel.ec-tab-in > .ec-panel-body {
-    animation: none;
-  }
-}
-
-/* barra dei controlli — solo token */
-.ec-bar {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  gap: 6px;
-  min-width: 0;
-  overflow-x: auto;
-  padding: 6px 4px 8px;
-}
-.ec-seg {
-  display: flex;
-  padding: 3px;
-  gap: 2px;
-  border-radius: var(--ec-r-pill);
-  background: var(--ec-surface-strong);
-  border: 1px solid var(--ec-panel-border);
-}
-.ec-seg-btn,
-.ec-bar-btn {
-  all: unset;
-  cursor: pointer;
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  height: 28px;
-  padding: 0 12px;
-  border-radius: var(--ec-r-pill);
-  font-family: var(--ec-font);
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ec-ink);
-  white-space: nowrap;
-}
-.ec-bar-btn {
-  background: var(--ec-surface-strong);
-  border: 1px solid var(--ec-panel-border);
-}
-.ec-bar-icon {
-  width: 32px;
-  padding: 0;
-  justify-content: center;
-}
-.ec-seg-btn.ec-on {
-  background: var(--ec-accent-soft);
-  color: var(--ec-accent-text);
-}
-.ec-bar svg {
-  width: 15px;
-  height: 15px;
-  flex: none;
-}
-.ec-seg-btn:hover,
-.ec-bar-btn:hover:not(:disabled) {
-  color: var(--ec-accent-text);
-}
-.ec-bar-danger:hover:not(:disabled) {
-  color: var(--ec-danger);
-}
-.ec-seg-btn:focus-visible,
-.ec-bar-btn:focus-visible {
-  outline: 2px solid var(--ec-select);
-  outline-offset: 2px;
-}
-.ec-bar-btn:disabled {
-  cursor: default;
-  color: var(--ec-muted);
-}
-.ec-bar-sep {
-  flex: none;
-  align-self: stretch;
-  margin: 4px 2px;
-  border-left: 1px solid var(--ec-panel-border);
-}
-```
-
-### `src/etl-canvas/panels/ui-icons.tsx`
-
-113 righe
+287 righe
 
 ```tsx
-/** Icone dell'interfaccia dei pannelli (prototipo, righe 4790-4793, 813-818, 893): tracciati statici, nessun dato dell'utente. */
-import type { Side } from "../../etl-store";
+/**
+ * Il contenuto dell'Inspector (Fase 6b.1), montato da `panels/InspectorShell`.
+ * Legge il nodo di `etl-store` (`inspector`) e mostra, per tipo di nodo:
+ * stato bloccato (lavorazione senza ingresso), dataset e output (nome, origine,
+ * colonne in sola lettura), lavorazioni (campi e liste del catalogo, con colonne
+ * e valori dallo schema in ingresso) e box combinati (elenco dei passaggi).
+ * Le condizioni di filtro e join sono della Fase 6b.2.
+ *
+ * Scrive solo con i comandi `setParams`, `renameNode`, `inspect` e quelli dei
+ * passaggi; legge e scrive SOLO `columns` (mai `flattenRows`). Il focus non si
+ * perde mai scrivendo: i campi hanno chiavi stabili e nulla viene ricreato.
+ */
+import type { KeyboardEvent } from "react";
+import { MERGE_OPS, PARAM_DEFS, boxCapacity, inputsOf } from "../../etl-core";
+import type { Card, Graph, Params, SimpleFieldDef } from "../../etl-core";
+import type { EtlStore } from "../../etl-store";
+import { useEtlState } from "../../etl-store/react";
+import { BlockedNotice } from "./BlockedNotice";
+import { copy } from "./copy";
+import { Field, TextField } from "./Field";
+import { Header } from "./Header";
+import { MultiList } from "./MultiList";
+import { NUMERIC_KEYS, isMulti, textParam, withParam } from "./params";
+import { StepList } from "./StepList";
+import { StyledSelect } from "./StyledSelect";
+import { useActiveSchema } from "./useActiveSchema";
+import "./inspector.css";
 
-function Svg(props: { children: React.ReactNode; size?: number }) {
+/** Esc nel pannello riporta il focus al canvas, senza deselezionare. */
+function returnToCanvas(e: KeyboardEvent<HTMLElement>): void {
+  if (e.key !== "Escape" || e.defaultPrevented) return;
+  e.stopPropagation();
+  document.querySelector<HTMLElement>(".ec-stage")?.focus();
+}
+
+export function Inspector(props: { readonly store: EtlStore }) {
+  const { store } = props;
+  const nodeId = useEtlState((s) => s.inspector.nodeId, store);
+  const step = useEtlState((s) => s.inspector.step, store);
+  const card = useEtlState(
+    (s) => (s.inspector.nodeId ? s.graph.cards[s.inspector.nodeId] : undefined),
+    store,
+  );
+  const graph = useEtlState((s) => s.graph, store);
+  const schema = useActiveSchema(store, nodeId);
+
+  if (!card) {
+    return (
+      <div className="ei-root" data-testid="ei-root" onKeyDown={returnToCanvas}>
+        <div className="ei-help ei-empty">{copy.emptyInspector}</div>
+      </div>
+    );
+  }
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width={props.size}
-      height={props.size}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2.2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
+    <div
+      className="ei-root"
+      data-testid="ei-root"
+      data-kind={kindOf(card)}
+      onKeyDown={returnToCanvas}
     >
-      {props.children}
-    </svg>
+      <Header store={store} card={card} />
+      <Body store={store} card={card} graph={graph} step={step} schema={schema} />
+    </div>
   );
 }
 
-export function ToolsIcon() {
+function kindOf(card: Card): string {
+  if (card.kind === "dataset") return card.isOutput ? "output" : "dataset";
+  return card.components.length > 1 ? "box" : "op";
+}
+
+function Body(props: {
+  store: EtlStore;
+  card: Card;
+  graph: Graph;
+  step: number;
+  schema: ReturnType<typeof useActiveSchema>;
+}) {
+  const { store, card, graph, schema } = props;
+
+  if (card.kind === "dataset" && card.isOutput) {
+    const producer = graph.links.find((l) => l.to === card.id);
+    const producerName = (producer && graph.cards[producer.from]?.name) || copy.producerFallback;
+    const incomplete =
+      card.capacity !== undefined && card.capacity > 1 && (card.filled ?? 0) < card.capacity;
+    return (
+      <>
+        <div className="ei-help">{copy.resultNote(producerName)}</div>
+        {incomplete ? <div className="ei-help">{copy.resultIncomplete}</div> : null}
+        <ColumnsReadOnly schema={schema} />
+      </>
+    );
+  }
+
+  if (card.kind === "dataset") {
+    const par = card.params[0] ?? {};
+    return (
+      <>
+        <SimpleFields
+          defs={PARAM_DEFS.dataset as readonly SimpleFieldDef[]}
+          par={par}
+          names={[]}
+          onChange={(p) =>
+            store.dispatch({ type: "setParams", payload: { node: card.id, index: 0, params: p } })
+          }
+        />
+        <ColumnsReadOnly schema={schema} />
+      </>
+    );
+  }
+
+  // lavorazione senza tabella in ingresso: stato bloccato, nessun campo
+  const inputs = inputsOf(graph, card.id);
+  if (inputs.length === 0) return <BlockedNotice capacity={boxCapacity(card)} />;
+
+  const step = Math.max(0, Math.min(props.step, card.components.length - 1));
+  const type = card.components[step] ?? card.components[0];
+  const par: Params = card.params[step] ?? {};
+  const setParams = (p: Params) =>
+    store.dispatch({ type: "setParams", payload: { node: card.id, index: step, params: p } });
+  const names = schema.map((c) => c.name);
+
   return (
-    <Svg>
-      <rect x="4" y="4" width="6.5" height="6.5" rx="1.5" />
-      <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" />
-      <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" />
-      <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" />
-    </Svg>
+    <>
+      {card.components.length > 1 ? (
+        <StepList
+          store={store}
+          card={card}
+          selectedStep={step}
+          variant="inspector"
+          onSelect={(i) => store.dispatch({ type: "inspect", payload: { node: card.id, step: i } })}
+        />
+      ) : null}
+      <JoinTables card={card} graph={graph} step={step} par={par} onChange={setParams} />
+      {type === "filter" || type === "join" ? (
+        <div className="ei-help" data-testid="ei-conditions-soon">
+          {copy.conditionsSoon}
+        </div>
+      ) : type && isMulti(type) ? (
+        <MultiList type={type} par={par} schema={schema} onChange={setParams} />
+      ) : (
+        <SimpleFields
+          defs={
+            (Array.isArray(PARAM_DEFS[type as keyof typeof PARAM_DEFS])
+              ? PARAM_DEFS[type as keyof typeof PARAM_DEFS]
+              : []) as readonly SimpleFieldDef[]
+          }
+          par={par}
+          names={names}
+          onChange={setParams}
+        />
+      )}
+      <div className="ei-help">{copy.inputsCount(inputs.length, boxCapacity(card))}</div>
+    </>
   );
 }
 
-export function InspectorIcon() {
+/** Campi semplici del catalogo (`PARAM_DEFS`): testo, scelta, colonna. */
+function SimpleFields(props: {
+  defs: readonly SimpleFieldDef[];
+  par: Params;
+  names: readonly string[];
+  onChange: (par: Params) => void;
+}) {
+  const { defs, par, names, onChange } = props;
   return (
-    <Svg>
-      <line x1="4" y1="7" x2="20" y2="7" />
-      <line x1="4" y1="17" x2="20" y2="17" />
-      <circle cx="9" cy="7" r="2.4" />
-      <circle cx="15" cy="17" r="2.4" />
-    </Svg>
+    <>
+      {defs.map((f) => (
+        <Field key={f.k} label={f.label}>
+          {(labelId) => {
+            const value = textParam(par, f.k);
+            if (f.type === "select")
+              return (
+                <StyledSelect
+                  labelledBy={labelId}
+                  value={value || f.def}
+                  options={(f.opts ?? []).map((o) => ({ value: o, label: o }))}
+                  onChange={(v) => onChange(withParam(par, f.k, v))}
+                />
+              );
+            if (f.type === "column")
+              return (
+                <StyledSelect
+                  labelledBy={labelId}
+                  allowFree
+                  value={value}
+                  options={names.map((n) => ({ value: n, label: n }))}
+                  onChange={(v) => onChange(withParam(par, f.k, v))}
+                />
+              );
+            return (
+              <TextField
+                labelledBy={labelId}
+                inputMode={NUMERIC_KEYS.has(f.k) ? "numeric" : "text"}
+                value={value}
+                onChange={(v) => onChange(withParam(par, f.k, v))}
+              />
+            );
+          }}
+        </Field>
+      ))}
+    </>
   );
 }
 
-export function UploadIcon() {
+/** Dataset e output: le colonne, in sola lettura, col tipo. */
+function ColumnsReadOnly(props: { schema: ReturnType<typeof useActiveSchema> }) {
+  const { schema } = props;
   return (
-    <Svg>
-      <path d="M12 16V4" />
-      <path d="M7 9l5-5 5 5" />
-      <path d="M5 20h14" />
-    </Svg>
+    <section className="ei-list" aria-label={copy.columnsTitle}>
+      <div className="ei-label">{copy.columnsTitle}</div>
+      {schema.length === 0 ? (
+        <div className="ei-help">{copy.columnsNone}</div>
+      ) : (
+        <ul className="ei-colist" data-testid="ei-columns">
+          {schema.map((c) => (
+            <li key={c.name} className="ei-colrow">
+              <span className="ei-colname">{c.name}</span>
+              <span className="ei-coltype">{c.type}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
-export function ChevronIcon() {
-  return (
-    <Svg>
-      <polyline points="9 18 15 12 9 6" />
-    </Svg>
+/**
+ * Le tabelle su cui agisce un passaggio (prototipo, righe 3747-3774): i join si
+ * applicano nell'ordine in cui compaiono e ognuno consuma una tabella in più.
+ * Prima di un join: tabella di riferimento; dopo: la nota «tabella unica».
+ */
+function JoinTables(props: {
+  card: Card;
+  graph: Graph;
+  step: number;
+  par: Params;
+  onChange: (par: Params) => void;
+}) {
+  const { card, graph, step, par, onChange } = props;
+  const joinPos: number[] = [];
+  card.components.forEach((c, i) => {
+    if ((MERGE_OPS as readonly string[]).includes(c)) joinPos.push(i);
+  });
+  if (joinPos.length === 0) return null;
+  const names = inputsOf(graph, card.id).map(
+    (l) => graph.cards[l.from]?.name ?? copy.tableFallback,
   );
-}
+  if (names.length === 0) return <div className="ei-help">{copy.tableLinkFirst}</div>;
 
-/** Freccia di chiusura: indica sempre il bordo verso cui il pannello rientra (riga 285-289). */
-export function CloseArrow(props: { side: Side }) {
-  const turn = { left: 0, right: 180, top: 90, bottom: -90 }[props.side];
-  return (
-    <span className="ec-close-arrow" style={{ transform: `rotate(${turn}deg)` }}>
-      <Svg size={13}>
-        <polyline points="15 6 9 12 15 18" />
-      </Svg>
-    </span>
-  );
-}
+  const field = (key: string, label: string) => {
+    const stored = textParam(par, key);
+    const fallback = key === "rightTable" && names[1] ? names[1] : names[0];
+    const value = stored && names.includes(stored) ? stored : (fallback ?? "");
+    return (
+      <Field key={key} label={label}>
+        {(labelId) => (
+          <StyledSelect
+            labelledBy={labelId}
+            value={value}
+            options={names.map((n) => ({ value: n, label: n }))}
+            onChange={(v) => onChange(withParam(par, key, v))}
+          />
+        )}
+      </Field>
+    );
+  };
 
-export function UndoIcon() {
-  return (
-    <Svg>
-      <path d="M9 14 4 9l5-5" />
-      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
-    </Svg>
-  );
-}
-
-export function RedoIcon() {
-  return (
-    <Svg>
-      <path d="m15 14 5-5-5-5" />
-      <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
-    </Svg>
-  );
-}
-
-export function ReorderIcon() {
-  return (
-    <Svg>
-      <rect x="4" y="4" width="6" height="6" rx="1.5" />
-      <rect x="14" y="4" width="6" height="6" rx="1.5" />
-      <rect x="4" y="14" width="6" height="6" rx="1.5" />
-      <rect x="14" y="14" width="6" height="6" rx="1.5" />
-    </Svg>
-  );
-}
-
-export function TrashIcon() {
-  return (
-    <Svg>
-      <path d="M4 7h16" />
-      <path d="M9 7V4.5h6V7" />
-      <path d="M6.5 7l1 12.5h9l1-12.5" />
-      <path d="M10 11v5M14 11v5" />
-    </Svg>
-  );
+  const type = card.components[step];
+  const joinsBefore = joinPos.filter((p) => p < step).length;
+  if (type && (MERGE_OPS as readonly string[]).includes(type)) {
+    const j = joinPos.indexOf(step);
+    return (
+      <>
+        {j === 0 ? (
+          field("leftTable", copy.tableLeft)
+        ) : (
+          <div className="ei-help">{copy.tableLeftResult(j)}</div>
+        )}
+        {field("rightTable", copy.tableRight)}
+      </>
+    );
+  }
+  if (joinsBefore === 0) return field("table", copy.tableReference);
+  return <div className="ei-help">{copy.tableSingle(joinsBefore)}</div>;
 }
 ```
 
-### `src/etl-canvas/seed.ts`
+### `src/etl-canvas/inspector/Menu.tsx`
 
-68 righe
+161 righe
 
-```ts
+```tsx
 /**
- * Scena iniziale del prototipo (`init`, righe 5070-5083 di
- * docs/prototype/isa-fusion-prototype.html): Vendite 2026, Filtra Righe,
- * Unisci, Ordina, Esporta, con posizioni identiche e nessun cavo. Serve
- * solo in sviluppo (`?seed=prototype`).
+ * Il menu dell'Inspector: sempre un nostro componente (mai un menu del
+ * sistema), in un portale sul corpo della pagina, posizionato da `placeMenu`
+ * (menu.ts). Si chiude con Esc (a cura di chi lo usa), clic fuori, scorrimento
+ * del pannello e ridimensionamento della finestra.
  */
-import { META, defaultParams } from "../etl-core";
-import type { Card, ColumnDef, ComponentId } from "../etl-core";
-import { initialState } from "../etl-store";
-import type { EtlState } from "../etl-store";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
+import { createPortal } from "react-dom";
+import { placeMenu } from "./menu";
+import type { MenuPlacement } from "./menu";
 
-/** `SCHEMA` del prototipo (righe 2405-2414). Il tipo "object" della colonna `categoria` è "stringa" in etl-core. */
-const SCHEMA: ColumnDef[] = [
-  { name: "id", type: "integer", values: Array.from({ length: 30 }, (_, i) => String(i + 1)) },
-  { name: "cliente", type: "stringa", values: ["Acme", "Borealis", "Cedro", "Delta", "Eureka"] },
-  { name: "regione", type: "stringa", values: ["Nord", "Centro", "Sud", "Isole"] },
-  { name: "categoria", type: "stringa", values: ["Hardware", "Software", "Servizi", "Consulenza"] },
-  { name: "stato", type: "stringa", values: ["Aperto", "In corso", "Chiuso", "Annullato"] },
-  {
-    name: "quantita",
-    type: "integer",
-    values: ["1", "2", "3", "5", "8", "10", "12", "20", "25", "50"],
-  },
-  { name: "importo", type: "numerico", values: ["45.2", "80", "120.5", "300", "512.9", "1049"] },
-  {
-    name: "data",
-    type: "data",
-    values: ["2026-01-03", "2026-01-04", "2026-01-05", "2026-01-06", "2026-02-01"],
-  },
-];
+const PORTAL_ID = "ei-portal";
 
-function op(id: string, type: ComponentId, x: number, y: number): Card {
-  return {
-    id,
-    kind: "op",
-    components: [type],
-    params: [defaultParams(type)],
-    name: META[type].label,
-    x,
-    y,
-  };
+/** Il contenitore dei menu, creato alla prima richiesta (solo nel browser). */
+function portalRoot(): HTMLElement {
+  let el = document.getElementById(PORTAL_ID);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = PORTAL_ID;
+    el.className = "ei-portal";
+    document.body.appendChild(el);
+  }
+  return el;
 }
 
-export function prototypeScene(): EtlState {
-  const ds: Card = {
-    id: "ds1",
-    kind: "dataset",
-    components: ["dataset"],
-    params: [{ ...defaultParams("dataset"), path: "vendite_2026.csv", columns: SCHEMA }],
-    name: META.dataset.label,
-    x: 26,
-    y: 182,
-  };
-  const cards = [
-    ds,
-    op("op-filter", "filter", 260, 52),
-    op("op-join", "join", 260, 182),
-    op("op-sort", "sort", 260, 338),
-    op("op-export", "exportOp", 442, 338),
-  ];
-  const base = initialState();
-  return {
-    ...base,
-    graph: { cards: Object.fromEntries(cards.map((c) => [c.id, c])), links: [] },
-    counters: { ...base.counters, ds: 1 },
-  };
+/** Altezza naturale del menu: il suo riempimento più i figli (l'elenco scorrevole conta per intero, fino al suo tetto). */
+function naturalHeight(menu: HTMLElement): number {
+  const cs = getComputedStyle(menu);
+  let h =
+    parseFloat(cs.paddingTop) +
+    parseFloat(cs.paddingBottom) +
+    parseFloat(cs.borderTopWidth) +
+    parseFloat(cs.borderBottomWidth);
+  for (const kid of Array.from(menu.children) as HTMLElement[]) {
+    if (kid.dataset["scroll"] !== undefined) {
+      const cap = parseFloat(getComputedStyle(kid).maxHeight);
+      h += Number.isFinite(cap) ? Math.min(kid.scrollHeight, cap) : kid.scrollHeight;
+    } else h += kid.offsetHeight;
+  }
+  return Math.ceil(h);
+}
+
+export interface MenuProps {
+  /** L'elemento a cui si ancora (il campo). */
+  readonly anchor: RefObject<HTMLElement | null>;
+  readonly onClose: () => void;
+  readonly children: ReactNode;
+  readonly className?: string;
+  /** Altri elementi che contano come «dentro» per il clic fuori (di solito il campo). */
+  readonly inside?: readonly RefObject<HTMLElement | null>[];
+  readonly id?: string;
+  readonly ariaLabel?: string;
+  readonly role?: "menu" | "dialog" | "presentation";
+  /** Esc con il focus dentro il menu (fuori dal campo di ricerca): chiude e riporta il focus al campo. */
+  readonly onEscape?: () => void;
+  /** Larghezza naturale del contenuto, se maggiore di quella del campo. */
+  readonly naturalWidth?: number;
+}
+
+export function Menu(props: MenuProps) {
+  const { anchor, onClose, children, inside } = props;
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<MenuPlacement | null>(null);
+  // il portale esiste subito (il menu si monta solo nel browser, dopo un'azione dell'utente):
+  // così chi lo usa può dare il focus al campo di ricerca già al primo effetto
+  const [root] = useState<HTMLElement | null>(() =>
+    typeof document === "undefined" ? null : portalRoot(),
+  );
+
+  const place = useCallback(() => {
+    const a = anchor.current;
+    const m = menuRef.current;
+    if (!a || !m) return;
+    const r = a.getBoundingClientRect();
+    setPlacement(
+      placeMenu({
+        field: { x: r.left, y: r.top, w: r.width, h: r.height },
+        win: { w: window.innerWidth, h: window.innerHeight },
+        naturalHeight: naturalHeight(m),
+        ...(props.naturalWidth !== undefined ? { naturalWidth: props.naturalWidth } : {}),
+      }),
+    );
+  }, [anchor, props.naturalWidth]);
+
+  // prima misura, e nuova misura quando il contenuto cambia (ricerca, voci aggiunte)
+  useLayoutEffect(() => {
+    if (!root) return;
+    place();
+    const m = menuRef.current;
+    if (!m) return;
+    const ro = new ResizeObserver(() => place());
+    for (const kid of Array.from(m.children)) ro.observe(kid);
+    return () => ro.disconnect();
+  }, [root, place, children]);
+
+  // chiusura: clic fuori, scorrimento del pannello, ridimensionamento
+  useEffect(() => {
+    const away = (e: Event) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (menuRef.current?.contains(t)) return;
+      if (anchor.current?.contains(t)) return;
+      if (inside?.some((r) => r.current?.contains(t))) return;
+      onClose();
+    };
+    const scrolled = (e: Event) => {
+      const t = e.target as Node | null;
+      if (t && menuRef.current?.contains(t)) return;
+      onClose();
+    };
+    document.addEventListener("pointerdown", away, true);
+    window.addEventListener("scroll", scrolled, true);
+    window.addEventListener("resize", onClose);
+    return () => {
+      document.removeEventListener("pointerdown", away, true);
+      window.removeEventListener("scroll", scrolled, true);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [anchor, inside, onClose]);
+
+  if (!root) return null;
+  const style: CSSProperties = placement
+    ? {
+        left: placement.left,
+        top: placement.top,
+        width: placement.width,
+        maxHeight: placement.maxHeight,
+      }
+    : { left: 0, top: 0, opacity: 0, pointerEvents: "none", width: anchor.current?.offsetWidth };
+  return createPortal(
+    <div
+      ref={menuRef}
+      id={props.id}
+      className={"ei-menu" + (props.className ? ` ${props.className}` : "")}
+      data-side={placement?.side}
+      role={props.role ?? "presentation"}
+      aria-label={props.ariaLabel}
+      style={style}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && props.onEscape) {
+          e.preventDefault();
+          e.stopPropagation();
+          props.onEscape();
+        }
+      }}
+      onBlur={(e) => {
+        // il focus esce dal menu verso altro (non dal campo): il menu si chiude
+        const next = e.relatedTarget as Node | null;
+        if (!next) return;
+        if (menuRef.current?.contains(next) || anchor.current?.contains(next)) return;
+        if (inside?.some((r) => r.current?.contains(next))) return;
+        onClose();
+      }}
+    >
+      {children}
+    </div>,
+    root,
+  );
 }
 ```
 

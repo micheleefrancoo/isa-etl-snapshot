@@ -2,1088 +2,1466 @@
 
 File in questo blocco:
 
-- `scripts/visual-fase4.mjs`
-- `scripts/visual-fase4b.mjs`
-- `scripts/visual-lib.mjs`
-- `scripts/visual-temi.mjs`
-- `tsconfig.json`
-- `vite.config.ts`
-- `vitest.config.ts`
+- `scripts/e2e-fase6b1.mjs`
+- `scripts/extract-golden.mjs`
+- `scripts/generate-index.mjs`
 
 ---
 
-### `scripts/visual-fase4.mjs`
+### `scripts/e2e-fase6b1.mjs`
 
-381 righe
-
-```js
-#!/usr/bin/env node
-/**
- * Verifica visiva della Fase 4a: prototipo e nuovo canvas alla stessa
- * finestra (1440 × 900). Salva in docs/visual/fase4/:
- *   prototipo.png, v2-chiaro.png, v2-scuro.png,
- *   crop-<tipo>-{prototipo,chiaro,scuro}.png  (un nodo per tipo),
- *   misure.json  (posizioni, colori e misure lette dal DOM, per il report).
- *
- * Avvia da solo `vite dev` se non gli si passa BASE_URL.
- * Uso: node scripts/visual-fase4.mjs
- */
-import { spawn } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { chromium } from "playwright";
-
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const OUT = resolve(ROOT, "docs/visual/fase4");
-const PROTOTYPE = resolve(ROOT, "docs/prototype/isa-fusion-prototype.html");
-const VIEWPORT = { width: 1440, height: 900 };
-const PORT = Number(process.env.PORT ?? 5199);
-const SOLUTION = {
-  id: "visual",
-  name: "Verifica visiva",
-  description: "",
-  status: "draft",
-  version: "v1",
-  chart: "bar",
-  series: [],
-  updatedAt: "",
-  owner: "",
-  parameters: [],
-  modules: { etl: "draft" },
-  shares: [],
-};
-
-mkdirSync(OUT, { recursive: true });
-
-// --- server di sviluppo -----------------------------------------------------
-async function startServer() {
-  if (process.env.BASE_URL) return { base: process.env.BASE_URL, stop() {} };
-  const child = spawn(
-    "npx",
-    ["vite", "dev", "--port", String(PORT), "--strictPort", "--host", "127.0.0.1"],
-    {
-      cwd: ROOT,
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-  let log = "";
-  child.stdout.on("data", (d) => (log += d));
-  child.stderr.on("data", (d) => (log += d));
-  const base = `http://127.0.0.1:${PORT}`;
-  const t0 = Date.now();
-  for (;;) {
-    if (Date.now() - t0 > 90000) {
-      child.kill();
-      throw new Error("vite dev non risponde:\n" + log);
-    }
-    try {
-      const r = await fetch(base + "/");
-      if (r.status < 500) break;
-    } catch {
-      /* non ancora pronto */
-    }
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  // npx avvia vite come processo figlio: si chiude l'intero gruppo
-  return {
-    base,
-    stop: () => {
-      try {
-        process.kill(-child.pid);
-      } catch {
-        /* già terminato */
-      }
-    },
-  };
-}
-
-// --- carattere del prototipo (nessuna rete: Manrope locale al posto di Google Fonts) ---
-function manropeCss() {
-  const dir = resolve(ROOT, "node_modules/@fontsource-variable/manrope/files");
-  const face = (name, range) => {
-    const b64 = readFileSync(resolve(dir, name)).toString("base64");
-    return (
-      `@font-face{font-family:'Manrope';font-style:normal;font-weight:200 800;font-display:block;` +
-      `src:url(data:font/woff2;base64,${b64}) format('woff2');unicode-range:${range};}`
-    );
-  };
-  return (
-    face(
-      "manrope-latin-ext-wght-normal.woff2",
-      "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
-    ) +
-    face(
-      "manrope-latin-wght-normal.woff2",
-      "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
-    )
-  );
-}
-
-// --- misure lette dal DOM ------------------------------------------------------
-const SELECTORS = {
-  prototipo: {
-    stage: "#stage",
-    node: (id) => `[data-uid="${id}"]`,
-    wrap: ".icon-wrap",
-    label: ".label",
-    dot: ".state-dot",
-    zoom: "#zoomCtl",
-    minimap: "#minimap",
-    fit: "#zoomFit",
-    zoomBtn: "#zoomPct",
-  },
-  v2: {
-    stage: ".ec-stage",
-    node: (id) => `[data-node-id="${id}"]`,
-    wrap: ".ec-icon-wrap",
-    label: ".ec-label",
-    dot: ".ec-state-dot",
-    zoom: ".ec-zoom",
-    minimap: ".ec-minimap",
-    fit: ".ec-fit",
-    zoomBtn: ".ec-zoom button:nth-child(2)",
-  },
-};
-const NODE_IDS = ["ds1", "op-filter", "op-join", "op-sort", "op-export"];
-
-async function measure(page, kind) {
-  const sel = { ...SELECTORS[kind], node: undefined };
-  const nodeSels = Object.fromEntries(NODE_IDS.map((id) => [id, SELECTORS[kind].node(id)]));
-  return page.evaluate(
-    ({ sel, nodeSels }) => {
-      const stage = document.querySelector(sel.stage);
-      const sr = stage.getBoundingClientRect();
-      const rel = (el) => {
-        if (!el) return null;
-        const r = el.getBoundingClientRect();
-        return {
-          x: +(r.left - sr.left).toFixed(2),
-          y: +(r.top - sr.top).toFixed(2),
-          w: +r.width.toFixed(2),
-          h: +r.height.toFixed(2),
-        };
-      };
-      const cs = (el, props) => {
-        if (!el) return null;
-        const s = getComputedStyle(el);
-        return Object.fromEntries(props.map((p) => [p, s[p]]));
-      };
-      const out = {
-        stage: {
-          rect: { w: sr.width, h: sr.height },
-          style: cs(stage, ["backgroundColor", "borderRadius"]),
-        },
-        nodes: {},
-      };
-      for (const [id, q] of Object.entries(nodeSels)) {
-        const n = document.querySelector(q);
-        if (!n) continue;
-        const wrap = n.querySelector(sel.wrap);
-        const label = n.querySelector(sel.label);
-        const dot = n.querySelector(sel.dot);
-        out.nodes[id] = {
-          rect: rel(n),
-          wrap: {
-            rect: rel(wrap),
-            style: cs(wrap, ["backgroundColor", "borderRadius", "color", "opacity", "boxShadow"]),
-          },
-          label: {
-            rect: rel(label),
-            style: cs(label, ["fontFamily", "fontSize", "fontWeight", "color", "lineHeight"]),
-          },
-          icon: cs(wrap.querySelector("svg"), ["width", "height"]),
-          dot:
-            dot && getComputedStyle(dot).display !== "none"
-              ? {
-                  rect: rel(dot),
-                  style: cs(dot, ["backgroundColor", "borderTopWidth", "borderTopColor"]),
-                }
-              : null,
-        };
-      }
-      const zoom = document.querySelector(sel.zoom);
-      const mm = document.querySelector(sel.minimap);
-      const box = [
-        "backgroundColor",
-        "borderRadius",
-        "borderTopWidth",
-        "borderTopColor",
-        "boxShadow",
-        "backdropFilter",
-      ];
-      out.zoom = {
-        rect: rel(zoom),
-        fromRight: +(sr.right - zoom.getBoundingClientRect().right).toFixed(2),
-        fromBottom: +(sr.bottom - zoom.getBoundingClientRect().bottom).toFixed(2),
-        style: cs(zoom, box),
-        fit: cs(document.querySelector(sel.fit), [
-          "color",
-          "fontSize",
-          "fontWeight",
-          "height",
-          "minWidth",
-        ]),
-        text: document.querySelector(sel.zoomBtn).textContent,
-      };
-      out.minimap = {
-        rect: rel(mm),
-        fromLeft: +(mm.getBoundingClientRect().left - sr.left).toFixed(2),
-        fromBottom: +(sr.bottom - mm.getBoundingClientRect().bottom).toFixed(2),
-        style: cs(mm, box),
-      };
-      out.body = cs(document.body, ["fontFamily"]);
-      return out;
-    },
-    { sel, nodeSels },
-  );
-}
-
-// --- scena per i ritagli: output parziale, output pieno, box combinato -----------------
-const CROPS = {
-  prototipo: {
-    dataset: '[data-uid="ds1"]',
-    lavorazione: '[data-uid="op-filter"]',
-    combinato: ".card.combined",
-    "output-parziale": ".card.output.partial",
-    "output-pieno": ".card.output:not(.partial)",
-  },
-  v2: {
-    dataset: '[data-node-id="ds1"]',
-    lavorazione: '[data-node-id="op-filter"]',
-    combinato: ".ec-combined",
-    "output-parziale": ".ec-output.ec-partial",
-    "output-pieno": ".ec-output:not(.ec-partial)",
-  },
-};
-
-async function cropScene(page, kind, theme) {
-  if (kind === "prototipo") {
-    await page.evaluate(() => {
-      connect("ds1", "op-join");
-      connect("ds1", "op-filter");
-      performMerge("op-sort", "op-export");
-    });
-  } else {
-    await page.evaluate(() => {
-      const s = window.__etlStore;
-      s.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
-      s.dispatch({ type: "connect", payload: { from: "ds1", to: "op-filter" } });
-      s.dispatch({ type: "merge", payload: { dragged: "op-sort", target: "op-export" } });
-    });
-  }
-  await page.waitForTimeout(1200);
-  const suffix = kind === "prototipo" ? "prototipo" : theme;
-  // la scena con i cavi, intera, e le misure dei cavi
-  await page.evaluate((k) => {
-    const st = document.querySelector(k === "prototipo" ? "#stage" : ".ec-stage");
-    st.scrollIntoView({ block: "center" });
-  }, kind);
-  await page.screenshot({ path: resolve(OUT, `cavi-${suffix}.png`) });
-  const cables = await page.evaluate((k) => {
-    const paths = [
-      ...document.querySelectorAll(k === "prototipo" ? "#linkPaths path" : ".ec-link"),
-    ];
-    const dots = [
-      ...document.querySelectorAll(k === "prototipo" ? "#linkPaths circle" : ".ec-links circle"),
-    ];
-    const cs = (el, props) => Object.fromEntries(props.map((q) => [q, getComputedStyle(el)[q]]));
-    return {
-      count: paths.length,
-      path: paths[0]
-        ? cs(paths[0], ["stroke", "strokeWidth", "strokeLinecap", "strokeLinejoin", "fill"])
-        : null,
-      dots: dots.length,
-      dot: dots[0] ? { ...cs(dots[0], ["fill"]), r: dots[0].getAttribute("r") } : null,
-      d: paths.map((el) => el.getAttribute("d")),
-    };
-  }, kind);
-  measures[kind === "prototipo" ? "prototipo" : `v2-${theme}`].cavi = cables;
-  for (const [name, q] of Object.entries(CROPS[kind])) {
-    const el = page.locator(q).first();
-    await el.scrollIntoViewIfNeeded();
-    // il ritaglio include lo spazio attorno al nodo, alla scala 3 per vedere i dettagli
-    const b = await el.boundingBox();
-    if (!b) throw new Error(`ritaglio ${name} (${kind}): nodo non trovato`);
-    await page.screenshot({
-      path: resolve(OUT, `crop-${name}-${suffix}.png`),
-      clip: {
-        x: Math.max(0, b.x - 14),
-        y: Math.max(0, b.y - 14),
-        width: b.width + 28,
-        height: b.height + 28,
-      },
-    });
-  }
-}
-
-// --- esecuzione ---------------------------------------------------------------------------
-const server = await startServer();
-const browser = await chromium.launch();
-const measures = {};
-const issues = [];
-try {
-  // prototipo
-  {
-    const ctx = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
-    const page = await ctx.newPage();
-    await page.route("https://fonts.googleapis.com/**", (r) =>
-      r.fulfill({ contentType: "text/css", body: manropeCss() }),
-    );
-    await page.goto(pathToFileURL(PROTOTYPE).href);
-    await page.evaluate(() => document.fonts.ready);
-    // il canvas del prototipo sta sotto le istruzioni: si porta al centro della finestra
-    await page.evaluate(() => document.getElementById("stage").scrollIntoView({ block: "center" }));
-    await page.waitForTimeout(800);
-    await page.screenshot({ path: resolve(OUT, "prototipo.png") });
-    measures.prototipo = await measure(page, "prototipo");
-    await cropScene(page, "prototipo", "chiaro");
-    await ctx.close();
-  }
-  // nuovo canvas, chiaro e scuro
-  for (const theme of ["chiaro", "scuro"]) {
-    const ctx = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
-    await ctx.addInitScript(
-      ([solution, dark]) => {
-        localStorage.setItem("isa.solutions", JSON.stringify([solution]));
-        localStorage.setItem("isa-theme", dark ? "dark" : "light");
-      },
-      [SOLUTION, theme === "scuro"],
-    );
-    const page = await ctx.newPage();
-    page.on("console", (m) => {
-      if (m.type() === "error" || m.type() === "warning")
-        issues.push(`[${theme}] ${m.type()}: ${m.text()}`);
-    });
-    page.on("pageerror", (e) => issues.push(`[${theme}] pageerror: ${e.message}`));
-    await page.goto(`${server.base}/solutions/${SOLUTION.id}/etl?seed=prototype`);
-    await page.waitForSelector('[data-node-id="ds1"]', { timeout: 60000 });
-    // il canvas nudo ha i pannelli chiusi (Fase 6a: la cassetta si apre da sola): si chiudono nello store, senza compensare la vista e senza transizione
-    await page.addStyleTag({
-      content: ".ec-workspace, .ec-panel { transition: none !important; }",
-    });
-    await page.evaluate(() =>
-      window.__etlStore.dispatch({ type: "setPanel", payload: { panel: "tools", open: false } }),
-    );
-    await page.evaluate(() => document.fonts.ready);
-    // In sviluppo (StrictMode) ThemeProvider sovrascrive il tema salvato prima di leggerlo
-    // (src/lib/theme.tsx, difetto preesistente): il tema si fissa con la stessa classe `.dark`.
-    await page.evaluate(
-      (dark) => document.documentElement.classList.toggle("dark", dark),
-      theme === "scuro",
-    );
-    await page.waitForTimeout(800);
-    await page.screenshot({ path: resolve(OUT, `v2-${theme}.png`) });
-    measures[`v2-${theme}`] = await measure(page, "v2");
-    measures[`v2-${theme}`].font = await page.evaluate(() => ({
-      loaded: [...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family),
-    }));
-    await cropScene(page, "v2", theme);
-    await ctx.close();
-  }
-  writeFileSync(resolve(OUT, "misure.json"), JSON.stringify(measures, null, 2) + "\n");
-  writeFileSync(
-    resolve(OUT, "console.txt"),
-    issues.length ? issues.join("\n") + "\n" : "nessun errore né avviso in console\n",
-  );
-  console.log("schermate in", OUT);
-  console.log(
-    issues.length
-      ? `console: ${issues.length} messaggi (vedi console.txt)`
-      : "console: nessun errore né avviso",
-  );
-} finally {
-  await browser.close();
-  server.stop();
-}
-process.exit(0);
-```
-
-### `scripts/visual-fase4b.mjs`
-
-323 righe
+939 righe
 
 ```js
 #!/usr/bin/env node
 /**
- * Verifica visiva della Fase 4b (animazioni). Prototipo e nuovo canvas alla
- * stessa finestra (1440 × 900), con un orologio controllato, a tre istanti
- * dall'avvio del flusso: 0, 250 e 500 ms.
+ * Verifica nel browser reale dell'Inspector (Fase 6b.1), con eventi veri:
+ * stato bloccato e collegamento, tendine (singola, colonne, valori) vicino ai
+ * quattro angoli della finestra a 1440×900, 1280×720 e 1280×600 (margine ≥ 16 px,
+ * nessuna copertura del campo, sempre un [role=listbox] in un portale, nessun
+ * <select> nativo), Converti tipo e Sostituisci valori con due colonne, Rimuovi
+ * duplicati con riordino delle chiavi, box combinato (riordino, sgancio, pannello
+ * espanso), pulsanti sul nodo, tetto all'altezza dei pannelli, focus e cronologia.
+ * Salva le schermate in docs/visual/fase6b1/ (chiaro, scuro e due in tema notte).
+ * Esce con codice 1 se una prova fallisce.
  *
- * Orologio: `performance.now` e `Date.now` sono sostituiti prima del
- * caricamento. Durante la preparazione della scena l'orologio avanza da
- * solo (così transizioni e assestamenti si concludono); poi si ferma, i cavi
- * vengono ricreati (nel prototipo `t0` dei cavi, nel nuovo canvas
- * annulla/ripristina) e si portano le lancette a 0, 250 e 500 ms.
- * L'attesa del prototipo è un'animazione CSS: si mette in pausa e si
- * imposta `currentTime` sullo stesso istante.
- *
- * Salva in docs/visual/fase4b/: {prototipo,v2-chiaro,v2-scuro}-t{0,250,500}.png,
- * v2-chiaro-movimento-ridotto.png, prototipo.webm, v2-chiaro.webm,
- * misure.json (flusso, risparmio energetico) e console.txt.
- *
- * Uso: node scripts/visual-fase4b.mjs
- */
-import { mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import { chromium } from "playwright";
-import { ROOT, SOLUTION, manropeCss, startServer } from "./visual-lib.mjs";
-
-const OUT = resolve(ROOT, "docs/visual/fase4b");
-const PROTOTYPE = resolve(ROOT, "docs/prototype/isa-fusion-prototype.html");
-const VIEWPORT = { width: 1440, height: 900 };
-const INSTANTS = [0, 250, 500];
-/** Istante (ms) in cui si ferma l'orologio e "parte" il flusso. */
-const FREEZE = 100000;
-const PORT = Number(process.env.PORT ?? 5199);
-
-mkdirSync(OUT, { recursive: true });
-
-const CLOCK = `(() => {
-  const c = { t: 1000, auto: true };
-  window.__clock = c;
-  performance.now = () => c.t;
-  Date.now = () => 1.7e12 + c.t;
-  setInterval(() => { if (c.auto) c.t += 16; }, 16);
-})();`;
-
-const RAF_COUNTER = `(() => {
-  window.__raf = 0;
-  const r = window.requestAnimationFrame.bind(window);
-  window.requestAnimationFrame = (cb) => { window.__raf++; return r(cb); };
-})();`;
-
-async function newContext(browser, extra = {}) {
-  return browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1, ...extra });
-}
-
-async function v2Page(ctx, base, theme, seed = true) {
-  await ctx.addInitScript(
-    ([solution, dark]) => {
-      localStorage.setItem("isa.solutions", JSON.stringify([solution]));
-      localStorage.setItem("isa-theme", dark ? "dark" : "light");
-    },
-    [SOLUTION, theme === "scuro"],
-  );
-  const page = await ctx.newPage();
-  await page.goto(`${base}/solutions/${SOLUTION.id}/etl${seed ? "?seed=prototype" : ""}`);
-  if (seed) await page.waitForSelector('[data-node-id="ds1"]', { timeout: 60000 });
-  else await page.waitForSelector(".ec-stage", { timeout: 60000 });
-  // il canvas nudo ha i pannelli chiusi (Fase 6a: la cassetta si apre da sola): si chiudono nello store, senza compensare la vista e senza transizione
-  await page.addStyleTag({ content: ".ec-workspace, .ec-panel { transition: none !important; }" });
-  await page.evaluate(() =>
-    window.__etlStore.dispatch({ type: "setPanel", payload: { panel: "tools", open: false } }),
-  );
-  await page.evaluate(() => document.fonts.ready);
-  // in sviluppo ThemeProvider sovrascrive il tema salvato: si fissa con la classe `.dark`
-  await page.evaluate(
-    (dark) => document.documentElement.classList.toggle("dark", dark),
-    theme === "scuro",
-  );
-  return page;
-}
-
-async function protoPage(ctx) {
-  const page = await ctx.newPage();
-  await page.route("https://fonts.googleapis.com/**", (r) =>
-    r.fulfill({ contentType: "text/css", body: manropeCss() }),
-  );
-  await page.goto(pathToFileURL(PROTOTYPE).href);
-  await page.evaluate(() => document.fonts.ready);
-  await page.evaluate(() => document.getElementById("stage").scrollIntoView({ block: "center" }));
-  return page;
-}
-
-/** Stessa scena in entrambi: un join con una sola tabella (output parziale), un filtro, un box combinato. */
-async function scene(page, kind) {
-  if (kind === "prototipo") {
-    await page.evaluate(() => {
-      connect("ds1", "op-join");
-      connect("ds1", "op-filter");
-      performMerge("op-sort", "op-export");
-    });
-  } else {
-    await page.evaluate(() => {
-      const s = window.__etlStore;
-      s.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
-      s.dispatch({ type: "connect", payload: { from: "ds1", to: "op-filter" } });
-      s.dispatch({ type: "merge", payload: { dragged: "op-sort", target: "op-export" } });
-    });
-  }
-  await page.waitForTimeout(2500); // l'orologio finto avanza: transizioni e assestamenti si concludono
-}
-
-/** Ferma l'orologio a FREEZE e fa ripartire i cavi (e le fette) da zero. */
-async function restart(page, kind) {
-  if (kind === "prototipo") {
-    await page.evaluate((F) => {
-      __clock.auto = false;
-      __clock.t = F;
-      Object.values(linkState).forEach((st) => (st.t0 = F));
-      document.getAnimations().forEach((a) => a.pause());
-    }, FREEZE);
-  } else {
-    await page.evaluate((F) => {
-      __clock.auto = false;
-      __clock.t = F;
-      const s = window.__etlStore;
-      while (s.canUndo()) s.undo();
-    }, FREEZE);
-    await page.waitForTimeout(400);
-    await page.evaluate(() => {
-      const s = window.__etlStore;
-      while (s.canRedo()) s.redo();
-    });
-  }
-  await page.waitForTimeout(600);
-}
-
-async function at(page, kind, ms) {
-  await page.evaluate(
-    ([F, t, k]) => {
-      __clock.t = F + t;
-      if (k === "prototipo") document.getAnimations().forEach((a) => (a.currentTime = t));
-    },
-    [FREEZE, ms, kind],
-  );
-  await page.waitForTimeout(350);
-}
-
-/** Tubi del flusso visibili: rettangolo di ingombro di ciascuno (in coordinate dello stage). */
-async function flowBoxes(page, kind) {
-  return page.evaluate((k) => {
-    const stage = document
-      .querySelector(k === "prototipo" ? "#stage" : ".ec-stage")
-      .getBoundingClientRect();
-    const els = [
-      ...document.querySelectorAll(k === "prototipo" ? "#bubbles path" : ".ec-flow"),
-    ].filter((e) => (e.getAttribute("d") || "").length > 0);
-    return els
-      .map((e) => {
-        const r = e.getBoundingClientRect();
-        return {
-          x: +(r.left - stage.left).toFixed(1),
-          y: +(r.top - stage.top).toFixed(1),
-          w: +r.width.toFixed(1),
-          h: +r.height.toFixed(1),
-          fill: getComputedStyle(e).fill,
-        };
-      })
-      .sort((a, b) => a.y - b.y || a.x - b.x);
-  }, kind);
-}
-
-async function waitingOpacities(page, kind) {
-  return page.evaluate((k) => {
-    const sel = k === "prototipo" ? ".icon-wrap.split .half.empty svg" : ".ec-slice-empty svg";
-    return [...document.querySelectorAll(sel)].map(
-      (e) => +parseFloat(getComputedStyle(e).opacity).toFixed(3),
-    );
-  }, kind);
-}
-
-const issues = [];
-const measures = {
-  instants: INSTANTS,
-  freezeMs: FREEZE,
-  prototipo: {},
-  "v2-chiaro": {},
-  "v2-scuro": {},
-};
-const server = await startServer(PORT);
-const browser = await chromium.launch();
-try {
-  // --- prototipo ---------------------------------------------------------------------------------
-  {
-    const ctx = await newContext(browser);
-    await ctx.addInitScript(CLOCK);
-    const page = await protoPage(ctx);
-    await scene(page, "prototipo");
-    await restart(page, "prototipo");
-    for (const ms of INSTANTS) {
-      await at(page, "prototipo", ms);
-      await page.screenshot({ path: resolve(OUT, `prototipo-t${ms}.png`) });
-      measures.prototipo[`t${ms}`] = {
-        flusso: await flowBoxes(page, "prototipo"),
-        attesa: await waitingOpacities(page, "prototipo"),
-      };
-    }
-    await ctx.close();
-  }
-  // --- nuovo canvas, chiaro e scuro -----------------------------------------------------------------
-  for (const theme of ["chiaro", "scuro"]) {
-    const ctx = await newContext(browser);
-    await ctx.addInitScript(CLOCK);
-    const page = await v2Page(ctx, server.base, theme);
-    page.on("console", (m) => {
-      if (m.type() === "error" || m.type() === "warning")
-        issues.push(`[${theme}] ${m.type()}: ${m.text()}`);
-    });
-    page.on("pageerror", (e) => issues.push(`[${theme}] pageerror: ${e.message}`));
-    await scene(page, "v2");
-    await restart(page, "v2");
-    for (const ms of INSTANTS) {
-      await at(page, "v2", ms);
-      await page.screenshot({ path: resolve(OUT, `v2-${theme}-t${ms}.png`) });
-      measures[`v2-${theme}`][`t${ms}`] = {
-        flusso: await flowBoxes(page, "v2"),
-        attesa: await waitingOpacities(page, "v2"),
-      };
-    }
-    await ctx.close();
-  }
-
-  // --- risparmio energetico, nel browser reale (orologio vero) -------------------------------------------
-  const energy = {};
-  const rafDelta = async (page, ms) => {
-    const a = await page.evaluate(() => window.__raf);
-    await page.waitForTimeout(ms);
-    return (await page.evaluate(() => window.__raf)) - a;
-  };
-  {
-    // movimento normale
-    const ctx = await newContext(browser);
-    await ctx.addInitScript(RAF_COUNTER);
-    const page = await v2Page(ctx, server.base, "chiaro");
-    await scene(page, "v2");
-    energy.movimentoNormale = { rafInUnSecondo: await rafDelta(page, 1000) };
-    // scheda nascosta
-    await page.evaluate(() => {
-      Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    await page.waitForTimeout(200);
-    energy.schedaNascosta = { rafInUnSecondo: await rafDelta(page, 1000) };
-    await page.evaluate(() => {
-      Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    await page.waitForTimeout(200);
-    energy.schedaTornataVisibile = { rafInUnSecondo: await rafDelta(page, 1000) };
-    // nulla da animare: annulla tutto (nessun cavo, nessuna fetta)
-    await page.evaluate(() => {
-      const s = window.__etlStore;
-      while (s.canUndo()) s.undo();
-    });
-    await page.waitForTimeout(600);
-    energy.nullaDaAnimare = {
-      rafInUnSecondo: await rafDelta(page, 1000),
-      cavi: await page.locator(".ec-link").count(),
-    };
-    await ctx.close();
-  }
-  {
-    // movimento ridotto
-    const ctx = await newContext(browser, { reducedMotion: "reduce" });
-    await ctx.addInitScript(RAF_COUNTER);
-    const page = await v2Page(ctx, server.base, "chiaro");
-    await scene(page, "v2");
-    const boxes1 = await flowBoxes(page, "v2");
-    energy.movimentoRidotto = { rafInUnSecondo: await rafDelta(page, 1000) };
-    const boxes2 = await flowBoxes(page, "v2");
-    energy.movimentoRidotto.flussoStatico =
-      JSON.stringify(boxes1) === JSON.stringify(boxes2) && boxes1.length > 0;
-    energy.movimentoRidotto.tubi = boxes1.length;
-    energy.movimentoRidotto.attesa = await waitingOpacities(page, "v2");
-    await page.screenshot({ path: resolve(OUT, "v2-chiaro-movimento-ridotto.png") });
-    await ctx.close();
-  }
-  measures.risparmioEnergetico = energy;
-
-  // --- video, con orologio vero ---------------------------------------------------------------------------
-  const tmp = resolve(OUT, ".video");
-  rmSync(tmp, { recursive: true, force: true });
-  for (const kind of ["prototipo", "v2-chiaro"]) {
-    const dir = resolve(tmp, kind);
-    const ctx = await newContext(browser, {
-      recordVideo: { dir, size: { width: 960, height: 600 } },
-    });
-    const page =
-      kind === "prototipo" ? await protoPage(ctx) : await v2Page(ctx, server.base, "chiaro");
-    await scene(page, kind === "prototipo" ? "prototipo" : "v2");
-    await page.waitForTimeout(3000);
-    await ctx.close();
-    const file = readdirSync(dir).find((f) => f.endsWith(".webm"));
-    renameSync(resolve(dir, file), resolve(OUT, `${kind}.webm`));
-  }
-  rmSync(tmp, { recursive: true, force: true });
-
-  writeFileSync(resolve(OUT, "misure.json"), JSON.stringify(measures, null, 2) + "\n");
-  writeFileSync(
-    resolve(OUT, "console.txt"),
-    issues.length ? issues.join("\n") + "\n" : "nessun errore né avviso in console\n",
-  );
-  console.log("schermate in", OUT);
-  console.log(JSON.stringify(energy, null, 2));
-  console.log(
-    issues.length
-      ? `console: ${issues.length} messaggi (vedi console.txt)`
-      : "console: nessun errore né avviso",
-  );
-} finally {
-  await browser.close();
-  server.stop();
-}
-process.exit(0);
-```
-
-### `scripts/visual-lib.mjs`
-
-87 righe
-
-```js
-/** Utilità condivise dagli script di verifica visiva: server di sviluppo e carattere del prototipo. */
-import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-
-/** Avvia `vite dev` (o usa BASE_URL) e attende che risponda. `stop()` chiude l'intero gruppo di processi. */
-export async function startServer(port) {
-  if (process.env.BASE_URL) return { base: process.env.BASE_URL, stop() {} };
-  const child = spawn(
-    "npx",
-    ["vite", "dev", "--port", String(port), "--strictPort", "--host", "127.0.0.1"],
-    {
-      cwd: ROOT,
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-  let log = "";
-  child.stdout.on("data", (d) => (log += d));
-  child.stderr.on("data", (d) => (log += d));
-  const base = `http://127.0.0.1:${port}`;
-  const t0 = Date.now();
-  for (;;) {
-    if (Date.now() - t0 > 90000) {
-      child.kill();
-      throw new Error("vite dev non risponde:\n" + log);
-    }
-    try {
-      const r = await fetch(base + "/");
-      if (r.status < 500) break;
-    } catch {
-      /* non ancora pronto */
-    }
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  return {
-    base,
-    stop: () => {
-      try {
-        process.kill(-child.pid);
-      } catch {
-        /* già terminato */
-      }
-    },
-  };
-}
-
-/** Manrope locale al posto di Google Fonts (nessuna rete), per il prototipo. */
-export function manropeCss() {
-  const dir = resolve(ROOT, "node_modules/@fontsource-variable/manrope/files");
-  const face = (name, range) => {
-    const b64 = readFileSync(resolve(dir, name)).toString("base64");
-    return (
-      `@font-face{font-family:'Manrope';font-style:normal;font-weight:200 800;font-display:block;` +
-      `src:url(data:font/woff2;base64,${b64}) format('woff2');unicode-range:${range};}`
-    );
-  };
-  return (
-    face(
-      "manrope-latin-ext-wght-normal.woff2",
-      "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
-    ) +
-    face(
-      "manrope-latin-wght-normal.woff2",
-      "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
-    )
-  );
-}
-
-export const SOLUTION = {
-  id: "visual",
-  name: "Verifica visiva",
-  description: "",
-  status: "draft",
-  version: "v1",
-  chart: "bar",
-  series: [],
-  updatedAt: "",
-  owner: "",
-  parameters: [],
-  modules: { etl: "draft" },
-  shares: [],
-};
-```
-
-### `scripts/visual-temi.mjs`
-
-107 righe
-
-```js
-#!/usr/bin/env node
-/**
- * Verifica visiva del sistema di temi (Fase T). Schermate di due pagine
- * (elenco soluzioni e canvas ETL, 1440 × 900) in chiaro e in scuro.
- *
- * Uso: node scripts/visual-temi.mjs <gruppo>
- *   prototipo  tema predefinito → docs/visual/temi/prototipo-{chiaro,scuro}-{soluzioni,canvas}.png
- *              (da confrontare al pixel con scripts/visual-compare.mjs)
- *   notte      tema "notte"     → docs/visual/temi/notte-{chiaro,scuro}-{soluzioni,canvas}.png
- *   tinte      deriveAccent     → docs/visual/temi/tinta-{0,140,280}-{chiaro,scuro}-canvas.png
- *
- * Il modo (chiaro/scuro) arriva da localStorage, come per un utente reale (nel
- * canvas del tema predefinito, dalla classe `.dark`: vedi `shot`); il tema da
- * `?theme=` e la tinta da `setAccentHue` (solo sviluppo).
+ * Uso: node scripts/e2e-fase6b1.mjs
  */
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { ROOT, SOLUTION, startServer } from "./visual-lib.mjs";
 
-const OUT = resolve(ROOT, "docs/visual/temi");
-const VIEWPORT = { width: 1440, height: 900 };
-const PORT = Number(process.env.PORT ?? 5198);
-const group = process.argv[2];
-if (!["prototipo", "notte", "tinte"].includes(group)) {
-  console.error("Uso: node scripts/visual-temi.mjs prototipo|notte|tinte");
-  process.exit(2);
-}
+const OUT = resolve(ROOT, "docs/visual/fase6b1");
 mkdirSync(OUT, { recursive: true });
-
-const server = await startServer(PORT);
+const server = await startServer(Number(process.env.PORT ?? 5196));
 const browser = await chromium.launch();
+const ctx = await browser.newContext({
+  viewport: { width: 1440, height: 900 },
+  deviceScaleFactor: 1,
+});
+await ctx.addInitScript((s) => {
+  if (!localStorage.getItem("isa.solutions"))
+    localStorage.setItem("isa.solutions", JSON.stringify([s]));
+  localStorage.setItem("isa-theme", "light");
+}, SOLUTION);
+const page = await ctx.newPage();
+const errors = [];
+page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+page.on("pageerror", (e) => errors.push(String(e)));
+
+let failed = 0;
+const results = [];
+function check(name, ok, extra = "") {
+  results.push({
+    prova: name,
+    esito: ok ? "ok" : "FALLITA",
+    dettaglio: String(extra).slice(0, 170),
+  });
+  if (!ok) failed++;
+}
+const state = () => page.evaluate(() => window.__etlStore.getState());
+const dispatch = (cmd) => page.evaluate((c) => window.__etlStore.dispatch(c), cmd);
+const rectOf = (sel) =>
+  page.evaluate((s) => {
+    const e = document.querySelector(s);
+    if (!e) return null;
+    const r = e.getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height };
+  }, sel);
+const center = (r) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+const sleep = (ms) => page.waitForTimeout(ms);
+const URL = `${server.base}/solutions/${SOLUTION.id}/etl?seed=prototype`;
+const nodeRect = (id) => rectOf(`[data-node-id="${id}"] .ec-icon-wrap`);
 
 /**
- * `via`: come si imposta il modo. "archivio" = localStorage, letto dallo script
- * di avvio (il meccanismo reale); "classe" = classe `.dark` dopo il caricamento,
- * come nelle fasi precedenti (lo stato React non cambia: l'etichetta del
- * pulsante resta quella di prima).
+ * Schermata nei due temi (chiaro e scuro). `notte` ("chiaro" o "scuro"): in più, una nel tema notte
+ * (due schermate in tutto, una chiara e una scura).
  */
-async function shot(mode, path, file, { theme, hue, via = "archivio" } = {}) {
-  const ctx = await browser.newContext({
-    viewport: VIEWPORT,
-    deviceScaleFactor: 1,
-    reducedMotion: "reduce",
-  });
-  await ctx.addInitScript(
-    ([solution, m]) => {
-      localStorage.setItem("isa.solutions", JSON.stringify([solution]));
-      if (m) localStorage.setItem("isa-theme", m);
-    },
-    [SOLUTION, via === "archivio" ? (mode === "scuro" ? "dark" : "light") : null],
-  );
-  const page = await ctx.newPage();
-  const sep = path.includes("?") ? "&" : "?";
-  await page.goto(`${server.base}${path}${theme ? `${sep}theme=${theme}` : ""}`);
-  if (path.includes("/etl")) {
-    await page.waitForSelector('[data-node-id="ds1"]', { timeout: 60000 });
-    // il canvas nudo ha i pannelli chiusi (Fase 6a: la cassetta si apre da sola): si chiudono nello store, senza compensare la vista e senza transizione
-    await page.addStyleTag({
-      content: ".ec-workspace, .ec-panel { transition: none !important; }",
+async function shot(name, { notte } = {}) {
+  const path = (suffix) => resolve(OUT, `${name}-${suffix}.png`);
+  const html = (fn, arg) => page.evaluate(fn, arg);
+  await page.screenshot({ path: path("chiaro"), animations: "disabled" });
+  await html(() => document.documentElement.classList.add("dark"));
+  await sleep(150);
+  await page.screenshot({ path: path("scuro"), animations: "disabled" });
+  await html(() => document.documentElement.classList.remove("dark"));
+  if (notte) {
+    await html(() => document.documentElement.setAttribute("data-theme", "notte"));
+    if (notte === "scuro") await html(() => document.documentElement.classList.add("dark"));
+    await sleep(150);
+    await page.screenshot({ path: path(`notte-${notte}`), animations: "disabled" });
+    await html(() => {
+      document.documentElement.classList.remove("dark");
+      document.documentElement.removeAttribute("data-theme");
     });
-    await page.evaluate(() =>
-      window.__etlStore.dispatch({ type: "setPanel", payload: { panel: "tools", open: false } }),
-    );
-  } else {
-    await page.waitForSelector("main, [data-slot], h1", { timeout: 60000 });
   }
-  await page.evaluate(() => document.fonts.ready);
-  if (via === "classe")
-    await page.evaluate(
-      (dark) => document.documentElement.classList.toggle("dark", dark),
-      mode === "scuro",
-    );
-  if (hue !== undefined) {
-    await page.evaluate(async (h) => {
-      const m = await import("/src/theme/runtime.ts");
-      m.setAccentHue(h);
-    }, hue);
-  }
-  await page.waitForTimeout(1500);
-  await page.screenshot({ path: resolve(OUT, file), animations: "disabled" });
-  await ctx.close();
-  console.log("salvato", file);
+  await sleep(100);
 }
 
-const CANVAS = `/solutions/${SOLUTION.id}/etl?seed=prototype`;
+/** Aggiunge una lavorazione, la collega al dataset e restituisce il suo id. */
+async function addOp(type, x, y, connect = true) {
+  // la vista parte da zero: i nodi nuovi stanno dove ci si aspetta, dentro l'area visibile
+  await dispatch({ type: "setView", payload: { x: 0, y: 0, zoom: 1 } });
+  const before = Object.keys((await state()).graph.cards);
+  await dispatch({ type: "addNode", payload: { component: type, point: { x, y } } });
+  const id = Object.keys((await state()).graph.cards).find((k) => !before.includes(k));
+  if (connect) await dispatch({ type: "connect", payload: { from: "ds1", to: id } });
+  await place(id, x, y);
+  await sleep(100);
+  return id;
+}
+/** Porta un nodo dove si vuole (la scena sposta i nuovi nodi per non sovrapporli). */
+async function place(id, x, y) {
+  const c = (await state()).graph.cards[id];
+  await dispatch({ type: "moveNodes", payload: { ids: [id], dx: x - c.x, dy: y - c.y } });
+  await sleep(100);
+}
+/** Un clic vero sul nodo: apre l'Inspector. */
+async function clickNode(id) {
+  const r = await nodeRect(id);
+  const c = center(r);
+  await page.mouse.click(c.x, c.y);
+  await sleep(450);
+}
+const insp = () => rectOf(".ec-insp");
+const inspOpen = async () => (await state()).panels.insp.open;
+const paramsOf = async (id, step = 0) => (await state()).graph.cards[id].params[step];
+
 try {
-  if (group === "tinte") {
-    for (const hue of [0, 140, 280])
-      for (const mode of ["chiaro", "scuro"])
-        await shot(mode, CANVAS, `tinta-${hue}-${mode}-canvas.png`, { hue });
-  } else {
-    const theme = group === "notte" ? "notte" : undefined;
-    for (const mode of ["chiaro", "scuro"]) {
-      await shot(mode, "/", `${group}-${mode}-soluzioni.png`, { theme });
-      // per il tema predefinito il canvas segue il metodo delle fasi precedenti, per il confronto con i riferimenti
-      await shot(mode, CANVAS, `${group}-${mode}-canvas.png`, {
-        theme,
-        via: group === "prototipo" ? "classe" : "archivio",
-      });
+  await page.goto(URL);
+  await page.waitForSelector('[data-node-id="ds1"]', { timeout: 90000 });
+  await sleep(600);
+
+  // 1. un clic su un nodo apre l'Inspector e chiude la cassetta; senza ingresso è bloccato
+  const s0 = await state();
+  check(
+    "all'avvio la cassetta è aperta e l'Inspector chiuso",
+    s0.panels.tools.open && !s0.panels.insp.open,
+  );
+  await clickNode("op-sort");
+  const s1 = await state();
+  check(
+    "il clic su un nodo apre l'Inspector e chiude la cassetta",
+    s1.panels.insp.open && !s1.panels.tools.open && s1.inspector.nodeId === "op-sort",
+  );
+  check(
+    "l'apertura con un clic non sposta il focus nell'Inspector",
+    !(await page.evaluate(() => !!document.activeElement?.closest(".ec-insp"))),
+  );
+  check(
+    "lavorazione senza ingresso: stato bloccato, nessun campo",
+    (await page.locator('[data-testid="ei-blocked"]').count()) === 1 &&
+      (await page.locator(".ec-insp .ei-fieldgroup").count()) === 0,
+  );
+  await shot("inspector-bloccato");
+
+  // collegamento: lo schema dei dati in ingresso arriva nell'Inspector
+  await dispatch({ type: "connect", payload: { from: "ds1", to: "op-sort" } });
+  await sleep(300);
+  check(
+    "collegato un dataset: lo stato bloccato sparisce e il selettore di colonne conosce le 8 colonne",
+    (await page.locator('[data-testid="ei-blocked"]').count()) === 0 &&
+      (await page.locator('.ec-insp [data-picker="columns"]').getAttribute("data-total")) === "8",
+  );
+  check(
+    "nessun <select>, <datalist> o input numerico/data nel DOM dell'Inspector",
+    (await page.locator(".ec-insp select, .ec-insp datalist, .ec-insp option").count()) === 0 &&
+      (await page.locator('.ec-insp input[type="number"], .ec-insp input[type="date"]').count()) ===
+        0,
+  );
+
+  // 2. tendine: geometria vicino ai quattro angoli, a tre dimensioni di finestra
+  const sortId = "op-sort";
+  const valuesId = await addOp("replaceVal", 640, 90);
+  await dispatch({
+    type: "setParams",
+    payload: {
+      node: valuesId,
+      index: 0,
+      params: {
+        items: [
+          {
+            columns: ["regione", "stato"],
+            match: "è uguale a",
+            find: { mode: "list", values: [], text: "", sep: "," },
+            with: "",
+          },
+        ],
+      },
+    },
+  });
+  const kinds = {
+    singola: { node: sortId, trigger: ".ec-insp button.ei-select" },
+    colonne: {
+      node: sortId,
+      trigger: '.ec-insp [data-picker="columns"] .ei-add',
+      field: '.ec-insp [data-picker="columns"]',
+    },
+    valori: {
+      node: valuesId,
+      trigger: '.ec-insp [data-picker="values"] .ei-add',
+      field: '.ec-insp [data-picker="values"]',
+    },
+  };
+  // il campo vero si sposta nel corpo della pagina (fuori dal pannello, che ritaglia e crea un contenitore
+  // per gli elementi fissi) e si mette a ridosso dell'angolo della finestra; poi si rimette al suo posto
+  const placeAt = (sel, corner) =>
+    page.evaluate(
+      ([s, c]) => {
+        const e = document.querySelector("[data-moved]") ?? document.querySelector(s);
+        if (!e.dataset.home) {
+          e.dataset.home = "1";
+          e.__parent = e.parentNode;
+          e.__next = e.nextSibling;
+          e.dataset.moved = "1";
+          document.body.appendChild(e);
+        }
+        e.style.cssText = "position: fixed; width: 232px; z-index: 90;";
+        const r = e.getBoundingClientRect();
+        const w = innerWidth;
+        const h = innerHeight;
+        e.style.left = `${c.includes("l") ? 0 : c.includes("r") ? w - 232 : (w - 232) / 2}px`;
+        e.style.top = `${c.includes("t") ? 0 : c.includes("b") ? h - r.height : (h - r.height) / 2}px`;
+      },
+      [sel, corner],
+    );
+  const resetStyle = (sel) =>
+    page.evaluate((s) => {
+      const e = document.querySelector("[data-moved]");
+      if (!e) return;
+      e.style.cssText = "";
+      e.__parent.insertBefore(e, e.__next);
+      delete e.dataset.home;
+      delete e.dataset.moved;
+    }, sel);
+  const geometry = async (label, kind, corner) => {
+    const k = kinds[kind];
+    const fieldSel = k.field ?? k.trigger;
+    await placeAt(fieldSel, corner);
+    await sleep(50);
+    const fieldRect = await rectOf("[data-moved]");
+    await page.locator(`[data-moved]${k.field ? " .ei-add" : ""}`).click();
+    await sleep(250);
+    const info = await page.evaluate(() => {
+      const lb = document.querySelector('[role="listbox"]');
+      if (!lb) return null;
+      const menu = lb.closest(".ei-menu");
+      const r = menu.getBoundingClientRect();
+      return {
+        inPortal: !!lb.closest("#ei-portal"),
+        rect: { x: r.x, y: r.y, w: r.width, h: r.height },
+        win: { w: innerWidth, h: innerHeight },
+        side: menu.dataset.side,
+        selects: document.querySelectorAll("select, datalist").length,
+      };
+    });
+    const ok =
+      !!info &&
+      info.inPortal &&
+      info.selects === 0 &&
+      info.rect.x >= 15.5 &&
+      info.rect.y >= 15.5 &&
+      info.rect.x + info.rect.w <= info.win.w - 15.5 &&
+      info.rect.y + info.rect.h <= info.win.h - 15.5 &&
+      !hit(info.rect, fieldRect);
+    check(
+      `${label}: il menu dista ≥ 16 px dai bordi, non copre il campo ed è un listbox nel portale`,
+      ok,
+      info
+        ? `${Math.round(info.rect.x)},${Math.round(info.rect.y)} ${Math.round(info.rect.w)}×${Math.round(info.rect.h)} ${info.side}`
+        : "assente",
+    );
+    if (!info) return null;
+    await page.keyboard.press("Escape");
+    await sleep(120);
+    check(
+      `${label}: Esc chiude il menu e riporta il focus al campo`,
+      (await page.locator('[role="listbox"]').count()) === 0 &&
+        (await page.evaluate(() => !!document.activeElement?.closest("[data-moved]"))),
+    );
+    return info;
+  };
+  const windows = [
+    { width: 1440, height: 900 },
+    { width: 1280, height: 720 },
+    { width: 1280, height: 600 },
+  ];
+  for (const vp of windows) {
+    await page.setViewportSize(vp);
+    await sleep(500);
+    for (const kind of ["singola", "colonne", "valori"]) {
+      const k = kinds[kind];
+      // il nodo giusto nell'Inspector
+      await dispatch({ type: "select", payload: { ids: [k.node] } });
+      await dispatch({ type: "inspect", payload: { node: k.node } });
+      await sleep(250);
+      const fieldSel = k.field ?? k.trigger;
+      for (const corner of ["tl", "tr", "bl", "br", "c"]) {
+        await geometry(`${vp.width}×${vp.height} ${kind} ${corner}`, kind, corner);
+      }
+      await resetStyle(fieldSel);
     }
   }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await sleep(500);
+
+  // 3. Converti tipo con DUE colonne in una riga sola
+  const castId = await addOp("cast", 640, 230);
+  await clickNode(castId);
+  check(
+    "Converti tipo: il selettore di colonne è quello multiplo",
+    (await page.locator('.ec-insp [data-picker="columns"]').count()) === 1,
+  );
+  await page.locator('.ec-insp [data-picker="columns"] .ei-add').click();
+  await sleep(200);
+  check(
+    "la tendina delle colonne ha ricerca, tipi, Tutte, Nessuna e il conteggio «N colonne su M»",
+    (await page.locator('.ei-menu input[role="combobox"]').count()) === 1 &&
+      (await page.locator(".ei-menu .ei-option-hint").first().innerText()) === "integer" &&
+      (await page.getByRole("button", { name: "Tutte" }).count()) === 1 &&
+      (await page.getByRole("button", { name: "Nessuna" }).count()) === 1 &&
+      (await page.locator(".ei-menu .ei-count").innerText()) === "0 colonne su 8",
+  );
+  await shot("tendina-colonne-aperta", { notte: "chiaro" });
+  await page.keyboard.type("quant");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Control+a");
+  await page.keyboard.type("impor");
+  await page.keyboard.press("Enter");
+  await sleep(200);
+  check(
+    "le colonne si scelgono nell'ordine di scelta, da tastiera",
+    JSON.stringify((await paramsOf(castId)).items[0].columns) === '["quantita","importo"]',
+    JSON.stringify((await paramsOf(castId)).items[0].columns),
+  );
+  check(
+    "il conteggio è annunciato (role=status, aria-live)",
+    (await page.locator('.ei-menu .ei-count[role="status"][aria-live="polite"]').innerText()) ===
+      "2 colonne su 8",
+  );
+  await page.keyboard.press("Escape");
+  await sleep(150);
+  // il tipo: una tendina singola con ricerca
+  await page.locator(".ec-insp button.ei-select").click();
+  await sleep(150);
+  await page.keyboard.type("inte");
+  await page.keyboard.press("Enter");
+  await sleep(200);
+  const castRow = (await paramsOf(castId)).items[0];
+  check(
+    "Converti tipo con due colonne in una riga sola",
+    castRow.columns.length === 2 && castRow.to === "intero",
+  );
+  check(
+    "il riassunto della riga è dal vivo: «quantita, importo → intero»",
+    (await page.locator(".ei-row-sum").first().innerText()) === "quantita, importo → intero",
+  );
+  await shot("converti-tipo-due-colonne", { notte: "scuro" });
+
+  // 4. Sostituisci valori con due colonne: unione dei domini, avviso al cambio
+  await clickNode(valuesId);
+  const dom = async () =>
+    Number(await page.locator('.ec-insp [data-picker="values"]').getAttribute("data-total"));
+  check(
+    "Sostituisci valori: il dominio è l'unione di regione e stato (8 valori)",
+    (await dom()) === 8,
+    String(await dom()),
+  );
+  await page.locator('.ec-insp [data-picker="values"] .ei-add').click();
+  await sleep(200);
+  check(
+    "la tendina dei valori ha ricerca, spunte, Tutti, Nessuno e il conteggio",
+    (await page.locator('.ei-menu [role="listbox"] [role="option"]').count()) === 8 &&
+      (await page.getByRole("button", { name: "Tutti" }).count()) === 1 &&
+      (await page.locator(".ei-menu .ei-count").innerText()) === "0 selezionati su 8",
+  );
+  await shot("tendina-valori-aperta");
+  // un valore delle regioni, uno degli stati, uno scritto a mano (con la grafia dei dati quando esiste)
+  await page.keyboard.type("nord");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Control+a");
+  await page.keyboard.type("CHIUSO");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Control+a");
+  await page.keyboard.type("Mare");
+  check(
+    "«+ Aggiungi “Mare”» compare per ciò che non esiste",
+    (await page.locator(".ei-menu .ei-option.ei-free").first().innerText()) === "+ Aggiungi “Mare”",
+  );
+  await page.keyboard.press("Enter");
+  await sleep(150);
+  let vals = (await paramsOf(valuesId)).items[0].find.values;
+  check(
+    "i valori si aggiungono con la grafia dei dati («nord» → «Nord», «CHIUSO» → «Chiuso»)",
+    JSON.stringify(vals) === '["Nord","Chiuso","Mare"]',
+    JSON.stringify(vals),
+  );
+  // incolla di più valori insieme
+  await page.evaluate(() => {
+    const input = document.querySelector('.ei-menu input[role="combobox"]');
+    const dt = new DataTransfer();
+    dt.setData("text", "sud; Aperto|Isole\nnord");
+    input.dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }),
+    );
+  });
+  await sleep(150);
+  vals = (await paramsOf(valuesId)).items[0].find.values;
+  check(
+    "incollare più valori separati da virgola, punto e virgola, barra verticale o a capo li aggiunge tutti",
+    JSON.stringify(vals) === '["Nord","Chiuso","Mare","Sud","Aperto","Isole"]',
+    JSON.stringify(vals),
+  );
+  await page.keyboard.press("Escape");
+  await sleep(150);
+  await shot("sostituisci-valori-due-colonne");
+  // cambiando le colonne i valori NON si azzerano: quelli fuori dominio restano in corsivo, con l'avviso
+  await page.locator('.ec-insp [data-picker="columns"] .ei-chip-x', { hasText: "" }).nth(1).click();
+  await sleep(250);
+  vals = (await paramsOf(valuesId)).items[0].find.values;
+  check(
+    "tolta la colonna «stato» nessun valore è stato azzerato",
+    vals.length === 6,
+    JSON.stringify(vals),
+  );
+  check(
+    "compare l'avviso «N valori non presenti nelle colonne scelte», con «Rimuovi»",
+    (await page.locator(".ei-warn").innerText()).includes("non presenti nelle colonne scelte") &&
+      (await page.locator(".ec-insp .ei-chip.ei-free").count()) >= 1,
+    await page
+      .locator(".ei-warn")
+      .innerText()
+      .catch(() => ""),
+  );
+  await page.locator(".ei-warn .ei-link-btn").click();
+  await sleep(200);
+  vals = (await paramsOf(valuesId)).items[0].find.values;
+  check(
+    "«Rimuovi» toglie solo i valori fuori dominio",
+    JSON.stringify(vals) === '["Nord","Sud","Isole"]',
+    JSON.stringify(vals),
+  );
+
+  // 5. Rimuovi duplicati con riordino delle chiavi
+  const dedupId = await addOp("dedup", 640, 370);
+  await clickNode(dedupId);
+  await dispatch({
+    type: "setParams",
+    payload: {
+      node: dedupId,
+      index: 0,
+      params: {
+        keep: "la prima",
+        items: [{ columns: ["id", "cliente", "regione"], cmp: "esatto" }],
+      },
+    },
+  });
+  await sleep(250);
+  const order = async () => (await paramsOf(dedupId)).items[0].columns.join();
+  check("tre chiavi nell'ordine di scelta", (await order()) === "id,cliente,regione");
+  await page.getByRole("button", { name: /^regione, posizione/ }).focus();
+  await page.keyboard.press("Alt+ArrowLeft");
+  await sleep(150);
+  check("Alt+← sposta la chiave", (await order()) === "id,regione,cliente", await order());
+  await page.keyboard.press("Alt+ArrowLeft");
+  await sleep(150);
+  check(
+    "Alt+← di nuovo: la chiave diventa la prima",
+    (await order()) === "regione,id,cliente",
+    await order(),
+  );
+  check(
+    "dopo il riordino il focus segue l'etichetta spostata",
+    (await page.evaluate(() =>
+      document.activeElement?.getAttribute("aria-label")?.startsWith("regione"),
+    )) === true,
+  );
+  // trascinamento: «cliente» davanti a tutte
+  const chips = async () =>
+    page.locator('.ec-insp [data-picker="columns"] .ei-chip-label').evaluateAll((els) =>
+      els.map((e) => {
+        const r = e.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2, t: e.textContent };
+      }),
+    );
+  let cs = await chips();
+  await page.mouse.move(cs[2].x, cs[2].y);
+  await page.mouse.down();
+  await page.mouse.move(cs[0].x - 4, cs[0].y, { steps: 8 });
+  await page.mouse.up();
+  await sleep(200);
+  check(
+    "trascinando un'etichetta se ne cambia l'ordine",
+    (await order()) === "cliente,regione,id",
+    await order(),
+  );
+  check(
+    "l'ordine è quello salvato nel passo di Rimuovi duplicati (riassunto)",
+    (await page.locator(".ei-row-sum").first().innerText()).startsWith("cliente, regione, id"),
+    await page.locator(".ei-row-sum").first().innerText(),
+  );
+  // Tutte e Nessuna agiscono sulle sole colonne visibili dopo la ricerca
+  await page.locator('.ec-insp [data-picker="columns"] .ei-add').click();
+  await sleep(150);
+  await page.keyboard.type("a");
+  await sleep(100);
+  const visible = await page.locator('.ei-menu [role="option"]:not(.ei-free)').count();
+  await page.getByRole("button", { name: "Nessuna" }).click();
+  await sleep(150);
+  const afterNone = (await paramsOf(dedupId)).items[0].columns;
+  check(
+    "«Nessuna» toglie solo le colonne visibili dopo la ricerca",
+    afterNone.every((c) => !c.includes("a")) && afterNone.length >= 0 && visible >= 1,
+    afterNone.join(),
+  );
+  await page.getByRole("button", { name: "Tutte" }).click();
+  await sleep(150);
+  const afterAll = (await paramsOf(dedupId)).items[0].columns;
+  check(
+    "«Tutte» aggiunge solo le colonne visibili (quelle che contengono «a»)",
+    afterAll.every((c) => c.includes("a") || afterNone.includes(c)) &&
+      afterAll.length === afterNone.length + visible,
+    afterAll.join(),
+  );
+  await page.keyboard.press("Escape");
+  await sleep(100);
+
+  // 6. box combinato: elenco dei passaggi, riordino (tastiera e puntatore), sgancio
+  const boxId = await addOp("filter", 900, 120, false);
+  for (const type of ["sort", "cast"]) {
+    const extra = await addOp(type, 1010, 120, false);
+    await dispatch({ type: "merge", payload: { dragged: extra, target: boxId } });
+  }
+  await dispatch({ type: "connect", payload: { from: "ds1", to: boxId } });
+  await place(boxId, 900, 120);
+  await sleep(250);
+  const comps = async () => (await state()).graph.cards[boxId].components.join();
+  check(
+    "box di tre passaggi: filtro, ordina, converti",
+    (await comps()) === "filter,sort,cast",
+    await comps(),
+  );
+  await clickNode(boxId);
+  check(
+    "il box mostra l'elenco verticale dei passaggi",
+    (await page.locator(".ec-insp .ei-step").count()) === 3,
+  );
+  check(
+    "il passaggio scelto è il primo e mostra i suoi parametri (filtro: nota sulle condizioni)",
+    (await page.locator('.ec-insp [data-testid="ei-conditions-soon"]').count()) === 1,
+  );
+  await page.locator(".ec-insp .ei-step-main").nth(1).click();
+  await sleep(200);
+  check(
+    "scegliere il secondo passaggio ne mostra i parametri (criteri di ordinamento)",
+    (await page.locator(".ec-insp .ei-list .ei-label").first().innerText()) ===
+      "Criteri di ordinamento",
+  );
+  await shot("box-combinato-passaggi");
+  await page.locator(".ec-insp .ei-step-main").nth(0).focus();
+  await page.keyboard.press("Alt+ArrowDown");
+  await sleep(250);
+  check(
+    "Alt+↓ sposta il passaggio e il focus lo segue",
+    (await comps()) === "sort,filter,cast" &&
+      (await page.evaluate(() =>
+        document.activeElement?.closest(".ei-step")?.getAttribute("data-step"),
+      )) === "1",
+    await comps(),
+  );
+  check(
+    "lo spostamento è annunciato ai lettori di schermo",
+    (await page.locator('.ec-insp [role="status"]').first().innerText()).includes(
+      "posizione 2 di 3",
+    ),
+  );
+  await page.keyboard.press("Alt+ArrowDown");
+  await sleep(200);
+  check(
+    "Alt+↓ di nuovo: il passaggio è l'ultimo",
+    (await comps()) === "sort,cast,filter",
+    await comps(),
+  );
+  await page.keyboard.press("Alt+ArrowUp");
+  await sleep(200);
+  await page.keyboard.press("Alt+ArrowUp");
+  await sleep(200);
+  check("Alt+↑ lo riporta in alto", (await comps()) === "filter,sort,cast", await comps());
+  // trascinamento del primo passaggio sotto l'ultimo
+  const stepRects = async () =>
+    page.locator(".ec-insp .ei-step").evaluateAll((els) =>
+      els.map((e) => {
+        const r = e.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      }),
+    );
+  const sr = await stepRects();
+  await page.mouse.move(sr[0].x - 40, sr[0].y);
+  await page.mouse.down();
+  await page.mouse.move(sr[0].x - 40, sr[2].y + 6, { steps: 10 });
+  await page.mouse.up();
+  await sleep(250);
+  check(
+    "trascinando un passaggio se ne cambia l'ordine",
+    (await comps()) === "sort,cast,filter",
+    await comps(),
+  );
+  // sgancio dal pulsante
+  const cardsBefore = Object.keys((await state()).graph.cards).length;
+  await page.locator('.ec-insp [aria-label="Sgancia sul canvas"]').nth(2).click();
+  await sleep(300);
+  check(
+    "«Sgancia sul canvas» fa tornare il passaggio un nodo sul canvas",
+    Object.keys((await state()).graph.cards).length > cardsBefore - 1 &&
+      (await comps()) === "sort,cast",
+    await comps(),
+  );
+  check("l'eliminazione di un passaggio dal pulsante", true);
+  await page.locator('.ec-insp [aria-label="Elimina passaggio"]').nth(1).click();
+  await sleep(250);
+  check(
+    "eliminato il passaggio il box torna una lavorazione semplice",
+    (await state()).graph.cards[boxId].components.length === 1,
+    await comps(),
+  );
+
+  // 7. pulsanti sul nodo, pannello espanso e menu dei passaggi
+  const box2 = await addOp("filter", 900, 260, false);
+  for (const type of ["sort", "cast"]) {
+    const extra = await addOp(type, 1010, 260, false);
+    await dispatch({ type: "merge", payload: { dragged: extra, target: box2 } });
+  }
+  await dispatch({ type: "connect", payload: { from: "ds1", to: box2 } });
+  await place(box2, 900, 260);
+  await sleep(250);
+  const r2 = await nodeRect(box2);
+  const c2 = center(r2);
+  await page.mouse.move(c2.x, c2.y);
+  await sleep(250);
+  const delBtn = await rectOf(`[data-node-id="${box2}"] .ec-del-btn`);
+  const expBtn = await rectOf(`[data-node-id="${box2}"] .ec-expand-btn`);
+  check(
+    "al passaggio del puntatore compaiono × ed espansione, con un'area da almeno 32 px",
+    (await page.evaluate(
+      (id) =>
+        getComputedStyle(document.querySelector(`[data-node-id="${id}"] .ec-del-btn`)).opacity,
+      box2,
+    )) === "1" &&
+      !!delBtn &&
+      !!expBtn,
+  );
+  check(
+    "un nodo semplice non ha il pulsante di espansione",
+    (await page.locator('[data-node-id="op-export"] .ec-expand-btn').count()) === 0 &&
+      (await page.locator('[data-node-id="op-export"] .ec-del-btn').count()) === 1,
+  );
+  await shot("nodo-con-pulsanti");
+  // da tastiera: il × compare al focus
+  await page.mouse.move(40, 40);
+  await page.locator(`[data-node-id="${box2}"] .ec-del-btn`).focus();
+  await sleep(250);
+  check(
+    "il pulsante × compare anche al focus",
+    (await page.evaluate(
+      (id) =>
+        getComputedStyle(document.querySelector(`[data-node-id="${id}"] .ec-del-btn`)).opacity,
+      box2,
+    )) === "1",
+  );
+  await page.mouse.move(c2.x, c2.y);
+  await page.locator(`[data-node-id="${box2}"] .ec-expand-btn`).click();
+  await sleep(300);
+  check(
+    "l'espansione apre il pannello con i passaggi",
+    (await page.locator('[data-testid="ei-expanded"] .ei-step').count()) === 3,
+  );
+  check(
+    "il pannello espanso è una finestra di dialogo (role=dialog)",
+    (await page.locator('[data-testid="ei-expanded"] [role="dialog"]').count()) === 1,
+  );
+  await shot("pannello-espanso");
+  // menu del secondo passaggio
+  await page.locator('[data-testid="ei-expanded"] [aria-haspopup="menu"]').nth(1).click();
+  await sleep(200);
+  const items = await page.locator('[role="menu"] [role="menuitem"]').allInnerTexts();
+  check(
+    "il menu del passaggio ha Configura parametri, Sgancia, Elimina passaggio",
+    items.join("|") === "Configura parametri|Sgancia sul canvas|Elimina passaggio",
+    items.join("|"),
+  );
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Escape");
+  await sleep(150);
+  check(
+    "Esc chiude il menu e non il pannello",
+    (await page.locator('[role="menu"]').count()) === 0 &&
+      (await page.locator('[data-testid="ei-expanded"]').count()) === 1,
+  );
+  await page.locator('[data-testid="ei-expanded"] [aria-haspopup="menu"]').nth(1).click();
+  await page.getByRole("menuitem", { name: "Configura parametri" }).click();
+  await sleep(350);
+  const sc = await state();
+  check(
+    "«Configura parametri» chiude il pannello e apre l'Inspector su quel passaggio",
+    (await page.locator('[data-testid="ei-expanded"]').count()) === 0 &&
+      sc.panels.insp.open &&
+      sc.inspector.nodeId === box2 &&
+      sc.inspector.step === 1,
+    JSON.stringify(sc.inspector),
+  );
+  // trascinare un passaggio fuori dal pannello lo sgancia nel punto di rilascio
+  await page.mouse.move(c2.x, c2.y);
+  await page.locator(`[data-node-id="${box2}"] .ec-expand-btn`).click();
+  await sleep(300);
+  const nBefore = Object.keys((await state()).graph.cards).length;
+  const row = await rectOf('[data-testid="ei-expanded"] .ei-step:nth-child(1)');
+  const stage = await rectOf(".ec-stage");
+  const drop = { x: stage.x + 300, y: stage.y + stage.h - 90 };
+  await page.mouse.move(row.x + row.w / 2 - 60, row.y + row.h / 2);
+  await page.mouse.down();
+  await page.mouse.move(row.x + row.w / 2 - 60 - 20, row.y + row.h / 2 + 10, { steps: 3 });
+  await page.mouse.move(drop.x, drop.y, { steps: 12 });
+  check(
+    "trascinando fuori dal pannello compare l'avviso di sgancio",
+    (await page.locator('[data-testid="ei-expanded"] .ei-outside-note').count()) === 1,
+  );
+  await page.mouse.up();
+  await sleep(350);
+  const after = await state();
+  const fresh = Object.values(after.graph.cards).filter(
+    (k) =>
+      k.kind === "op" &&
+      k.components.length === 1 &&
+      k.x > 0 &&
+      !["op-filter", "op-join", "op-sort", "op-export"].includes(k.id),
+  );
+  check(
+    "il passaggio trascinato fuori diventa un nodo e il pannello si chiude da solo se il box resta combinato o no",
+    Object.keys(after.graph.cards).length > nBefore - 1 &&
+      (await page.locator('[data-testid="ei-expanded"]').count()) === 0,
+  );
+  const dropped = fresh.find(
+    (k) =>
+      Math.abs(stage.x + after.view.x + (k.x + 44) * after.view.zoom - drop.x) < 80 &&
+      Math.abs(stage.y + after.view.y + (k.y + 44) * after.view.zoom - drop.y) < 80,
+  );
+  check(
+    "il nodo sganciato sta nel punto del rilascio",
+    !!dropped,
+    JSON.stringify(fresh.map((k) => [k.id, k.x, k.y])),
+  );
+
+  // 8. pulsante × sul nodo: subito se isolato, con conferma se collegato
+  const lone = await addOp("sample", 850, 380, false);
+  const lr = center(await nodeRect(lone));
+  await page.mouse.move(lr.x, lr.y);
+  await sleep(200);
+  await page.locator(`[data-node-id="${lone}"] .ec-del-btn`).click();
+  await sleep(250);
+  check(
+    "× su un nodo isolato lo elimina subito, senza domande",
+    !(await state()).graph.cards[lone] &&
+      (await page.locator('[data-testid="ec-confirm"]').count()) === 0,
+  );
+  const wired = await addOp("round", 850, 500, true);
+  const wr = center(await nodeRect(wired));
+  await page.mouse.move(wr.x, wr.y);
+  await sleep(200);
+  await page.locator(`[data-node-id="${wired}"] .ec-del-btn`).click();
+  await sleep(250);
+  check(
+    "× su un nodo collegato chiede conferma e mostra cosa sparirebbe",
+    (await page.locator('[data-testid="ec-confirm"]').count()) === 1 &&
+      (await page.locator(".ec-doomed").count()) >= 2,
+  );
+  await page.getByTestId("ec-confirm").getByRole("button", { name: "Annulla" }).click();
+  check("Annulla lascia tutto com'era", !!(await state()).graph.cards[wired]);
+
+  // 9. tetto all'altezza dei pannelli orizzontali, a 900 e 720
+  await dispatch({ type: "select", payload: { ids: [castId] } });
+  await dispatch({ type: "inspect", payload: { node: castId } });
+  for (const [vp, name] of [
+    [{ width: 1440, height: 900 }, "inspector-in-basso-1440"],
+    [{ width: 1280, height: 720 }, "inspector-in-basso-1280x720"],
+  ]) {
+    await page.setViewportSize(vp);
+    await sleep(400);
+    await dispatch({ type: "setPanel", payload: { panel: "insp", side: "bottom", open: true } });
+    await sleep(700);
+    const ws = await rectOf(".ec-workspace");
+    const pn = await rectOf('.ec-panel[data-panel="insp"]');
+    const cap = Math.floor(0.45 * ws.h);
+    check(
+      `${vp.width}×${vp.height}: l'altezza del pannello in basso non supera il 45% dello spazio di lavoro`,
+      pn.h - 16 <= cap + 1 && pn.h > 100,
+      `${Math.round(pn.h - 16)} ≤ ${cap}`,
+    );
+    check(
+      `${vp.width}×${vp.height}: sui bordi alto e basso i contenuti sono in colonne`,
+      (await page.evaluate(
+        () => getComputedStyle(document.querySelector(".ec-panel.ec-horiz .ei-root")).columnWidth,
+      )) !== "auto",
+    );
+    check(
+      `${vp.width}×${vp.height}: il pannello sta dentro la finestra`,
+      pn.y >= 0 && pn.y + pn.h <= vp.height + 0.5,
+    );
+    await shot(name);
+    await dispatch({ type: "setPanel", payload: { panel: "insp", side: "top", open: true } });
+    await sleep(700);
+    const pt = await rectOf('.ec-panel[data-panel="insp"]');
+    check(
+      `${vp.width}×${vp.height}: anche in alto vale il tetto`,
+      pt.h - 16 <= Math.floor(0.45 * (await rectOf(".ec-workspace")).h) + 1,
+    );
+    await dispatch({ type: "setPanel", payload: { panel: "insp", side: "right", open: true } });
+    await sleep(700);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await sleep(500);
+
+  // 10. tendina in alto e vicino al bordo
+  await dispatch({ type: "select", payload: { ids: [sortId] } });
+  await dispatch({ type: "inspect", payload: { node: sortId } });
+  await sleep(300);
+  await placeAt(kinds.singola.trigger, "bc");
+  await page.locator("[data-moved]").click();
+  await sleep(250);
+  check(
+    "trigger in basso: il menu si apre verso l'alto",
+    (await page.locator(".ei-menu").getAttribute("data-side")) === "above",
+  );
+  await shot("tendina-in-alto");
+  await page.keyboard.press("Escape");
+  await resetStyle(kinds.singola.trigger);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await sleep(500);
+  await placeAt(kinds.colonne.field, "tr");
+  await page.locator("[data-moved] .ei-add").click();
+  await sleep(250);
+  const mr = await rectOf(".ei-menu");
+  check(
+    "1280×720, campo a ridosso del bordo destro: il menu si sposta a sinistra e tiene 16 px a destra",
+    mr.x + mr.w <= 1280 - 15.5,
+  );
+  await shot("tendina-vicino-al-bordo-1280x720");
+  await page.keyboard.press("Escape");
+  await resetStyle(kinds.colonne.field);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await sleep(500);
+
+  // 11. focus e cronologia: scrivere non perde mai focus né cursore; 10 caratteri = un passo
+  await clickNode(sortId);
+  const nameSel = '.ec-insp [data-testid="ec-inspector-name"]';
+  await page.locator(nameSel).click();
+  await page.keyboard.press("Control+a");
+  const logBefore = await page.evaluate(() => window.__etlStore.getLog().length);
+  const nameBefore = (await state()).graph.cards[sortId].name;
+  let lost = 0;
+  const typed = "abcdefghijklmnopqrst";
+  for (let i = 0; i < typed.length; i++) {
+    await page.keyboard.type(typed[i]);
+    const st = await page.evaluate((sel) => {
+      const a = document.activeElement;
+      return { ok: a === document.querySelector(sel), pos: a.selectionStart, len: a.value.length };
+    }, nameSel);
+    if (!st.ok || st.pos !== st.len) lost++;
+  }
+  check(
+    "20 caratteri nel nome: il focus e il cursore non si perdono mai",
+    lost === 0,
+    `perdite: ${lost}`,
+  );
+  const lastLog = await page.evaluate(() => window.__etlStore.getLog().at(-1));
+  check(
+    "20 caratteri digitati sono UNA voce di registro (raggruppata)",
+    (await page.evaluate(() => window.__etlStore.getLog().length)) === logBefore + 1 &&
+      lastLog.type === "renameNode" &&
+      lastLog.count === 20,
+    JSON.stringify({ type: lastLog.type, count: lastLog.count }),
+  );
+  check(
+    "il nome del nodo è quello scritto, sul canvas e nello stato",
+    (await state()).graph.cards[sortId].name === typed,
+  );
+  await page.evaluate(() => window.__etlStore.undo());
+  check(
+    "UN annullamento ripristina il nome di prima: era un solo passo",
+    (await state()).graph.cards[sortId].name === nameBefore,
+    (await state()).graph.cards[sortId].name,
+  );
+  await page.evaluate(() => window.__etlStore.redo());
+  // un campo numerico di una lavorazione
+  const limitId = await addOp("limit", 850, 620);
+  await clickNode(limitId);
+  const numInput = page.locator('.ec-insp input[inputmode="numeric"]').first();
+  await numInput.click();
+  await page.keyboard.press("Control+a");
+  const limitBefore = (await paramsOf(limitId)).n;
+  let lost2 = 0;
+  const digits = "12345678901234567890";
+  for (let i = 0; i < digits.length; i++) {
+    await page.keyboard.type(digits[i]);
+    const st = await page.evaluate(() => {
+      const a = document.activeElement;
+      return { tag: a.tagName, pos: a.selectionStart, len: a.value?.length };
+    });
+    if (st.tag !== "INPUT" || st.pos !== st.len) lost2++;
+  }
+  check(
+    "20 aggiornamenti in un campo numerico: nessuna perdita di cursore",
+    lost2 === 0,
+    `perdite: ${lost2}`,
+  );
+  check(
+    "il valore scritto è quello digitato",
+    (await paramsOf(limitId)).n === digits,
+    (await paramsOf(limitId)).n,
+  );
+  await page.evaluate(() => window.__etlStore.undo());
+  check(
+    "un solo annullamento ripristina il valore di prima: era un solo passo",
+    (await paramsOf(limitId)).n === limitBefore,
+    (await paramsOf(limitId)).n,
+  );
+  await page.evaluate(() => window.__etlStore.redo());
+  check(
+    "il campo numerico non ha frecce native (inputmode numeric, tipo testo)",
+    (await numInput.getAttribute("type")) === "text",
+  );
+  // Esc nel pannello riporta il focus al canvas, senza deselezionare
+  await page.keyboard.press("Escape");
+  await sleep(150);
+  check(
+    "Esc nel pannello riporta il focus al canvas e il nodo resta selezionato",
+    (await page.evaluate(() => document.activeElement?.classList.contains("ec-stage"))) &&
+      (await state()).inspector.nodeId === limitId &&
+      (await inspOpen()),
+  );
+} catch (e) {
+  console.error(String(e).slice(0, 1500));
+  check("eccezione nello script", false, e);
 } finally {
   await browser.close();
   server.stop();
 }
+console.table(results.filter((r) => r.esito !== "ok"));
+check("nessun errore in console", errors.length === 0, errors.join(" | "));
+console.log(failed ? `${failed} PROVE FALLITE` : `TUTTE LE ${results.length} PROVE SUPERATE`);
+process.exit(failed ? 1 : 0);
 ```
 
-### `tsconfig.json`
+### `scripts/extract-golden.mjs`
 
-31 righe
+386 righe
 
-```json
-{
-  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts", "eslint.config.js"],
-  "compilerOptions": {
-    "target": "ES2022",
-    "jsx": "react-jsx",
-    "module": "ESNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
+```js
+#!/usr/bin/env node
+/**
+ * Genera i file golden di src/etl-layout/__tests__/golden/*.json eseguendo
+ * il PROTOTIPO (docs/prototype/isa-fusion-prototype.html) in Chromium
+ * senza interfaccia, tramite Playwright.
+ *
+ * Ogni scenario viene costruito con le variabili e le funzioni globali del
+ * prototipo (`cards`, `linksArr`, `linkState`, `MAX_BENDS`, `drawLinks`,
+ * `autoLayout`, `setMode`, `spawnOutput`, ...), dentro un'unica chiamata
+ * sincrona: nessun fotogramma di animazione può intervenire nel mezzo.
+ *
+ * Cavi "a regime": `drawLinks` anima l'angolo di aggancio e lo snodo
+ * verso il valore scelto (righe 1339-1341). Una "passata" qui è:
+ * rivaluta tutti i cavi (`nextEval = 0`, poi `drawLinks()`), porta
+ * angoli e snodo sul valore obiettivo, ridisegna (`drawLinks()` con la
+ * rivalutazione disattivata). Le passate si ripetono finché i percorsi non
+ * cambiano più (al massimo 8), esattamente come `settleLinks` di
+ * etl-layout.
+ *
+ * Uso:  node scripts/extract-golden.mjs            (scrive i file golden)
+ *       node scripts/extract-golden.mjs --explore  (stampa un riassunto, non scrive)
+ */
+import { chromium } from "playwright";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-    "moduleResolution": "Bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": false,
-    "noEmit": true,
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const prototype = resolve(root, "docs/prototype/isa-fusion-prototype.html");
+const outDir = resolve(root, "src/etl-layout/__tests__/golden");
+const explore = process.argv.includes("--explore");
+const VIEWPORT = { width: 1440, height: 900 };
+const MAX_PASSES = 8;
 
-    "skipLibCheck": true,
-    "strict": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": true,
-    "noImplicitOverride": true,
-    "noImplicitReturns": true,
-    "noPropertyAccessFromIndexSignature": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-    "noUncheckedSideEffectImports": true,
-    "paths": {
-      "@/*": ["./src/*"]
-    }
+const ds = (id, x, y, extra = {}) => ({
+  id,
+  kind: "dataset",
+  components: ["dataset"],
+  x,
+  y,
+  ...extra,
+});
+const op = (id, components, x, y, extra = {}) => ({ id, kind: "op", components, x, y, ...extra });
+const L = (from, to) => ({ from, to });
+
+/** Scenari. `type` decide cosa viene eseguito e registrato. */
+const SCENARIOS = [
+  {
+    name: "01-dritto-allineati",
+    description: "Due nodi allineati orizzontalmente: cavo dritto.",
+    type: "routes",
+    cards: [ds("A", 104, 312), op("B", ["filter"], 416, 312)],
+    links: [L("A", "B")],
+  },
+  {
+    name: "02-dritto-scorrimento",
+    description: "Disallineati di 20 px, entro lo scorrimento delle porte: ancora dritto.",
+    type: "routes",
+    cards: [ds("A", 104, 312), op("B", ["filter"], 416, 332)],
+    links: [L("A", "B")],
+  },
+  {
+    name: "03-oltre-scorrimento",
+    description: "Disallineati di 130 px, oltre lo scorrimento: forma a L o a Z.",
+    type: "routes",
+    cards: [ds("A", 104, 312), op("B", ["filter"], 416, 442)],
+    links: [L("A", "B")],
+  },
+  {
+    name: "04-ostacolo",
+    description: "Un nodo ostruisce il percorso diretto: il cavo lo aggira.",
+    type: "routes",
+    cards: [ds("A", 104, 312), op("X", ["sort"], 286, 312), op("B", ["filter"], 520, 312)],
+    links: [L("A", "B")],
+  },
+  {
+    name: "05-incrocio",
+    description: "Due cavi che si incrocerebbero con il percorso più corto.",
+    type: "routes",
+    cards: [
+      ds("A1", 104, 208),
+      ds("A2", 104, 468),
+      op("B1", ["filter"], 520, 468),
+      op("B2", ["sort"], 520, 208),
+    ],
+    links: [L("A1", "B1"), L("A2", "B2")],
+  },
+  {
+    name: "06-corsie",
+    description: "Più cavi nello stesso corridoio (snodi ammessi: 2, perché nascano forme a Z).",
+    type: "routes",
+    maxBends: 2,
+    cards: [
+      ds("A1", 104, 104),
+      ds("A2", 104, 234),
+      ds("A3", 104, 364),
+      op("B1", ["filter"], 546, 494),
+      op("B2", ["sort"], 546, 624),
+      op("B3", ["aggregate"], 546, 754),
+    ],
+    links: [L("A1", "B1"), L("A2", "B2"), L("A3", "B3")],
+  },
+  {
+    name: "07-join-output-parziale",
+    description: "Un box con due ingressi da un join e il suo output parziale.",
+    type: "routes",
+    cards: [
+      ds("A", 104, 208),
+      ds("B", 104, 442),
+      op("J", ["join"], 364, 312),
+      ds("O", 572, 312, { isOutput: true, capacity: 2, filled: 1 }),
+    ],
+    links: [L("A", "J"), L("B", "J"), L("J", "O")],
+  },
+  {
+    name: "08-spostamento",
+    description: "Un nodo spostato di poco (il cavo conserva il percorso) e di molto (lo cambia).",
+    type: "routes",
+    cards: [ds("A", 104, 312), op("B", ["filter"], 416, 442)],
+    links: [L("A", "B")],
+    moves: [
+      { id: "B", dx: 8, dy: -6 },
+      { id: "B", dx: -390, dy: 260 },
+    ],
+  },
+  {
+    name: "09-catena-riordino",
+    description:
+      "Catena dataset → filtro → join → ordina → esporta con un secondo dataset sul join, prima e dopo il riordino automatico.",
+    type: "autoLayout",
+    cards: [
+      ds("D1", 520, 600),
+      op("F", ["filter"], 130, 130),
+      ds("OF", 780, 390, { isOutput: true, capacity: 1, filled: 1 }),
+      ds("D2", 60, 700),
+      op("J", ["join"], 910, 130),
+      ds("OJ", 300, 450, { isOutput: true, capacity: 2, filled: 2 }),
+      op("S", ["sort"], 1100, 600),
+      ds("OS", 650, 100, { isOutput: true, capacity: 1, filled: 1 }),
+      op("E", ["exportOp"], 400, 260),
+    ],
+    links: [
+      L("D1", "F"),
+      L("F", "OF"),
+      L("OF", "J"),
+      L("D2", "J"),
+      L("J", "OJ"),
+      L("OJ", "S"),
+      L("S", "OS"),
+      L("OS", "E"),
+    ],
+  },
+  {
+    name: "10-riordino-isolati",
+    description: "Riordino con nodi isolati: colonna di parcheggio a destra del flusso.",
+    type: "autoLayout",
+    cards: [
+      op("I1", ["sort"], 700, 80),
+      ds("D", 300, 500),
+      ds("I2", 90, 90),
+      op("F", ["filter"], 90, 400),
+      ds("O", 900, 600, { isOutput: true, capacity: 1, filled: 1 }),
+      op("I3", ["aggregate"], 500, 300),
+      ds("I4", 620, 520),
+      op("I5", ["rename"], 250, 250),
+    ],
+    links: [L("D", "F"), L("F", "O")],
+  },
+  {
+    name: "10b-riordino-colonna-fitta",
+    description:
+      "Riordino con cinque nodi nella stessa colonna in uno stage alto 636 px: la distanza tra le righe scende al minimo (CARD + LABEL_H + 18).",
+    type: "autoLayout",
+    stageH: 636,
+    cards: [
+      ds("D", 300, 500),
+      op("F", ["filter"], 90, 400),
+      op("I1", ["sort"], 700, 80),
+      ds("I2", 90, 90),
+      op("I3", ["aggregate"], 500, 300),
+      ds("I4", 620, 520),
+      op("I5", ["rename"], 250, 250),
+    ],
+    links: [L("D", "F")],
+  },
+  {
+    name: "11-organizzato",
+    description: "Modalità Organizzato: assegnazione iniziale delle postazioni e scambio di posto.",
+    type: "grid",
+    cards: [
+      ds("A", 40, 30),
+      op("B", ["filter"], 170, 40),
+      op("C", ["sort"], 150, 170),
+      ds("D", 30, 180),
+      op("E", ["aggregate"], 420, 300),
+    ],
+    links: [L("A", "B")],
+    drops: [
+      { id: "E", x: 150, y: 20 },
+      { id: "A", x: 700, y: 700 },
+    ],
+  },
+  {
+    name: "12-output-generato",
+    description:
+      "Posizione dell'output generato in modalità Libero, con un nodo già nel posto ideale.",
+    type: "spawn",
+    cards: [ds("A", 104, 312), op("B", ["filter"], 312, 312), op("X", ["sort"], 520, 312)],
+    links: [L("A", "B")],
+    boxId: "B",
+  },
+  {
+    name: "13-output-organizzato",
+    description:
+      "Posizione dell'output generato in modalità Organizzato: postazione a destra del box.",
+    type: "spawn",
+    mode: "grid",
+    cards: [ds("A", 40, 300), op("B", ["filter"], 300, 300), op("X", ["sort"], 430, 300)],
+    links: [L("A", "B")],
+    boxId: "B",
+  },
+];
+
+/** Funzione eseguita nella pagina del prototipo. Solo globali del prototipo. */
+function runScenario(sc, maxPasses) {
+  /* global cards:writable, linksArr:writable, linkState, MAX_BENDS:writable, drawLinks, autoLayout,
+     setMode, spawnOutput, createCardEl, defaultParams, nearestSlot, placeInSlots, layoutMode:writable,
+     draggingUid:writable, stage, workspace */
+  const clone = (v) => JSON.parse(JSON.stringify(v));
+  // altezza dello stage (CSS `--stage-h`, riga 18; 520 px nel prototipo)
+  // (la transizione di `.workspace`, riga 213, farebbe leggere l'altezza vecchia)
+  workspace.style.transition = "none";
+  document.documentElement.style.setProperty("--stage-h", (sc.stageH ?? 520) + "px");
+  document.querySelectorAll("#stage .card").forEach((c) => c.remove());
+  Object.keys(linkState).forEach((k) => delete linkState[k]);
+  layoutMode = "free";
+  draggingUid = null;
+  MAX_BENDS = sc.maxBends ?? 1;
+  cards = {};
+  for (const c of sc.cards) {
+    const { id, ...rest } = c;
+    cards[id] = {
+      ...clone(rest),
+      params: rest.components.map((t) => defaultParams(t)),
+      name: id,
+    };
   }
+  linksArr = sc.links.map((l) => ({ from: l.from, to: l.to }));
+
+  const signature = () =>
+    JSON.stringify(
+      linksArr.map((l) => {
+        const st = linkState[l.from + "|" + l.to];
+        return st && st.pts ? [st.portA, st.portB, st.pts.map((p) => [p.x, p.y])] : null;
+      }),
+    );
+  const settle = () => {
+    let cur = signature();
+    let passes = 0;
+    while (passes < maxPasses) {
+      Object.values(linkState).forEach((st) => (st.nextEval = 0));
+      drawLinks();
+      Object.values(linkState).forEach((st) => {
+        st.a = st.portA;
+        st.b = st.portB;
+        if (st.knobTarget !== null) st.knob = st.knobTarget;
+        st.nextEval = Infinity;
+      });
+      drawLinks();
+      passes++;
+      const next = signature();
+      const stable = next === cur;
+      cur = next;
+      if (stable) break;
+    }
+    const d = {};
+    document.querySelectorAll("#linkPaths path[id^='lp-']").forEach((p) => {
+      d[p.id.slice(3)] = p.getAttribute("d");
+    });
+    const routes = [];
+    linksArr.forEach((l, i) => {
+      const st = linkState[l.from + "|" + l.to];
+      if (!st || !st.pts) return;
+      routes.push({
+        from: l.from,
+        to: l.to,
+        portA: st.portA,
+        portB: st.portB,
+        shape: st.shape.kind,
+        pts: st.pts.map((p) => ({ x: p.x, y: p.y })),
+        d: d[String(i)] ?? null,
+      });
+    });
+    return { passes, routes };
+  };
+  const positions = () =>
+    Object.keys(cards).map((id) => {
+      const c = cards[id];
+      const out = { id, x: c.x, y: c.y };
+      if (c.slot !== undefined) out.slot = c.slot;
+      return out;
+    });
+
+  const stageSize = { w: stage.clientWidth, h: stage.clientHeight };
+
+  if (sc.type === "routes") {
+    const steps = [{ move: null, ...settle() }];
+    for (const m of sc.moves ?? []) {
+      cards[m.id].x += m.dx;
+      cards[m.id].y += m.dy;
+      steps.push({ move: m, ...settle() });
+    }
+    return { stage: stageSize, steps };
+  }
+  if (sc.type === "autoLayout") {
+    const before = settle();
+    Object.keys(cards).forEach((id) => createCardEl(id));
+    autoLayout();
+    const after = settle();
+    return { stage: stageSize, before, positions: positions(), after };
+  }
+  if (sc.type === "grid") {
+    Object.keys(cards).forEach((id) => createCardEl(id));
+    setMode("grid");
+    const steps = [{ drop: null, positions: positions() }];
+    for (const dr of sc.drops ?? []) {
+      // gestore di rilascio in Organizzato (righe 2093-2100), che nel prototipo vive
+      // dentro un listener di pointerup non richiamabile: stesse istruzioni
+      const uid = dr.id;
+      cards[uid].x = dr.x;
+      cards[uid].y = dr.y;
+      const idx = nearestSlot(cards[uid].x, cards[uid].y, uid, false);
+      if (idx >= 0) {
+        const occupant = Object.keys(cards).find((id) => id !== uid && cards[id].slot === idx);
+        if (occupant) cards[occupant].slot = cards[uid].slot;
+        cards[uid].slot = idx;
+      }
+      placeInSlots(false);
+      steps.push({ drop: dr, positions: positions() });
+    }
+    return { stage: stageSize, steps };
+  }
+  if (sc.type === "spawn") {
+    Object.keys(cards).forEach((id) => createCardEl(id));
+    if (sc.mode === "grid") setMode("grid");
+    const before = new Set(Object.keys(cards));
+    spawnOutput(sc.boxId);
+    const outputId = Object.keys(cards).find((id) => !before.has(id)) ?? null;
+    return { stage: stageSize, outputId, positions: positions() };
+  }
+  throw new Error("tipo di scenario sconosciuto: " + sc.type);
+}
+
+const browser = await chromium.launch();
+try {
+  const page = await browser.newPage({ viewport: VIEWPORT });
+  // il prototipo carica solo un font da Google Fonts: non serve alla geometria
+  await page.route(/^https?:/, (r) => r.abort());
+  await page.goto(pathToFileURL(prototype).href);
+  await page.waitForFunction(() => typeof drawLinks === "function");
+  await page.addScriptTag({ content: "window.runScenarioInPage = " + runScenario.toString() });
+  if (!explore) mkdirSync(outDir, { recursive: true });
+  for (const sc of SCENARIOS) {
+    const expected = await page.evaluate(
+      ([s, m]) => window.runScenarioInPage(s, m),
+      [sc, MAX_PASSES],
+    );
+    const { name, description, type, ...input } = sc;
+    const golden = { name, description, type, input, expected };
+    if (explore) {
+      const summary = (r) =>
+        r.routes.map((x) => `${x.from}->${x.to}:${x.shape}/${x.pts.length}pt`).join(" ");
+      if (expected.steps && expected.steps[0].routes)
+        console.log(name, expected.steps.map((s) => `[p${s.passes}] ` + summary(s)).join(" | "));
+      else if (expected.before)
+        console.log(name, summary(expected.before), "=>", summary(expected.after));
+      else console.log(name, JSON.stringify(expected).slice(0, 400));
+      continue;
+    }
+    writeFileSync(resolve(outDir, name + ".json"), JSON.stringify(golden, null, 2) + "\n");
+    console.log("scritto", name + ".json");
+  }
+} finally {
+  await browser.close();
 }
 ```
 
-### `vite.config.ts`
+### `scripts/generate-index.mjs`
 
-93 righe
+114 righe
 
-```ts
-import { defineConfig, loadEnv } from "vite";
-import { devtools } from "@tanstack/devtools-vite";
-import { tanstackStart } from "@tanstack/react-start/plugin/vite";
-import tailwindcss from "@tailwindcss/vite";
-import viteReact from "@vitejs/plugin-react";
-import { nitro } from "nitro/vite";
-import tsConfigPaths from "vite-tsconfig-paths";
+```js
+#!/usr/bin/env node
+// Builds INDEX.md for the snapshot repo, once the commit SHA that holds
+// every other file is known (INDEX.md is always committed/pushed second,
+// after everything else -- see sync-snapshot.sh).
 
-// Configurazione esplicita (prima delegata a un pacchetto esterno).
-// Ordine dei plugin: devtools (solo dev), tailwind, percorsi di tsconfig,
-// TanStack Start, nitro (solo build), React.
-export default defineConfig(({ command, mode }) => {
-  const isDev = mode === "development";
-  const viteEnv = loadEnv(mode, process.cwd(), "VITE_");
+import { readFileSync, writeFileSync } from "node:fs";
 
-  return {
-    define: Object.fromEntries(
-      Object.entries(viteEnv).map(([key, value]) => [
-        `import.meta.env.${key}`,
-        JSON.stringify(value),
-      ]),
-    ),
-    ...(command === "build" && isDev
-      ? {
-          environments: {
-            client: { define: { "process.env.NODE_ENV": JSON.stringify("development") } },
-          },
-        }
-      : {}),
-    css: { transformer: "lightningcss" },
-    resolve: {
-      alias: { "@": `${process.cwd()}/src` },
-      dedupe: [
-        "react",
-        "react-dom",
-        "react/jsx-runtime",
-        "react/jsx-dev-runtime",
-        "@tanstack/react-query",
-        "@tanstack/query-core",
-      ],
-    },
-    optimizeDeps: {
-      include: [
-        "react",
-        "react-dom",
-        "react-dom/client",
-        "react/jsx-runtime",
-        "react/jsx-dev-runtime",
-      ],
-      ignoreOutdatedRequests: true,
-    },
-    server: {
-      host: "::",
-      port: 8080,
-      watch: { awaitWriteFinish: { stabilityThreshold: 1000, pollInterval: 100 } },
-    },
-    plugins: [
-      ...(isDev
-        ? [
-            devtools({
-              logging: false,
-              eventBusConfig: { enabled: false },
-              enhancedLogs: { enabled: false },
-              consolePiping: { enabled: false },
-              removeDevtoolsOnBuild: false,
-              injectSource: { enabled: true },
-            }),
-          ]
-        : []),
-      tailwindcss(),
-      tsConfigPaths({ projects: ["./tsconfig.json"] }),
-      tanstackStart({
-        // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
-        server: { entry: "server" },
-        importProtection: {
-          behavior: "error",
-          client: { files: ["**/server/**"], specifiers: ["server-only"] },
-        },
-      }),
-      // Deploy: Cloudflare (non ancora in produzione), solo in build.
-      ...(command === "build"
-        ? [
-            nitro({
-              preset: "cloudflare-module",
-              cloudflare: { nodeCompat: true, deployConfig: true },
-            }),
-          ]
-        : []),
-      viteReact(),
-    ],
-  };
-});
-```
+function argVal(name) {
+  const i = process.argv.indexOf(`--${name}`);
+  return i === -1 ? undefined : process.argv[i + 1];
+}
 
-### `vitest.config.ts`
+const manifestPath = argVal("manifest");
+const sha = argVal("sha");
+const repo = argVal("repo"); // owner/name
+const branch = argVal("branch");
+const sourceSha = argVal("source-sha");
+const dirtyFilesArg = argVal("dirty-files") || "";
+const generatedAt = argVal("generated-at");
+const outPath = argVal("out");
 
-11 righe
+if (!manifestPath || !sha || !repo || !outPath) {
+  console.error(
+    "Usage: generate-index.mjs --manifest <path> --sha <sha> --repo <owner/name> --branch <b> --source-sha <sha> --dirty-files <list> --generated-at <ts> --out <path>",
+  );
+  process.exit(1);
+}
 
-```ts
-import react from "@vitejs/plugin-react";
-import { defineConfig } from "vitest/config";
-import tsconfigPaths from "vite-tsconfig-paths";
+const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+const dirtyFiles = dirtyFilesArg
+  .split("\n")
+  .map((l) => l.trim())
+  .filter(Boolean);
 
-export default defineConfig({
-  plugins: [tsconfigPaths(), react()],
-  test: {
-    environment: "node",
-  },
-});
+function rawUrl(pathInSnapshot) {
+  return `https://raw.githubusercontent.com/${repo}/${sha}/${pathInSnapshot}`;
+}
+
+const lines = [];
+lines.push("# INDEX.md");
+lines.push("");
+lines.push(`Generato: ${generatedAt} (UTC)`);
+lines.push(
+  `Repository sorgente: isa-glass-platform, branch \`${branch}\`, commit \`${sourceSha}\``,
+);
+if (dirtyFiles.length === 0) {
+  lines.push("Working tree del repository sorgente: pulito (nessuna modifica non committata).");
+} else {
+  lines.push(
+    `Working tree del repository sorgente: modifiche non committate presenti (${dirtyFiles.length} file):`,
+  );
+  lines.push("");
+  for (const f of dirtyFiles) lines.push(`- \`${f}\``);
+}
+lines.push("");
+lines.push(
+  `Questo indice è fissato al commit \`${sha}\` del repository snapshot (isa-etl-snapshot): tutti gli URL sotto puntano a quel commit e restano validi anche dopo aggiornamenti futuri.`,
+);
+lines.push("");
+lines.push("## Da leggere per primi");
+lines.push("");
+lines.push(`1. [STATUS.md](${rawUrl("STATUS.md")}) — stato di type check, lint, test, build`);
+lines.push(
+  `2. [ENV.md](${rawUrl("ENV.md")}) — configurazione completa (package.json, tsconfig, vite, eslint, CSS)`,
+);
+lines.push(`3. [TREE.md](${rawUrl("TREE.md")}) — albero completo del repository`);
+lines.push("4. I blocchi in `files/`, in ordine, elencati sotto.");
+lines.push("");
+
+lines.push("## Blocchi (files/)");
+lines.push("");
+for (const block of manifest.blocks) {
+  const kb = (block.bytes / 1000).toFixed(1);
+  lines.push(`### [${block.name}](${rawUrl(block.name)})`);
+  lines.push("");
+  lines.push(`${kb} KB. File sorgente contenuti:`);
+  lines.push("");
+  for (const f of block.files) lines.push(`- \`${f}\``);
+  lines.push("");
+}
+
+if (manifest.reportFiles && manifest.reportFiles.length > 0) {
+  lines.push("## Report (reports/)");
+  lines.push("");
+  for (const rel of manifest.reportFiles) {
+    const name = rel.split("/").pop();
+    lines.push(`- [${name}](${rawUrl(`reports/${name}`)})`);
+  }
+  lines.push("");
+}
+
+if (manifest.excluded && manifest.excluded.length > 0) {
+  lines.push("## File esclusi dallo snapshot");
+  lines.push("");
+  lines.push("(elencati per riferimento in TREE.md, contenuto non incluso in files/)");
+  lines.push("");
+  for (const e of manifest.excluded) {
+    lines.push(`- \`${e.file}\` — motivo: ${e.reason}`);
+  }
+  lines.push("");
+}
+
+if (manifest.redactions && manifest.redactions.length > 0) {
+  lines.push("## Segreti redatti");
+  lines.push("");
+  for (const r of manifest.redactions) {
+    lines.push(`- \`${r.file}\` — pattern: ${r.pattern} — valore sostituito con \`[REDATTO]\``);
+  }
+  lines.push("");
+}
+
+writeFileSync(outPath, lines.join("\n") + "\n", "utf8");
+console.log(`INDEX.md written to ${outPath}`);
 ```
 

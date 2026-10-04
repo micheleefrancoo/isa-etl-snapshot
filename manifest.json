@@ -163,79 +163,122 @@
     },
     {
       "name": "files/01e-etl-canvas-a.md",
-      "bytes": 59060,
+      "bytes": 39293,
       "files": [
         "src/etl-canvas/EtlCanvas.tsx",
         "src/etl-canvas/Links.tsx",
         "src/etl-canvas/Minimap.tsx",
         "src/etl-canvas/NOTE_DIVERGENZE.md",
-        "src/etl-canvas/Node.tsx",
-        "src/etl-canvas/README.md"
+        "src/etl-canvas/Node.tsx"
       ]
     },
     {
       "name": "files/01e-etl-canvas-b.md",
-      "bytes": 58942,
+      "bytes": 56084,
       "files": [
+        "src/etl-canvas/README.md",
         "src/etl-canvas/__tests__/controlbar.test.tsx",
         "src/etl-canvas/__tests__/drop.test.ts",
         "src/etl-canvas/__tests__/engine.test.ts",
-        "src/etl-canvas/__tests__/fake-env.ts",
-        "src/etl-canvas/__tests__/flow.test.ts",
-        "src/etl-canvas/__tests__/gesture-render.test.ts",
-        "src/etl-canvas/__tests__/helpers.ts",
-        "src/etl-canvas/__tests__/interaction.test.ts",
-        "src/etl-canvas/__tests__/keyboard.test.ts"
+        "src/etl-canvas/__tests__/fake-env.ts"
       ]
     },
     {
       "name": "files/01e-etl-canvas-c.md",
-      "bytes": 57460,
+      "bytes": 59025,
       "files": [
-        "src/etl-canvas/__tests__/loop.test.ts",
-        "src/etl-canvas/__tests__/no-reroute.test.ts",
-        "src/etl-canvas/__tests__/overlay-layout.test.ts",
-        "src/etl-canvas/__tests__/panels-actions.test.ts",
-        "src/etl-canvas/__tests__/panels-layout.test.ts",
-        "src/etl-canvas/__tests__/render.test.ts",
-        "src/etl-canvas/__tests__/ssr.test.tsx",
-        "src/etl-canvas/__tests__/tokens.test.ts",
-        "src/etl-canvas/__tests__/toolbox-drop.test.ts"
+        "src/etl-canvas/__tests__/flow.test.ts",
+        "src/etl-canvas/__tests__/gesture-render.test.ts",
+        "src/etl-canvas/__tests__/helpers.ts",
+        "src/etl-canvas/__tests__/inspector-logic.test.ts",
+        "src/etl-canvas/__tests__/inspector-rules.test.ts",
+        "src/etl-canvas/__tests__/inspector.test.tsx",
+        "src/etl-canvas/__tests__/interaction.test.ts"
       ]
     },
     {
       "name": "files/01e-etl-canvas-d.md",
-      "bytes": 53684,
+      "bytes": 58741,
       "files": [
+        "src/etl-canvas/__tests__/keyboard.test.ts",
+        "src/etl-canvas/__tests__/loop.test.ts",
+        "src/etl-canvas/__tests__/menu.test.ts",
+        "src/etl-canvas/__tests__/no-reroute.test.ts",
+        "src/etl-canvas/__tests__/overlay-layout.test.ts",
+        "src/etl-canvas/__tests__/panels-actions.test.ts",
+        "src/etl-canvas/__tests__/panels-layout.test.ts",
+        "src/etl-canvas/__tests__/render.test.ts"
+      ]
+    },
+    {
+      "name": "files/01e-etl-canvas-e.md",
+      "bytes": 58724,
+      "files": [
+        "src/etl-canvas/__tests__/ssr.test.tsx",
+        "src/etl-canvas/__tests__/tokens.test.ts",
+        "src/etl-canvas/__tests__/toolbox-drop.test.ts",
         "src/etl-canvas/__tests__/toolbox.test.tsx",
         "src/etl-canvas/__tests__/transitions.test.ts",
         "src/etl-canvas/__tests__/view.test.ts",
         "src/etl-canvas/actions.ts",
         "src/etl-canvas/canvas.css",
         "src/etl-canvas/contrast.ts",
-        "src/etl-canvas/drop.ts",
-        "src/etl-canvas/engine.ts"
-      ]
-    },
-    {
-      "name": "files/01e-etl-canvas-e.md",
-      "bytes": 55231,
-      "files": [
-        "src/etl-canvas/flow.ts",
-        "src/etl-canvas/icons.tsx",
-        "src/etl-canvas/index.ts",
-        "src/etl-canvas/interaction.ts",
-        "src/etl-canvas/loop.ts",
-        "src/etl-canvas/model.ts",
-        "src/etl-canvas/motion.tsx",
-        "src/etl-canvas/panels/ControlBar.tsx",
-        "src/etl-canvas/panels/Dock.tsx"
+        "src/etl-canvas/drop.ts"
       ]
     },
     {
       "name": "files/01e-etl-canvas-f.md",
-      "bytes": 55519,
+      "bytes": 56024,
       "files": [
+        "src/etl-canvas/engine.ts",
+        "src/etl-canvas/flow.ts",
+        "src/etl-canvas/icons.tsx",
+        "src/etl-canvas/index.ts",
+        "src/etl-canvas/inspector/ActionMenu.tsx",
+        "src/etl-canvas/inspector/BlockedNotice.tsx",
+        "src/etl-canvas/inspector/ColumnPicker.tsx",
+        "src/etl-canvas/inspector/ExpandedPanel.tsx",
+        "src/etl-canvas/inspector/Field.tsx",
+        "src/etl-canvas/inspector/Header.tsx",
+        "src/etl-canvas/inspector/Inspector.tsx",
+        "src/etl-canvas/inspector/Menu.tsx"
+      ]
+    },
+    {
+      "name": "files/01e-etl-canvas-g.md",
+      "bytes": 46261,
+      "files": [
+        "src/etl-canvas/inspector/MultiList.tsx",
+        "src/etl-canvas/inspector/NameInput.tsx",
+        "src/etl-canvas/inspector/StepList.tsx",
+        "src/etl-canvas/inspector/StyledSelect.tsx",
+        "src/etl-canvas/inspector/ValuePicker.tsx",
+        "src/etl-canvas/inspector/copy.ts",
+        "src/etl-canvas/inspector/family.ts",
+        "src/etl-canvas/inspector/icons.tsx"
+      ]
+    },
+    {
+      "name": "files/01e-etl-canvas-h.md",
+      "bytes": 58341,
+      "files": [
+        "src/etl-canvas/inspector/inspector.css",
+        "src/etl-canvas/inspector/logic.ts",
+        "src/etl-canvas/inspector/menu.ts",
+        "src/etl-canvas/inspector/params.ts",
+        "src/etl-canvas/inspector/useActiveSchema.ts",
+        "src/etl-canvas/interaction.ts",
+        "src/etl-canvas/loop.ts"
+      ]
+    },
+    {
+      "name": "files/01e-etl-canvas-i.md",
+      "bytes": 56962,
+      "files": [
+        "src/etl-canvas/model.ts",
+        "src/etl-canvas/motion.tsx",
+        "src/etl-canvas/panels/ControlBar.tsx",
+        "src/etl-canvas/panels/Dock.tsx",
         "src/etl-canvas/panels/EtlWorkspace.tsx",
         "src/etl-canvas/panels/InspectorShell.tsx",
         "src/etl-canvas/panels/Toolbox.tsx",
@@ -243,16 +286,16 @@
         "src/etl-canvas/panels/csv.ts",
         "src/etl-canvas/panels/families.ts",
         "src/etl-canvas/panels/layout.ts",
-        "src/etl-canvas/panels/overlayLayout.ts",
-        "src/etl-canvas/panels/panels.css",
-        "src/etl-canvas/panels/ui-icons.tsx",
-        "src/etl-canvas/seed.ts"
+        "src/etl-canvas/panels/overlayLayout.ts"
       ]
     },
     {
-      "name": "files/01e-etl-canvas-g.md",
-      "bytes": 16027,
+      "name": "files/01e-etl-canvas-j.md",
+      "bytes": 36572,
       "files": [
+        "src/etl-canvas/panels/panels.css",
+        "src/etl-canvas/panels/ui-icons.tsx",
+        "src/etl-canvas/seed.ts",
         "src/etl-canvas/tokens.css",
         "src/etl-canvas/transitions.ts",
         "src/etl-canvas/view.ts"
@@ -439,7 +482,7 @@
     },
     {
       "name": "files/08-scripts-config-a.md",
-      "bytes": 57178,
+      "bytes": 35254,
       "files": [
         ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",
@@ -450,29 +493,46 @@
         "components.json",
         "eslint.config.js",
         "package.json",
+        "scripts/.tmpdbg.mjs",
+        "scripts/.tmpdiff.mjs",
+        "scripts/.tmpshot.mjs",
+        "scripts/.tmpshot2.mjs",
         "scripts/check-tokens.mjs",
-        "scripts/e2e-fase5.mjs",
-        "scripts/e2e-fase6a.mjs"
+        "scripts/e2e-fase5.mjs"
       ]
     },
     {
       "name": "files/08-scripts-config-b.md",
-      "bytes": 55011,
+      "bytes": 30849,
       "files": [
-        "scripts/extract-golden.mjs",
-        "scripts/generate-index.mjs",
-        "scripts/generate-snapshot.mjs",
-        "scripts/sync-snapshot.sh",
-        "scripts/theme-map.mjs",
-        "scripts/token-legacy-files.txt",
-        "scripts/visual-compare.mjs"
+        "scripts/e2e-fase6a.mjs"
       ]
     },
     {
       "name": "files/08-scripts-config-c.md",
-      "bytes": 37366,
+      "bytes": 55280,
       "files": [
-        "scripts/visual-fase4.mjs",
+        "scripts/e2e-fase6b1.mjs",
+        "scripts/extract-golden.mjs",
+        "scripts/generate-index.mjs"
+      ]
+    },
+    {
+      "name": "files/08-scripts-config-d.md",
+      "bytes": 51254,
+      "files": [
+        "scripts/generate-snapshot.mjs",
+        "scripts/sync-snapshot.sh",
+        "scripts/theme-map.mjs",
+        "scripts/token-legacy-files.txt",
+        "scripts/visual-compare.mjs",
+        "scripts/visual-fase4.mjs"
+      ]
+    },
+    {
+      "name": "files/08-scripts-config-e.md",
+      "bytes": 23640,
+      "files": [
         "scripts/visual-fase4b.mjs",
         "scripts/visual-lib.mjs",
         "scripts/visual-temi.mjs",
@@ -729,7 +789,7 @@
     },
     {
       "name": "files/13-misc-a.md",
-      "bytes": 57936,
+      "bytes": 58984,
       "files": [
         "src/theme/README.md",
         "src/theme/__tests__/check-tokens.test.ts",
@@ -738,19 +798,20 @@
         "src/theme/__tests__/derive.test.ts",
         "src/theme/__tests__/readme.test.ts",
         "src/theme/__tests__/runtime.test.ts",
-        "src/theme/__tests__/support.ts",
-        "src/theme/__tests__/themes.test.ts"
+        "src/theme/__tests__/support.ts"
       ]
     },
     {
       "name": "files/13-misc-b.md",
-      "bytes": 47973,
+      "bytes": 56388,
       "files": [
+        "src/theme/__tests__/themes.test.ts",
         "src/theme/boot.ts",
         "src/theme/color.ts",
         "src/theme/derive.ts",
         "src/theme/index.css",
         "src/theme/index.ts",
+        "src/theme/layout-tokens.css",
         "src/theme/primitives.css",
         "src/theme/runtime.ts",
         "src/theme/themes/notte.css",
@@ -960,6 +1021,110 @@
       "reason": "binary"
     },
     {
+      "file": "docs/visual/fase6b1/box-combinato-passaggi-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/box-combinato-passaggi-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/converti-tipo-due-colonne-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/converti-tipo-due-colonne-notte-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/converti-tipo-due-colonne-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/inspector-bloccato-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/inspector-bloccato-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/inspector-in-basso-1280x720-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/inspector-in-basso-1280x720-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/inspector-in-basso-1440-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/inspector-in-basso-1440-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/nodo-con-pulsanti-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/nodo-con-pulsanti-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/pannello-espanso-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/pannello-espanso-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/sostituisci-valori-due-colonne-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/sostituisci-valori-due-colonne-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/tendina-colonne-aperta-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/tendina-colonne-aperta-notte-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/tendina-colonne-aperta-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/tendina-in-alto-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/tendina-in-alto-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/tendina-valori-aperta-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/tendina-valori-aperta-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/tendina-vicino-al-bordo-1280x720-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b1/tendina-vicino-al-bordo-1280x720-scuro.png",
+      "reason": "binary"
+    },
+    {
       "file": "docs/visual/temi/notte-chiaro-canvas.png",
       "reason": "binary"
     },
@@ -1029,6 +1194,14 @@
     }
   ],
   "redactions": [
+    {
+      "file": "src/etl-canvas/inspector/inspector.css",
+      "pattern": "secret-like assignment"
+    },
+    {
+      "file": "src/etl-canvas/inspector/logic.ts",
+      "pattern": "secret-like assignment"
+    },
     {
       "file": "scripts/check-tokens.mjs",
       "pattern": "secret-like assignment"
@@ -1195,9 +1368,13 @@
         "src/etl-canvas/__tests__/flow.test.ts",
         "src/etl-canvas/__tests__/gesture-render.test.ts",
         "src/etl-canvas/__tests__/helpers.ts",
+        "src/etl-canvas/__tests__/inspector-logic.test.ts",
+        "src/etl-canvas/__tests__/inspector-rules.test.ts",
+        "src/etl-canvas/__tests__/inspector.test.tsx",
         "src/etl-canvas/__tests__/interaction.test.ts",
         "src/etl-canvas/__tests__/keyboard.test.ts",
         "src/etl-canvas/__tests__/loop.test.ts",
+        "src/etl-canvas/__tests__/menu.test.ts",
         "src/etl-canvas/__tests__/no-reroute.test.ts",
         "src/etl-canvas/__tests__/overlay-layout.test.ts",
         "src/etl-canvas/__tests__/panels-actions.test.ts",
@@ -1217,6 +1394,27 @@
         "src/etl-canvas/flow.ts",
         "src/etl-canvas/icons.tsx",
         "src/etl-canvas/index.ts",
+        "src/etl-canvas/inspector/ActionMenu.tsx",
+        "src/etl-canvas/inspector/BlockedNotice.tsx",
+        "src/etl-canvas/inspector/ColumnPicker.tsx",
+        "src/etl-canvas/inspector/ExpandedPanel.tsx",
+        "src/etl-canvas/inspector/Field.tsx",
+        "src/etl-canvas/inspector/Header.tsx",
+        "src/etl-canvas/inspector/Inspector.tsx",
+        "src/etl-canvas/inspector/Menu.tsx",
+        "src/etl-canvas/inspector/MultiList.tsx",
+        "src/etl-canvas/inspector/NameInput.tsx",
+        "src/etl-canvas/inspector/StepList.tsx",
+        "src/etl-canvas/inspector/StyledSelect.tsx",
+        "src/etl-canvas/inspector/ValuePicker.tsx",
+        "src/etl-canvas/inspector/copy.ts",
+        "src/etl-canvas/inspector/family.ts",
+        "src/etl-canvas/inspector/icons.tsx",
+        "src/etl-canvas/inspector/inspector.css",
+        "src/etl-canvas/inspector/logic.ts",
+        "src/etl-canvas/inspector/menu.ts",
+        "src/etl-canvas/inspector/params.ts",
+        "src/etl-canvas/inspector/useActiveSchema.ts",
         "src/etl-canvas/interaction.ts",
         "src/etl-canvas/loop.ts",
         "src/etl-canvas/model.ts",
@@ -1245,7 +1443,10 @@
         "01e-etl-canvas-d.md",
         "01e-etl-canvas-e.md",
         "01e-etl-canvas-f.md",
-        "01e-etl-canvas-g.md"
+        "01e-etl-canvas-g.md",
+        "01e-etl-canvas-h.md",
+        "01e-etl-canvas-i.md",
+        "01e-etl-canvas-j.md"
       ]
     },
     "02-isa-etl": {
@@ -1407,9 +1608,14 @@
         "components.json",
         "eslint.config.js",
         "package.json",
+        "scripts/.tmpdbg.mjs",
+        "scripts/.tmpdiff.mjs",
+        "scripts/.tmpshot.mjs",
+        "scripts/.tmpshot2.mjs",
         "scripts/check-tokens.mjs",
         "scripts/e2e-fase5.mjs",
         "scripts/e2e-fase6a.mjs",
+        "scripts/e2e-fase6b1.mjs",
         "scripts/extract-golden.mjs",
         "scripts/generate-index.mjs",
         "scripts/generate-snapshot.mjs",
@@ -1428,7 +1634,9 @@
       "outFiles": [
         "08-scripts-config-a.md",
         "08-scripts-config-b.md",
-        "08-scripts-config-c.md"
+        "08-scripts-config-c.md",
+        "08-scripts-config-d.md",
+        "08-scripts-config-e.md"
       ]
     },
     "09-docs": {
@@ -1519,6 +1727,7 @@
         "src/theme/derive.ts",
         "src/theme/index.css",
         "src/theme/index.ts",
+        "src/theme/layout-tokens.css",
         "src/theme/primitives.css",
         "src/theme/runtime.ts",
         "src/theme/themes/notte.css",
@@ -1551,8 +1760,9 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T07-50-59Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T08-45-00Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T10-30-00Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T11-15-00Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T11-15-00Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T14-30-00Z.md"
   ],
-  "inScopeFileCount": 308,
-  "reportFileCount": 21
+  "inScopeFileCount": 339,
+  "reportFileCount": 22
 }
