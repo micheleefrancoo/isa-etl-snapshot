@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-10-04T09:26:22Z (UTC)
+Generato: 2026-10-04T09:59:45Z (UTC)
 
 ## Type check
 
@@ -74,7 +74,7 @@ Ultime 60 righe di output:
 Comando: `npm test`
 
 Esito: OK (exit 0)
-Durata: 42s
+Durata: 43s
 
 Ultime 60 righe di output:
 ```
@@ -87,13 +87,13 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
  RUN  v5.0.1 /workspaces/isa-glass-platform
 
 
- Test Files  47 passed (47)
-      Tests  850 passed (850)
-   Start at  09:26:47
-   Duration  40.70s (tests 88%, import 7%, transform 4%, worker 1%)
+ Test Files  49 passed (49)
+      Tests  928 passed (928)
+   Start at  10:00:10
+   Duration  41.63s (tests 89%, import 7%, transform 4%, worker 1%)
 
-    Isolate  47 workers spawned · ~111ms startup each (spawn + environment, per file)
-             at least ~5.09s faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  49 workers spawned · ~113ms startup each (spawn + environment, per file)
+             at least ~5.43s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -113,7 +113,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/templates-BxgvM8qO.mjs                          0.61 kB │ gzip:   0.39 kB
 .output/server/_ssr/solutions._solutionId.dashboard-CujVFx5K.mjs    0.86 kB │ gzip:   0.47 kB
 .output/server/_ssr/solutions._solutionId.model-D5GqwrKQ.mjs        0.88 kB │ gzip:   0.47 kB
-.output/server/_ssr/solutions._solutionId.etl-L824hOBl.mjs          1.09 kB │ gzip:   0.58 kB
+.output/server/_ssr/solutions._solutionId.etl-tR54qSL1.mjs          1.09 kB │ gzip:   0.58 kB
 .output/server/_libs/hookable.mjs                                   1.16 kB │ gzip:   0.51 kB
 .output/server/_ssr/start-RKGGYzjZ.mjs                              1.53 kB │ gzip:   0.70 kB
 .output/server/_runtime.mjs                                         1.61 kB │ gzip:   0.74 kB
@@ -122,7 +122,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/createCsrfMiddleware-B2To0gPJ.mjs               3.11 kB │ gzip:   1.01 kB
 .output/server/_libs/d3-path.mjs                                    3.25 kB │ gzip:   1.16 kB
 .output/server/_ssr/activity-C06WSQVD.mjs                           3.45 kB │ gzip:   0.97 kB
-.output/server/_tanstack-start-manifest_v-DjaYKoB9.mjs              3.71 kB │ gzip:   0.86 kB
+.output/server/_tanstack-start-manifest_v-DVHKmg9X.mjs              3.71 kB │ gzip:   0.86 kB
 .output/server/_ssr/solutions._solutionId.model-DN1m8FSz.mjs        4.05 kB │ gzip:   1.32 kB
 .output/server/_ssr/ssr.mjs                                         4.55 kB │ gzip:   1.92 kB
 .output/server/_libs/d3-interpolate.mjs                             5.02 kB │ gzip:   1.61 kB
@@ -135,7 +135,7 @@ Ultime 60 righe di output:
 .output/server/_libs/d3-color.mjs                                  10.38 kB │ gzip:   3.57 kB
 .output/server/_libs/d3-format.mjs                                 10.56 kB │ gzip:   3.02 kB
 .output/server/_libs/tanstack__history.mjs                         12.09 kB │ gzip:   3.48 kB
-.output/server/_ssr/router-BoX412eN.mjs                            14.47 kB │ gzip:   3.90 kB
+.output/server/_ssr/router-SmS7s-B7.mjs                            14.47 kB │ gzip:   3.89 kB
 .output/server/_ssr/theme-Dujx4GV7.mjs                             15.18 kB │ gzip:   6.06 kB
 .output/server/_libs/fast-equals.mjs                               15.91 kB │ gzip:   4.13 kB
 .output/server/_libs/h3-v2+rou3+srvx+unenv.mjs                     15.92 kB │ gzip:   4.39 kB
@@ -149,15 +149,15 @@ Ultime 60 righe di output:
 .output/server/_libs/lucide-react.mjs                              37.25 kB │ gzip:   7.17 kB
 .output/server/_libs/react-smooth.mjs                              37.83 kB │ gzip:   8.14 kB
 .output/server/_libs/tanstack__query-core.mjs                      49.84 kB │ gzip:  11.12 kB
-.output/server/_ssr/server-DpiT3xxA.mjs                            54.77 kB │ gzip:  14.39 kB
+.output/server/_ssr/server-CePXbmH0.mjs                            54.77 kB │ gzip:  14.39 kB
 .output/server/_libs/d3-scale+[...].mjs                            58.22 kB │ gzip:  12.11 kB
 .output/server/_libs/@tanstack/router-core+[...].mjs              125.35 kB │ gzip:  26.53 kB
 .output/server/_libs/lodash.mjs                                   161.80 kB │ gzip:  29.45 kB
-.output/server/_ssr/solutions._solutionId.etl-D8XnaR65.mjs        405.03 kB │ gzip: 108.43 kB
+.output/server/_ssr/solutions._solutionId.etl-D5o9swyC.mjs        409.03 kB │ gzip: 109.70 kB
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.08s
+✓ built in 989ms
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -185,6 +185,7 @@ check-tokens: 0 violazioni nei file controllati; debito preesistente: 26 (6 ombr
 ## Git log (ultimi 20 commit)
 
 ```
+d560fdd Fase 6b.0: dominio, colonne multiple nelle voci
 8db8087 Fase 6a.2: report di validazione
 a7a2127 Baseline visiva rigenerata: la barra dei controlli riduce l'altezza del canvas
 4a51045 Fase 6a.2: un pannello alla volta, spinta senza sovrapposizioni, barra dei controlli
@@ -204,7 +205,6 @@ a4788a3 Fase 5: interazioni (trascinamento, fusione, collegamento, porte, selezi
 81831f0 Test della rotta: distingue il canvas nuovo dal pulsante che lo apre
 ea2d57c Collegamenti tra canvas vecchio e nuovo nella pagina ETL
 8b7cb52 Fase 4a: il canvas visibile (src/etl-canvas/)
-5ef51d1 Fase 3.1: raggruppamento della cronologia, registro senza vista, inspector
 ```
 
 ## Branch
@@ -220,6 +220,7 @@ ea2d57c Collegamenti tra canvas vecchio e nuovo nella pagina ETL
   feat/etl-store-fix
   feat/interactions
   feat/link-click-delete
+  feat/multi-columns
   feat/panels
   feat/panels-exclusive
   feat/panels-fix
@@ -238,6 +239,7 @@ ea2d57c Collegamenti tra canvas vecchio e nuovo nella pagina ETL
   remotes/origin/feat/etl-store-fix
   remotes/origin/feat/interactions
   remotes/origin/feat/link-click-delete
+  remotes/origin/feat/multi-columns
   remotes/origin/feat/panels
   remotes/origin/feat/panels-exclusive
   remotes/origin/feat/panels-fix
@@ -353,6 +355,17 @@ Diff stat rispetto a main:
 Ultimo commit:
 ```
 a2dd012 Clic su un cavo per eliminarlo (deleteLink), come nel prototipo
+```
+
+Diff stat rispetto a main:
+```
+```
+
+### `feat/multi-columns`
+
+Ultimo commit:
+```
+d560fdd Fase 6b.0: dominio, colonne multiple nelle voci
 ```
 
 Diff stat rispetto a main:

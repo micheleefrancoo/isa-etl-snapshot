@@ -9,13 +9,12 @@ File in questo blocco:
 - `src/etl-core/__tests__/fase11-requisiti.test.ts`
 - `src/etl-core/__tests__/fase11.test.ts`
 - `src/etl-core/__tests__/helpers.ts`
-- `src/etl-core/__tests__/mutations.test.ts`
 
 ---
 
 ### `src/etl-core/NOTE_DIVERGENZE.md`
 
-89 righe
+117 righe
 
 ```md
 # Note di divergenza
@@ -89,6 +88,34 @@ box → output) lo ricrea.
 `defaultParams('join')` produce chiavi già complete (come dopo
 `ensureKeys`), invece di generare il vecchio formato solo per migrarlo.
 
+### 5. Colonne multiple (Fase 6b.0)
+
+**Prototipo.** Ogni riga delle operazioni a voci multiple (`MULTI_DEFS`, righe
+2538-2582) ha una colonna sola (`column`). Cambiando la colonna di una riga,
+l'interfaccia del prototipo azzerava i valori già scelti, perché il dominio
+proposto dipende dalla colonna.
+
+**Qui.** Converti tipo, Arrotonda, Normalizza, Pulisci testo, Riempi vuoti,
+Sostituisci valori, Rimuovi duplicati, Seleziona colonne, Ordina e Raggruppa
+(chiavi e misure) scelgono più colonne per riga (`columns: string[]`, l'ordine
+conta; una riga con N colonne equivale a N righe identiche negli altri campi).
+Rinomina, Dividi colonna, Calcola colonna e le colonne di filtro e join restano
+a colonna singola.
+
+- Il vecchio `column` si migra in `columns` (`ensureMulti`, idempotente).
+- In Raggruppa, con più colonne il nome del risultato è sempre
+  `${funzione}_${colonna}` e l'alias non si applica.
+- Il dominio di valori di una riga è l'unione dei domini delle sue colonne
+  (`columnsDomain`, al massimo 500, nell'ordine delle colonne).
+- **Cambiare le colonne di una riga NON azzera i valori già scelti** (differenza
+  voluta): con più colonne, o cambiando colonna, i valori scelti possono non
+  appartenere più al dominio; `valuesOutsideDomain` li individua perché
+  l'interfaccia li segnali senza perderli.
+- Riempi vuoti ha un valore unico per riga; l'elenco proposto esiste solo con
+  una colonna.
+- Il formato di salvataggio passa dalla versione 1 alla 2; un v1 si carica
+  migrato.
+
 ## Non è una divergenza (chiarimento architetturale)
 
 `connect` nel prototipo (riga 1875-1885) **non** controlla i cicli: quel
@@ -110,7 +137,7 @@ deliberato — vedi il commento in testa a `rules/mutations.ts`.
 
 ### `src/etl-core/README.md`
 
-164 righe
+203 righe
 
 ```md
 # etl-core — Fase 1: dominio ETL in TypeScript puro
@@ -252,11 +279,50 @@ funzioni pure).
 | `addToGroup`                                                                                              | `logic/expressions.ts`  | ramo `addin` nel gestore click dell'inspector   | 3615-3621            |
 | `leftAssoc`                                                                                               | `logic/expressions.ts`  | `leftAssoc`                                     | 3366-3369            |
 | `groupedPreview`                                                                                          | `logic/expressions.ts`  | `groupedPreview` (stringa pura, senza HTML)     | 3371-3383            |
+| `columnsOf`, `columnsText`, `measureNames`                                                                | `catalog/params.ts`     | (assenti: una colonna per riga)                 | —                    |
+| `flattenRows`                                                                                             | `catalog/params.ts`     | (assente)                                       | —                    |
+| `columnsDomain`, `valuesOutsideDomain`                                                                    | `catalog/params.ts`     | (assenti: dominio di una sola colonna)          | —                    |
+| `ensureParams`                                                                                            | `catalog/params.ts`     | (assente: migrazioni al primo uso)              | —                    |
 | `schemaOf`                                                                                                | `schema/schema.ts`      | `schemaOf`                                      | 2415-2430            |
 | `parseCSV`                                                                                                | `data/csv.ts`           | `parseCSV` (su stringa, non `File`)             | 4672-4708            |
 
 **Non portata**: `logicPreview` (prototipo, righe 3386-3392) — superseduta
 da `groupedPreview`, non più usata nel prototipo stesso.
+
+## Colonne multiple (Fase 6b.0)
+
+Le righe delle operazioni a voci multiple scelgono più colonne: il campo è
+`columns: string[]` (tipo di campo `"columns"` in `MULTI_DEFS`, accanto a
+`"column"`), l'ordine è significativo. Una riga con N colonne equivale a N
+righe identiche negli altri campi, nell'ordine elencato.
+
+- Campi che diventano `columns`: Converti tipo, Arrotonda, Normalizza, Pulisci
+  testo, Riempi vuoti, Sostituisci valori, Rimuovi duplicati (chiavi),
+  Seleziona colonne, Ordina (criteri), Raggruppa (chiavi e misure). Restano a
+  colonna singola Rinomina, Dividi colonna, Calcola colonna, le colonne delle
+  condizioni del filtro e i lati delle condizioni del join.
+- `ensureMulti` migra, in modo idempotente, `column: "x"` in `columns: ["x"]`
+  (stringa vuota → `[]`, `column` rimosso); vale anche per il formato a voce
+  singola. `ensureParams(type, par)` raccoglie le migrazioni di filtro, join e
+  voci multiple (usata al caricamento di un salvataggio v1).
+- `flattenRows(type, params)`: le righe espanse (campo `column`), una lista per
+  ciascuna lista dell'operazione; le righe incomplete (senza colonne o con un
+  campo obbligatorio vuoto) si scartano.
+- `stepMissing`/`nodeState`: una riga è incompleta se `columns` è vuoto o manca
+  un altro campo obbligatorio (l'avviso resta «Da configurare: …»).
+- Riassunti: `columnsText(columns, max = 3)` → «a, b, c» oppure «a, b +2»; per
+  esempio Converti tipo: «importo, quantita → intero».
+- `measureNames(row)`: nomi dei risultati di una misura di Raggruppa; con più
+  colonne sempre `${funzione}_${colonna}` (l'alias non si applica), con una
+  colonna l'alias oppure `${funzione}_${colonna}`.
+- `columnsDomain(schema, columns)`: unione dei valori nell'ordine delle colonne
+  elencate, senza duplicati, al massimo 500; `valuesOutsideDomain(values,
+domain)`: i valori scelti fuori dal dominio. Cambiare le colonne non azzera i
+  valori già scelti (vedi `NOTE_DIVERGENZE.md`).
+- Riempi vuoti: il valore è unico per riga; l'elenco proposto esiste solo se la
+  riga ha una sola colonna (decisione dell'interfaccia, Fase 6b.1).
+- Salvataggio (`etl-store`): versione del formato 1 → 2; un v1 si carica con
+  `ensureParams` su ogni card, un v2 non cambia.
 
 ## Test
 
@@ -971,233 +1037,5 @@ export function testIdGenerator(prefix = "id"): () => string {
     return `${prefix}-${n}`;
   };
 }
-```
-
-### `src/etl-core/__tests__/mutations.test.ts`
-
-222 righe
-
-```ts
-import { describe, expect, it } from "vitest";
-import { dataset, op, buildGraph, testIdGenerator } from "./helpers";
-import {
-  connect,
-  refreshOutput,
-  mergeBoxes,
-  deleteNodes,
-  nodesRemovedBy,
-  insertable,
-  insertOnLink,
-  duplicateNodes,
-} from "../rules/mutations";
-import { cardById, outputOf, inputsOf } from "../model/graph";
-import type { Graph } from "../model/types";
-
-function expectOk(result: { ok: boolean }): asserts result is { ok: true; graph: Graph } {
-  expect(result.ok).toBe(true);
-}
-
-describe("output parziale (scenario 3)", () => {
-  it("dopo la prima tabella su un join capacity=2 filled=1; completo dopo la seconda", () => {
-    const nextId = testIdGenerator("n");
-    let graph = buildGraph([dataset("A"), dataset("B"), op("box", ["join"])]);
-
-    const r1 = connect(graph, "A", "box", nextId);
-    expectOk(r1);
-    graph = refreshOutput(r1.graph, "box", nextId);
-    const outId = outputOf(graph, "box") as string;
-    let out = cardById(graph, outId);
-    expect(out?.capacity).toBe(2);
-    expect(out?.filled).toBe(1);
-    expect(out && (out.capacity ?? 0) > 1 && (out.filled ?? 0) < (out.capacity ?? 0)).toBe(true);
-
-    const r2 = connect(graph, "B", "box", nextId);
-    expectOk(r2);
-    graph = refreshOutput(r2.graph, "box", nextId);
-    out = cardById(graph, outId);
-    expect(out?.capacity).toBe(2);
-    expect(out?.filled).toBe(2);
-  });
-});
-
-describe("mergeBoxes (scenario 4)", () => {
-  it("il box risultante ha entrambi gli output, nessun collegamento da un proprio output verso se stesso", () => {
-    const nextId = testIdGenerator("n");
-    let graph = buildGraph([
-      dataset("A"),
-      dataset("B"),
-      op("box1", ["filter"]),
-      op("box2", ["sort"]),
-    ]);
-
-    const c1 = connect(graph, "A", "box1", nextId);
-    expectOk(c1);
-    graph = refreshOutput(c1.graph, "box1", nextId);
-    const c2 = connect(graph, "B", "box2", nextId);
-    expectOk(c2);
-    graph = refreshOutput(c2.graph, "box2", nextId);
-
-    const out1Before = outputOf(graph, "box1") as string;
-    const out2Before = outputOf(graph, "box2") as string;
-
-    const merged = mergeBoxes(graph, "box2", "box1", nextId);
-    expectOk(merged);
-    graph = merged.graph;
-
-    expect(cardById(graph, "box1")?.components).toEqual(["filter", "sort"]);
-    expect(cardById(graph, "box2")).toBeUndefined();
-
-    const producedByBox1 = graph.links.filter((l) => l.from === "box1").map((l) => l.to);
-    expect(new Set(producedByBox1)).toEqual(new Set([out1Before, out2Before]));
-    expect(graph.links.some((l) => l.from === "box1" && l.to === "box1")).toBe(false);
-    // Nessun collegamento da un proprio output verso il box stesso.
-    expect(graph.links.some((l) => l.from === out1Before && l.to === "box1")).toBe(false);
-    expect(graph.links.some((l) => l.from === out2Before && l.to === "box1")).toBe(false);
-  });
-
-  it("il nome diventa 'Combined Box' alla prima fusione tra due box semplici", () => {
-    const nextId = testIdGenerator("n");
-    const graph = buildGraph([op("a", ["filter"]), op("b", ["sort"])]);
-    const merged = mergeBoxes(graph, "b", "a", nextId);
-    expectOk(merged);
-    expect(cardById(merged.graph, "a")?.name).toBe("Combined Box");
-  });
-});
-
-describe("eliminazione di un box (scenario 6)", () => {
-  it("il suo output e tutto cio che dipendeva solo da lui sparisce; nodesRemovedBy lo prevede", () => {
-    const nextId = testIdGenerator("n");
-    let graph = buildGraph([dataset("A"), op("box1", ["filter"]), op("box2", ["sort"])]);
-    const c1 = connect(graph, "A", "box1", nextId);
-    expectOk(c1);
-    graph = refreshOutput(c1.graph, "box1", nextId);
-    const out1 = outputOf(graph, "box1") as string;
-    const c2 = connect(graph, out1, "box2", nextId);
-    expectOk(c2);
-    graph = refreshOutput(c2.graph, "box2", nextId);
-    const out2 = outputOf(graph, "box2") as string;
-
-    // nodesRemovedBy segue solo la cascata degli OUTPUT (prototipo, righe
-    // 4432-4453: il ciclo filtra `c[id].isOutput`): `box2` non è un
-    // output, quindi resta — orfano, senza ingressi — anche se il suo
-    // unico input (`out1`) sparisce con `box1`.
-    const removed = nodesRemovedBy(graph, "box1");
-    expect(removed).toEqual(new Set(["box1", out1, out2]));
-
-    graph = deleteNodes(graph, "box1", nextId);
-    expect(cardById(graph, "box1")).toBeUndefined();
-    expect(cardById(graph, out1)).toBeUndefined();
-    expect(cardById(graph, out2)).toBeUndefined();
-    expect(cardById(graph, "box2")).toBeDefined();
-    expect(cardById(graph, "A")).toBeDefined();
-    expect(graph.links).toHaveLength(0);
-  });
-});
-
-describe("insertOnLink (scenario 7)", () => {
-  it("dataset -> box diventa dataset -> X -> output di X -> box", () => {
-    const nextId = testIdGenerator("n");
-    let graph = buildGraph([dataset("A"), op("box", ["sort"]), op("X", ["filter"])]);
-    const c1 = connect(graph, "A", "box", nextId);
-    expectOk(c1);
-    graph = refreshOutput(c1.graph, "box", nextId);
-    const linkAtoBox = graph.links.find((l) => l.from === "A" && l.to === "box");
-    expect(linkAtoBox).toBeDefined();
-
-    const next = insertOnLink(graph, linkAtoBox!, "X", nextId);
-    expect(next).not.toBeNull();
-    graph = next as typeof graph;
-
-    expect(graph.links.some((l) => l.from === "A" && l.to === "X")).toBe(true);
-    const outX = outputOf(graph, "X") as string;
-    expect(outX).toBeTruthy();
-    expect(graph.links.some((l) => l.from === outX && l.to === "box")).toBe(true);
-    expect(graph.links.some((l) => l.from === "A" && l.to === "box")).toBe(false);
-  });
-
-  it("e rifiutato su un collegamento box -> output", () => {
-    const nextId = testIdGenerator("n");
-    let graph = buildGraph([dataset("A"), op("box", ["sort"]), op("X", ["filter"])]);
-    const c1 = connect(graph, "A", "box", nextId);
-    expectOk(c1);
-    graph = refreshOutput(c1.graph, "box", nextId);
-    const outId = outputOf(graph, "box") as string;
-    const linkBoxToOut = graph.links.find((l) => l.from === "box" && l.to === outId)!;
-
-    expect(insertable(graph, linkBoxToOut, "X")).toBe(false);
-    expect(insertOnLink(graph, linkBoxToOut, "X", nextId)).toBeNull();
-  });
-
-  it("e rifiutato quando X ha gia collegamenti", () => {
-    const nextId = testIdGenerator("n");
-    let graph = buildGraph([
-      dataset("A"),
-      dataset("D2"),
-      op("box", ["sort"]),
-      op("X", ["filter"]),
-      op("Y", ["sort"]),
-    ]);
-    const c1 = connect(graph, "A", "box", nextId);
-    expectOk(c1);
-    graph = refreshOutput(c1.graph, "box", nextId);
-    const c2 = connect(graph, "D2", "Y", nextId);
-    expectOk(c2);
-    graph = c2.graph;
-    // X non ha collegamenti: inseribile.
-    const linkAtoBox = graph.links.find((l) => l.from === "A" && l.to === "box")!;
-    expect(insertable(graph, linkAtoBox, "X")).toBe(true);
-    // Y ha gia un collegamento (D2 -> Y): non inseribile.
-    expect(insertable(graph, linkAtoBox, "Y")).toBe(false);
-  });
-});
-
-describe("purezza delle funzioni di rules/mutations.ts (scenario 15)", () => {
-  it("nessuna funzione modifica il grafo che riceve", () => {
-    const nextId = testIdGenerator("n");
-    let graph = buildGraph([
-      dataset("A"),
-      dataset("B"),
-      op("box1", ["filter"]),
-      op("box2", ["join"]),
-      op("box3", ["sort"]),
-    ]);
-    const c1 = connect(graph, "A", "box1", nextId);
-    expectOk(c1);
-    graph = refreshOutput(c1.graph, "box1", nextId);
-    const c2 = connect(graph, "B", "box2", nextId);
-    expectOk(c2);
-    graph = c2.graph;
-
-    const snapshot = JSON.parse(JSON.stringify(graph));
-
-    connect(graph, outputOf(graph, "box1") as string, "box2", nextId);
-    refreshOutput(graph, "box2", nextId);
-    mergeBoxes(graph, "box3", "box2", nextId);
-    deleteNodes(graph, "box1", nextId);
-    nodesRemovedBy(graph, "box1");
-    insertOnLink(graph, graph.links[0]!, "box3", nextId);
-    duplicateNodes(graph, ["A", "B"], nextId);
-
-    expect(JSON.parse(JSON.stringify(graph))).toEqual(snapshot);
-  });
-});
-
-describe("duplicateNodes", () => {
-  it("duplica senza collegamenti, escludendo gli output", () => {
-    const nextId = testIdGenerator("n");
-    let graph = buildGraph([dataset("A"), op("box", ["filter"])]);
-    const c1 = connect(graph, "A", "box", nextId);
-    expectOk(c1);
-    graph = refreshOutput(c1.graph, "box", nextId);
-    const outId = outputOf(graph, "box") as string;
-
-    const { graph: next, createdIds } = duplicateNodes(graph, ["A", "box", outId], nextId);
-    expect(createdIds).toHaveLength(2); // l'output e escluso
-    for (const id of createdIds) {
-      expect(inputsOf(next, id)).toHaveLength(0);
-      expect(next.links.some((l) => l.from === id)).toBe(false);
-    }
-  });
-});
 ```
 

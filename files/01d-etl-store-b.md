@@ -3,6 +3,7 @@
 File in questo blocco:
 
 - `src/etl-store/__tests__/reduce.test.ts`
+- `src/etl-store/__tests__/save-versions.test.ts`
 - `src/etl-store/__tests__/store.test.ts`
 - `src/etl-store/derived.ts`
 - `src/etl-store/index.ts`
@@ -504,9 +505,194 @@ describe("clearAll", () => {
 });
 ```
 
+### `src/etl-store/__tests__/save-versions.test.ts`
+
+179 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import type { Card, MultiRow } from "../../etl-core";
+import { SAVE_VERSION, fromSaved, parseSaved, toSaved } from "..";
+
+/** Un salvataggio della versione 1, come lo scriveva l'app prima delle colonne multiple. */
+const V1_FIXTURE = {
+  version: 1,
+  mode: "free",
+  library: [],
+  panels: {
+    tools: { side: "left", open: true },
+    insp: { side: "right", open: false },
+  },
+  options: { flowOnlyIfValid: false, maxBends: 2 },
+  graph: {
+    links: [],
+    cards: {
+      "ds-1": card(
+        "ds-1",
+        "dataset",
+        ["dataset"],
+        [{ source: "CSV", path: "a.csv", header: "Sì" }],
+      ),
+      "op-1": card("op-1", "op", ["cast"], [{ items: [{ column: "importo", to: "intero" }] }]),
+      "op-2": card("op-2", "op", ["round"], [{ column: "importo", decimals: "3" }]),
+      "op-3": card(
+        "op-3",
+        "op",
+        ["scale"],
+        [{ items: [{ column: "importo", method: "z-score" }] }],
+      ),
+      "op-4": card(
+        "op-4",
+        "op",
+        ["textClean"],
+        [{ items: [{ column: "nome", action: "maiuscole" }] }],
+      ),
+      "op-5": card("op-5", "op", ["fillNa"], [{ items: [{ column: "nome", value: "n/d" }] }]),
+      "op-6": card(
+        "op-6",
+        "op",
+        ["replaceVal"],
+        [
+          {
+            items: [
+              {
+                column: "regione",
+                match: "è uguale a",
+                find: { mode: "manual", values: [], text: "Nord, Sud", sep: "," },
+                with: "N",
+              },
+            ],
+          },
+        ],
+      ),
+      "op-7": card(
+        "op-7",
+        "op",
+        ["dedup"],
+        [{ keep: "la prima", items: [{ column: "id", cmp: "esatto" }] }],
+      ),
+      "op-8": card(
+        "op-8",
+        "op",
+        ["selectCols"],
+        [{ mode: "tieni", items: [{ column: "id" }, { column: "" }] }],
+      ),
+      "op-9": card("op-9", "op", ["sort"], [{ items: [{ column: "id", dir: "decrescente" }] }]),
+      "op-10": card(
+        "op-10",
+        "op",
+        ["aggregate"],
+        [
+          {
+            groupBy: [{ column: "regione" }],
+            measures: [{ column: "importo", fn: "somma", alias: "tot" }],
+          },
+        ],
+      ),
+      "op-11": card("op-11", "op", ["rename"], [{ items: [{ column: "a", newName: "b" }] }]),
+      "op-12": card(
+        "op-12",
+        "op",
+        ["filter"],
+        [
+          {
+            logic: "O",
+            conditions: [
+              { column: "a", op: "=", mode: "list", values: ["x"], text: "", sep: "," },
+              { column: "b", op: "=", mode: "list", values: ["y"], text: "", sep: "," },
+            ],
+          },
+        ],
+      ),
+    },
+  },
+};
+
+function card(
+  id: string,
+  kind: "dataset" | "op",
+  components: string[],
+  params: unknown[],
+): Record<string, unknown> {
+  return { id, kind, components, params, name: id, x: 10, y: 10 };
+}
+
+const rows = (c: Card | undefined, key = "items"): MultiRow[] =>
+  ((c?.params[0] as Record<string, unknown>)[key] ?? []) as MultiRow[];
+
+describe("versione del formato: 1 → 2", () => {
+  it("la versione corrente è la 2 e toSaved la scrive", () => {
+    expect(SAVE_VERSION).toBe(2);
+    const s = fromSaved(V1_FIXTURE);
+    expect(s).not.toBeNull();
+    expect(toSaved(s!).version).toBe(2);
+  });
+
+  it("un salvataggio v1 con tutte le operazioni coinvolte si carica migrato", () => {
+    const g = fromSaved(JSON.parse(JSON.stringify(V1_FIXTURE)))!.graph;
+    const c = (id: string) => g.cards[id];
+    expect(rows(c("op-1"))[0]?.["columns"]).toEqual(["importo"]);
+    expect(rows(c("op-2"))[0]).toMatchObject({ columns: ["importo"], decimals: "3" }); // voce singola
+    expect(rows(c("op-3"))[0]?.["columns"]).toEqual(["importo"]);
+    expect(rows(c("op-4"))[0]?.["columns"]).toEqual(["nome"]);
+    expect(rows(c("op-5"))[0]?.["columns"]).toEqual(["nome"]);
+    expect(rows(c("op-6"))[0]?.["columns"]).toEqual(["regione"]);
+    // anche la migrazione dei valori scritti a mano passa da ensureParams
+    expect((rows(c("op-6"))[0]?.["find"] as { values: string[] }).values).toEqual(["Nord", "Sud"]);
+    expect(rows(c("op-7"))[0]?.["columns"]).toEqual(["id"]);
+    expect(rows(c("op-8")).map((r) => r["columns"])).toEqual([["id"], []]);
+    expect(rows(c("op-9"))[0]?.["columns"]).toEqual(["id"]);
+    expect(rows(c("op-10"), "groupBy")[0]?.["columns"]).toEqual(["regione"]);
+    expect(rows(c("op-10"), "measures")[0]).toMatchObject({ columns: ["importo"], alias: "tot" });
+    for (const id of ["op-1", "op-3", "op-4", "op-5", "op-6", "op-7", "op-8", "op-9"]) {
+      expect(
+        rows(c(id)).every((r) => !("column" in r)),
+        id,
+      ).toBe(true);
+    }
+    // restano a colonna singola
+    expect(rows(c("op-11"))[0]).toMatchObject({ column: "a", newName: "b" });
+    expect("columns" in (rows(c("op-11"))[0] as MultiRow)).toBe(false);
+    // il filtro passa dalla sua migrazione (connettore dalla seconda condizione)
+    const conds = (c("op-12")?.params[0] as { conditions: { conn?: string }[] }).conditions;
+    expect(conds[1]?.conn).toBe("OR");
+  });
+
+  it("un salvataggio v1 caricato e risalvato è v2 e si ricarica uguale", () => {
+    const first = fromSaved(JSON.parse(JSON.stringify(V1_FIXTURE)))!;
+    const saved = toSaved(first);
+    const again = parseSaved(JSON.stringify(saved))!;
+    expect(again.graph).toEqual(first.graph);
+    expect(toSaved(again)).toEqual(saved);
+  });
+
+  it("un salvataggio v2 non cambia: nessuna migrazione, nemmeno su una riga nel vecchio formato", () => {
+    const raw = JSON.parse(JSON.stringify({ ...V1_FIXTURE, version: 2 }));
+    const loaded = fromSaved(raw)!;
+    expect(loaded.graph.cards["op-1"]?.params[0]).toEqual({
+      items: [{ column: "importo", to: "intero" }],
+    });
+    expect(loaded.graph.cards["op-2"]?.params[0]).toEqual({ column: "importo", decimals: "3" });
+    expect(loaded.graph.cards["op-12"]?.params[0]).toEqual(raw.graph.cards["op-12"].params[0]);
+  });
+
+  it("le versioni sconosciute si ignorano", () => {
+    expect(fromSaved({ ...V1_FIXTURE, version: 3 })).toBeNull();
+    expect(fromSaved({ ...V1_FIXTURE, version: 0 })).toBeNull();
+  });
+
+  it("il caricamento non modifica il dato ricevuto", () => {
+    const raw = JSON.parse(JSON.stringify(V1_FIXTURE));
+    const copy = JSON.stringify(raw);
+    fromSaved(raw);
+    expect(JSON.stringify(raw)).toBe(copy);
+  });
+});
+```
+
 ### `src/etl-store/__tests__/store.test.ts`
 
-263 righe
+283 righe
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -769,6 +955,26 @@ describe("clearAll", () => {
     expect(store.getState().library).toEqual(library);
     store.undo();
     expect(store.getState().library).toEqual(library);
+  });
+});
+
+describe("registro con colonne multiple", () => {
+  it("il payload di setParams riporta le colonne come elenco, nell'ordine", () => {
+    const { store, filter } = storeWith();
+    const r = store.dispatch({
+      type: "setParams",
+      payload: {
+        node: filter,
+        index: 0,
+        params: { items: [{ columns: ["b", "a"], to: "intero" }] },
+      },
+    });
+    expect(r).toEqual({ ok: true });
+    const last = store.getLog().at(-1) as { type: string; payload: unknown };
+    expect(last.type).toBe("setParams");
+    expect(
+      (last.payload as { params: { items: { columns: string[] }[] } }).params.items[0]?.columns,
+    ).toEqual(["b", "a"]);
   });
 });
 ```

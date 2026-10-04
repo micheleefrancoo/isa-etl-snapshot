@@ -12,7 +12,7 @@ File in questo blocco:
 
 ### `src/etl-store/README.md`
 
-224 righe
+227 righe
 
 ```md
 # etl-store — Fase 3: stato, cronologia, registro, salvataggio
@@ -216,6 +216,9 @@ server in questa fase.
   o di versione sconosciuta viene ignorato senza errori, partendo da un
   canvas vuoto. Sul server (nessun localStorage) si parte da un canvas
   vuoto e non si scrive nulla.
+- Versione del formato: 2 (Fase 6b.0, colonne multiple). Un salvataggio v1 si
+  carica eseguendo su ogni card le migrazioni dei parametri (`ensureParams`
+  di etl-core); un v2 si carica com'è.
 
 ## React
 

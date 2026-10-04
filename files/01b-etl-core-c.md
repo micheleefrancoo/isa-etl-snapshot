@@ -2,15 +2,1248 @@
 
 File in questo blocco:
 
+- `src/etl-core/catalog/params.ts`
+- `src/etl-core/data/csv.ts`
+- `src/etl-core/index.ts`
 - `src/etl-core/logic/expressions.ts`
 - `src/etl-core/model/graph.ts`
 - `src/etl-core/model/types.ts`
-- `src/etl-core/rules/mutations.ts`
-- `src/etl-core/rules/relations.ts`
-- `src/etl-core/rules/state.ts`
-- `src/etl-core/schema/schema.ts`
 
 ---
+
+### `src/etl-core/catalog/params.ts`
+
+1025 righe
+
+```ts
+/**
+ * Definizioni dei parametri, valori predefiniti e migrazioni.
+ * Porting letterale di PARAM_DEFS, MULTI_DEFS e delle relative costanti
+ * (righe 2433-2617 di docs/prototype/isa-fusion-prototype.html), più le
+ * migrazioni sparse nelle funzioni `render*` (renderFilter riga 3394,
+ * ensureKeys riga 3124).
+ */
+import type {
+  ColumnDef,
+  ComponentId,
+  FilterCondition,
+  FlatRow,
+  FilterParams,
+  JoinKey,
+  JoinOp,
+  JoinParams,
+  LogicOp,
+  MultiFieldDef,
+  MultiListDef,
+  MultiOperationDef,
+  MultiParams,
+  MultiRow,
+  OperationType,
+  Params,
+  SimpleFieldDef,
+  ValuesField,
+} from "../model/types";
+
+// --- Vocabolari (prototipo: righe 2433-2439, 3142, 3158-3159, 3299-3303) ---
+
+export const MULTI_OPS: readonly string[] = ["=", "≠", "è uno di", "non è uno di", "contiene"];
+export const NO_VALUE_OPS: readonly string[] = ["è vuoto", "non è vuoto"];
+export const FILTER_OPS: readonly string[] = [
+  "=",
+  "≠",
+  "è uno di",
+  "non è uno di",
+  "contiene",
+  ">",
+  "<",
+  "≥",
+  "≤",
+  "è vuoto",
+  "non è vuoto",
+];
+
+export interface Separator {
+  readonly label: string;
+  readonly ch: string;
+}
+
+export const SEPARATORS: readonly Separator[] = [
+  { label: "virgola", ch: "," },
+  { label: "punto e virgola", ch: ";" },
+  { label: "barra verticale", ch: "|" },
+  { label: "a capo", ch: "\n" },
+];
+
+export const LIST_OPS: readonly string[] = ["è uno di", "non è uno di"];
+export const JOIN_OPS: readonly JoinOp[] = ["=", "≠", "<", "≤", ">", "≥"];
+export const JOIN_OP_NAME: readonly string[] = [
+  "uguale a",
+  "diverso da",
+  "minore di",
+  "minore o uguale a",
+  "maggiore di",
+  "maggiore o uguale a",
+];
+
+export const LOGIC_OPS: readonly LogicOp[] = ["AND", "OR", "XOR", "NAND", "NOR", "XNOR"];
+export const LOGIC_HELP: Readonly<Record<LogicOp, string>> = {
+  AND: "entrambe vere",
+  OR: "almeno una vera",
+  XOR: "una sola delle due vera",
+  NAND: "non entrambe vere",
+  NOR: "nessuna delle due vera",
+  XNOR: "entrambe vere o entrambe false",
+};
+
+// --- Costruttori di valore predefinito (prototipo: newCondition, VALUES_DEF) ---
+
+/** Prototipo, riga 2440-2442. */
+export function newCondition(): FilterCondition {
+  return { column: "", op: "=", mode: "list", values: [], text: "", sep: "," };
+}
+
+/** Prototipo, riga 2529 (`VALUES_DEF`). */
+export function createValuesField(): ValuesField {
+  return { mode: "list", values: [], text: "", sep: "," };
+}
+
+/** Prototipo, righe 2530-2533. */
+export function valuesText(v: string | ValuesField | undefined): string {
+  if (v === undefined) return "";
+  if (typeof v === "string") return v;
+  return v.mode === "list" ? v.values.join(", ") : v.text;
+}
+
+/**
+ * Correzione intenzionale rispetto al prototipo (Fase 1.1, vedi
+ * src/etl-core/NOTE_DIVERGENZE.md — "una sola fonte di verità per i
+ * valori"): un campo a più valori conta solo `values`; `text` è solo un
+ * formato di transito verso `values` (vedi `normalizeValuesField`), non
+ * un secondo modo di essere "compilato". Nel prototipo (righe 2534-2537)
+ * `fieldFilled` considerava compilato anche un `text` non vuoto rimasto
+ * dalla modalità manuale.
+ */
+export function fieldFilled(
+  f: { readonly type: string },
+  v: string | string[] | ValuesField | undefined,
+): boolean {
+  if (f.type === "columns")
+    return Array.isArray(v) && v.some((c) => typeof c === "string" && c !== "");
+  if (f.type === "values") {
+    const vf = v as ValuesField | undefined;
+    return !!(vf && vf.values && vf.values.length > 0);
+  }
+  return !!(v && String(v).trim().length > 0);
+}
+
+/**
+ * Correzione intenzionale rispetto al prototipo (Fase 1.1): migrazione
+ * unica per ogni campo a più valori, oggi sparsa dentro `pickerHtml`
+ * (prototipo, righe 2840-2848). Se `mode` è `'manual'` e `text` non è
+ * vuoto, `text` viene diviso SOLO sul separatore registrato `sep` (o `,`
+ * se assente), come la migrazione del prototipo: il testo era stato
+ * scritto con quel separatore esplicito, quindi con `sep` `;` un valore
+ * come "Rossi, Mario" resta intero. I token non vuoti vengono aggiunti a
+ * `values` senza duplicati, poi `text` diventa `''` e `mode` diventa
+ * `'list'`. Altrimenti il campo torna inalterato (mai mutato: restituisce
+ * un nuovo oggetto solo se c'è qualcosa da migrare).
+ *
+ * La divisione su più separatori insieme riguarda solo l'inserimento dal
+ * vivo nel selettore di valori: vedi `splitTokens`.
+ */
+export function normalizeValuesField(v: ValuesField): ValuesField {
+  if (v.mode === "list" || !v.text || !v.text.trim()) return v;
+  const tokens = v.text
+    .split(v.sep || ",")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  const values = v.values.slice();
+  for (const t of tokens) {
+    if (!values.includes(t)) values.push(t);
+  }
+  return { mode: "list", values, text: "", sep: v.sep };
+}
+
+/**
+ * Prototipo, riga 2839 (`splitTokens`): divide un testo incollato o
+ * scritto dal vivo nel selettore di valori su `,` `;` `|` e a capo, con
+ * trim, senza token vuoti e senza duplicati. Solo per l'interfaccia: la
+ * migrazione dei testi salvati usa `normalizeValuesField`, che divide
+ * solo sul separatore registrato.
+ */
+export function splitTokens(text: string | null | undefined): string[] {
+  const tokens = String(text ?? "")
+    .split(/[,;|\n]/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  return Array.from(new Set(tokens));
+}
+
+/** Le colonne di una riga (`columns`), senza elementi non testuali. */
+export function columnsOf(row: MultiRow): string[] {
+  const v = row["columns"];
+  return Array.isArray(v) ? v.filter((c): c is string => typeof c === "string") : [];
+}
+
+/**
+ * Elenco di colonne per i riassunti: «a, b, c» fino a `max`, altrimenti le
+ * prime `max - 1` e il resto contato («a, b +2»). Vuoto senza colonne.
+ */
+export function columnsText(columns: readonly string[], max = 3): string {
+  if (columns.length <= max) return columns.join(", ");
+  const shown = Math.max(1, max - 1);
+  return `${columns.slice(0, shown).join(", ")} +${columns.length - shown}`;
+}
+
+function strField(row: MultiRow, key: string): string {
+  const v = row[key];
+  return typeof v === "string" ? v : "";
+}
+
+// --- PARAM_DEFS (prototipo, righe 2445-2525) --------------------------------
+
+const COLUMN_FIELD = (label = "Colonna"): SimpleFieldDef => ({
+  k: "column",
+  label,
+  type: "column",
+  def: "",
+});
+
+/**
+ * Definizioni a campo semplice, una per tipo di operazione (più `dataset`).
+ * `filter` è `'custom'`: i suoi parametri (`FilterParams`) non seguono
+ * questo schema generico, esattamente come nel prototipo.
+ */
+export const PARAM_DEFS: Readonly<Record<ComponentId, readonly SimpleFieldDef[] | "custom">> = {
+  dataset: [
+    {
+      k: "source",
+      label: "Origine",
+      type: "select",
+      opts: ["CSV", "Database", "API", "Foglio di calcolo"],
+      def: "CSV",
+    },
+    { k: "path", label: "Percorso o tabella", type: "text", def: "" },
+    {
+      k: "header",
+      label: "Prima riga di intestazione",
+      type: "select",
+      opts: ["Sì", "No"],
+      def: "Sì",
+    },
+  ],
+  filter: "custom",
+  join: [
+    {
+      k: "type",
+      label: "Tipo di join",
+      type: "select",
+      opts: ["inner", "left", "right", "full"],
+      def: "inner",
+    },
+  ],
+  sort: [
+    COLUMN_FIELD(),
+    {
+      k: "dir",
+      label: "Direzione",
+      type: "select",
+      opts: ["crescente", "decrescente"],
+      def: "crescente",
+    },
+  ],
+  exportOp: [
+    {
+      k: "format",
+      label: "Formato",
+      type: "select",
+      opts: ["CSV", "XLSX", "Parquet", "Tabella DB"],
+      def: "CSV",
+    },
+    { k: "dest", label: "Destinazione", type: "text", def: "", req: true },
+  ],
+  dedup: [
+    COLUMN_FIELD("Colonna chiave"),
+    {
+      k: "keep",
+      label: "Mantieni",
+      type: "select",
+      opts: ["la prima", "l’ultima"],
+      def: "la prima",
+    },
+  ],
+  limit: [
+    { k: "n", label: "Numero di righe", type: "text", def: "100", req: true },
+    { k: "from", label: "Dall’", type: "select", opts: ["inizio", "fine"], def: "inizio" },
+  ],
+  sample: [
+    { k: "pct", label: "Percentuale", type: "text", def: "10", req: true },
+    { k: "seed", label: "Seme casuale", type: "text", def: "" },
+  ],
+  selectCols: [
+    COLUMN_FIELD("Colonna da tenere"),
+    { k: "mode", label: "Modo", type: "select", opts: ["tieni", "escludi"], def: "tieni" },
+  ],
+  compute: [
+    { k: "name", label: "Nuova colonna", type: "text", def: "", req: true },
+    { k: "formula", label: "Formula", type: "text", def: "", req: true },
+  ],
+  cast: [
+    COLUMN_FIELD(),
+    {
+      k: "to",
+      label: "Nuovo tipo",
+      type: "select",
+      opts: ["intero", "decimale", "testo", "data", "booleano"],
+      def: "decimale",
+    },
+  ],
+  round: [COLUMN_FIELD(), { k: "decimals", label: "Decimali", type: "text", def: "2", req: true }],
+  scale: [
+    COLUMN_FIELD(),
+    {
+      k: "method",
+      label: "Metodo",
+      type: "select",
+      opts: ["min-max", "z-score", "percentuale"],
+      def: "min-max",
+    },
+  ],
+  aggregate: [
+    { k: "groupBy", label: "Raggruppa per", type: "column", def: "" },
+    { k: "measure", label: "Misura", type: "column", def: "" },
+    {
+      k: "fn",
+      label: "Funzione",
+      type: "select",
+      opts: ["somma", "media", "conteggio", "minimo", "massimo"],
+      def: "somma",
+    },
+  ],
+  textClean: [
+    COLUMN_FIELD(),
+    {
+      k: "action",
+      label: "Operazione",
+      type: "select",
+      opts: ["rimuovi spazi", "maiuscole", "minuscole", "iniziali maiuscole"],
+      def: "rimuovi spazi",
+    },
+  ],
+  replaceVal: [
+    COLUMN_FIELD(),
+    { k: "find", label: "Cerca", type: "text", def: "", req: true },
+    { k: "with", label: "Sostituisci con", type: "text", def: "" },
+  ],
+  splitCol: [
+    COLUMN_FIELD(),
+    {
+      k: "sep",
+      label: "Separatore",
+      type: "select",
+      opts: [",", ";", "|", "spazio", "-"],
+      def: ",",
+    },
+  ],
+  rename: [COLUMN_FIELD(), { k: "newName", label: "Nuovo nome", type: "text", def: "", req: true }],
+  fillNa: [
+    COLUMN_FIELD(),
+    { k: "value", label: "Valore di riempimento", type: "text", def: "", req: true },
+  ],
+  union: [
+    { k: "mode", label: "Righe", type: "select", opts: ["tutte", "senza duplicati"], def: "tutte" },
+    {
+      k: "align",
+      label: "Allineamento colonne",
+      type: "select",
+      opts: ["per nome", "per posizione"],
+      def: "per nome",
+    },
+  ],
+};
+
+// --- MULTI_DEFS (prototipo, righe 2538-2582) --------------------------------
+
+const COLF = (label?: string): MultiFieldDef => ({
+  k: "column",
+  label: label ?? "Colonna",
+  type: "column",
+  def: "",
+});
+/** Più colonne in una riga (Fase 6b.0): l'ordine è significativo. */
+const COLSF = (label?: string): MultiFieldDef => ({
+  k: "columns",
+  label: label ?? "Colonne",
+  type: "columns",
+  def: (): string[] => [],
+});
+const VALUES_FIELD_DEF = (label: string, req = true): MultiFieldDef => ({
+  k: "find",
+  label,
+  type: "values",
+  def: createValuesField,
+  req,
+});
+
+export const MULTI_DEFS: Readonly<Partial<Record<OperationType, MultiOperationDef>>> = {
+  cast: {
+    lists: [
+      {
+        key: "items",
+        label: "Colonne da convertire",
+        noun: "Conversione",
+        add: "Aggiungi conversione",
+        fields: [
+          COLSF(),
+          {
+            k: "to",
+            label: "Nuovo tipo",
+            type: "select",
+            opts: ["intero", "decimale", "testo", "data", "booleano"],
+            def: "decimale",
+          },
+        ],
+        sum: (r) => {
+          const cols = columnsOf(r);
+          return cols.length ? `${columnsText(cols)} → ${strField(r, "to")}` : null;
+        },
+      },
+    ],
+  },
+  rename: {
+    lists: [
+      {
+        key: "items",
+        label: "Colonne da rinominare",
+        noun: "Rinomina",
+        add: "Aggiungi colonna",
+        fields: [COLF(), { k: "newName", label: "Nuovo nome", type: "text", def: "", req: true }],
+        sum: (r) =>
+          strField(r, "column")
+            ? `${strField(r, "column")} → ${strField(r, "newName") || "…"}`
+            : null,
+      },
+    ],
+  },
+  fillNa: {
+    lists: [
+      {
+        key: "items",
+        label: "Colonne da riempire",
+        noun: "Riempimento",
+        add: "Aggiungi colonna",
+        fields: [
+          COLSF(),
+          { k: "value", label: "Valore di riempimento", type: "value", def: "", req: true },
+        ],
+        sum: (r) => {
+          const cols = columnsOf(r);
+          return cols.length ? `${columnsText(cols)} = ${strField(r, "value") || "…"}` : null;
+        },
+      },
+    ],
+  },
+  replaceVal: {
+    lists: [
+      {
+        key: "items",
+        label: "Sostituzioni",
+        noun: "Sostituzione",
+        add: "Aggiungi sostituzione",
+        fields: [
+          COLSF(),
+          {
+            k: "match",
+            label: "Quando il valore",
+            type: "select",
+            opts: [
+              "è uguale a",
+              "è diverso da",
+              "contiene",
+              "inizia con",
+              "finisce con",
+              "corrisponde all’espressione",
+            ],
+            def: "è uguale a",
+          },
+          VALUES_FIELD_DEF("Valori da cercare"),
+          { k: "with", label: "Sostituisci con", type: "value", def: "" },
+        ],
+        sum: (r) => {
+          const cols = columnsOf(r);
+          if (!cols.length) return null;
+          const match = strField(r, "match") || "è uguale a";
+          const find = valuesText(r["find"] as string | ValuesField | undefined) || "…";
+          const withVal = strField(r, "with") || "∅";
+          return `${columnsText(cols)} ${match} ${find} → ${withVal}`;
+        },
+      },
+    ],
+  },
+  round: {
+    lists: [
+      {
+        key: "items",
+        label: "Colonne da arrotondare",
+        noun: "Arrotondamento",
+        add: "Aggiungi colonna",
+        fields: [COLSF(), { k: "decimals", label: "Decimali", type: "text", def: "2", req: true }],
+        sum: (r) => {
+          const cols = columnsOf(r);
+          return cols.length ? `${columnsText(cols)} · ${strField(r, "decimals")} decimali` : null;
+        },
+      },
+    ],
+  },
+  scale: {
+    lists: [
+      {
+        key: "items",
+        label: "Colonne da normalizzare",
+        noun: "Normalizzazione",
+        add: "Aggiungi colonna",
+        fields: [
+          COLSF(),
+          {
+            k: "method",
+            label: "Metodo",
+            type: "select",
+            opts: ["min-max", "z-score", "percentuale"],
+            def: "min-max",
+          },
+        ],
+        sum: (r) => {
+          const cols = columnsOf(r);
+          return cols.length ? `${columnsText(cols)} · ${strField(r, "method")}` : null;
+        },
+      },
+    ],
+  },
+  textClean: {
+    lists: [
+      {
+        key: "items",
+        label: "Colonne da pulire",
+        noun: "Pulizia",
+        add: "Aggiungi colonna",
+        fields: [
+          COLSF(),
+          {
+            k: "action",
+            label: "Operazione",
+            type: "select",
+            opts: ["rimuovi spazi", "maiuscole", "minuscole", "iniziali maiuscole"],
+            def: "rimuovi spazi",
+          },
+        ],
+        sum: (r) => {
+          const cols = columnsOf(r);
+          return cols.length ? `${columnsText(cols)} · ${strField(r, "action")}` : null;
+        },
+      },
+    ],
+  },
+  compute: {
+    lists: [
+      {
+        key: "items",
+        label: "Colonne calcolate",
+        noun: "Colonna",
+        add: "Aggiungi colonna calcolata",
+        fields: [
+          { k: "name", label: "Nuova colonna", type: "text", def: "", req: true },
+          { k: "formula", label: "Formula", type: "text", def: "", req: true },
+        ],
+        sum: (r) =>
+          strField(r, "name") ? `${strField(r, "name")} = ${strField(r, "formula") || "…"}` : null,
+      },
+    ],
+  },
+  selectCols: {
+    globals: [
+      { k: "mode", label: "Modo", type: "select", opts: ["tieni", "escludi"], def: "tieni" },
+    ],
+    lists: [
+      {
+        key: "items",
+        label: "Colonne",
+        noun: "Colonna",
+        add: "Aggiungi colonna",
+        fields: [COLSF()],
+        sum: (r) => {
+          const cols = columnsOf(r);
+          return cols.length ? columnsText(cols) : null;
+        },
+      },
+    ],
+  },
+  dedup: {
+    globals: [
+      {
+        k: "keep",
+        label: "Mantieni",
+        type: "select",
+        opts: ["la prima", "l’ultima"],
+        def: "la prima",
+      },
+    ],
+    lists: [
+      {
+        key: "items",
+        label: "Colonne chiave",
+        noun: "Chiave",
+        add: "Aggiungi chiave",
+        fields: [
+          COLSF(),
+          {
+            k: "cmp",
+            label: "Confronto",
+            type: "select",
+            opts: ["esatto", "ignora maiuscole", "ignora spazi", "ignora maiuscole e spazi"],
+            def: "esatto",
+          },
+        ],
+        sum: (r) => {
+          const cols = columnsOf(r);
+          if (!cols.length) return null;
+          const cmp = strField(r, "cmp");
+          const text = columnsText(cols);
+          return cmp && cmp !== "esatto" ? `${text} · ${cmp}` : text;
+        },
+        note: "Due righe sono duplicate quando coincidono su tutte le chiavi.",
+      },
+    ],
+  },
+  sort: {
+    lists: [
+      {
+        key: "items",
+        label: "Criteri di ordinamento",
+        noun: "Criterio",
+        add: "Aggiungi criterio",
+        fields: [
+          COLSF(),
+          {
+            k: "dir",
+            label: "Direzione",
+            type: "select",
+            opts: ["crescente", "decrescente"],
+            def: "crescente",
+          },
+        ],
+        sum: (r) => {
+          const cols = columnsOf(r);
+          if (!cols.length) return null;
+          return columnsText(cols) + (strField(r, "dir") === "crescente" ? " ↑" : " ↓");
+        },
+        note: "Il primo criterio è il principale; i successivi decidono a parità del precedente.",
+      },
+    ],
+  },
+  aggregate: {
+    lists: [
+      {
+        key: "groupBy",
+        label: "Raggruppa per",
+        noun: "Chiave",
+        add: "Aggiungi chiave",
+        fields: [COLSF()],
+        sum: (r) => {
+          const cols = columnsOf(r);
+          return cols.length ? columnsText(cols) : null;
+        },
+      },
+      {
+        key: "measures",
+        label: "Misure",
+        noun: "Misura",
+        add: "Aggiungi misura",
+        fields: [
+          COLSF(),
+          {
+            k: "fn",
+            label: "Funzione",
+            type: "select",
+            opts: ["somma", "media", "conteggio", "minimo", "massimo"],
+            def: "somma",
+          },
+          { k: "alias", label: "Nome del risultato", type: "text", def: "" },
+        ],
+        sum: (r) => {
+          const cols = columnsOf(r);
+          if (!cols.length) return null;
+          const fn = strField(r, "fn") || "somma";
+          // con più colonne l'alias non si applica
+          const alias = cols.length === 1 ? strField(r, "alias") : "";
+          return `${fn}(${columnsText(cols)})${alias ? ` → ${alias}` : ""}`;
+        },
+      },
+    ],
+  },
+};
+
+// --- Valori predefiniti e migrazioni (prototipo, righe 2584-2617, 3124-3140, 3394-3400) ---
+
+function blankRow(list: MultiListDef): MultiRow {
+  const row: MultiRow = {};
+  for (const f of list.fields) {
+    row[f.k] = typeof f.def === "function" ? f.def() : f.def;
+  }
+  return row;
+}
+
+/**
+ * Fase 6b.0: una riga con `column: "x"` diventa `columns: ["x"]` (stringa
+ * vuota → `[]`); `columns` già presente e non vuoto prevale su `column`.
+ * Idempotente: applicata due volte dà lo stesso risultato.
+ */
+function migrateColumns(row: MultiRow, key: string): string[] {
+  const current = row[key];
+  const legacy = row["column"];
+  const fromLegacy = typeof legacy === "string" && legacy !== "" ? [legacy] : [];
+  if (Array.isArray(current)) {
+    const list = current.filter((c): c is string => typeof c === "string");
+    return list.length > 0 ? list : fromLegacy;
+  }
+  if (typeof current === "string" && current !== "") return [current];
+  return fromLegacy;
+}
+
+/** Prototipo, righe 2585-2602: migra il vecchio formato a voce singola in una lista di una riga. */
+export function ensureMulti(type: OperationType, par: Params): MultiParams {
+  const md = MULTI_DEFS[type];
+  if (!md) return par as MultiParams;
+  const next: MultiParams = { ...(par as MultiParams) };
+  for (const f of md.globals ?? []) {
+    if (next[f.k] === undefined) next[f.k] = f.def;
+  }
+  for (const list of md.lists) {
+    const existing = next[list.key];
+    if (!Array.isArray(existing)) {
+      const row = blankRow(list);
+      for (const f of list.fields) {
+        if (f.type === "columns") {
+          // formato a colonna singola (`column`): diventa una lista di una colonna
+          const legacyColumn = next["column"];
+          if (typeof legacyColumn === "string" && legacyColumn !== "") row[f.k] = [legacyColumn];
+          continue;
+        }
+        const legacy = next[f.k];
+        if (legacy !== undefined && legacy !== "") row[f.k] = legacy as string;
+      }
+      next[list.key] = [row];
+    } else {
+      next[list.key] = existing.map((row) => {
+        const migrated: MultiRow = { ...row };
+        for (const f of list.fields) {
+          if (f.type === "columns") {
+            migrated[f.k] = migrateColumns(migrated, f.k);
+            delete migrated["column"];
+          }
+          if (f.type === "values") {
+            const v = migrated[f.k];
+            const asField: ValuesField =
+              v === undefined || typeof v !== "object"
+                ? v
+                  ? { ...createValuesField(), mode: "manual", text: String(v) }
+                  : createValuesField()
+                : (v as ValuesField);
+            migrated[f.k] = normalizeValuesField(asField);
+          }
+        }
+        return migrated;
+      });
+    }
+  }
+  return next;
+}
+
+/**
+ * Prototipo, righe 2604-2612. Correzione intenzionale rispetto al
+ * prototipo (Fase 1.1): produce direttamente il formato attuale — il
+ * filtro senza il campo `logic` (superato, mai stato lì fin dall'inizio
+ * in questo dominio: non ha senso generarlo solo per poi migrarlo), il
+ * join con le chiavi già passate da `ensureKeys` (op `'='`, `lmode`/
+ * `rmode` `'col'`, `rlist` vuota, `lval`/`rval` vuoti).
+ */
+export function defaultParams(type: ComponentId): Params {
+  if (type === "filter") {
+    const params: FilterParams = { conditions: [newCondition()] };
+    return params as unknown as Params;
+  }
+  if (type === "join") {
+    const params: JoinParams = {
+      type: "inner",
+      keys: ensureKeys({ type: "inner", keys: [{ left: "", right: "" }] }),
+    };
+    return params as unknown as Params;
+  }
+  if (type !== "dataset" && MULTI_DEFS[type]) return ensureMulti(type, {});
+  const defs = PARAM_DEFS[type];
+  const out: Record<string, string> = {};
+  if (Array.isArray(defs)) {
+    for (const f of defs) out[f.k] = f.def;
+  }
+  return out;
+}
+
+/** Prototipo, righe 2613-2617: assicura che `card.params` abbia una voce per componente. */
+export function ensureParamsFor(
+  components: readonly ComponentId[],
+  params: readonly Params[],
+): Params[] {
+  const next = params.slice();
+  while (next.length < components.length) {
+    next.push(defaultParams(components[next.length] as ComponentId));
+  }
+  return next;
+}
+
+/**
+ * Prototipo, righe 3124-3140. Normalizza anche `rlist` (Fase 1.1: una
+ * sola fonte di verità per i valori, vedi `normalizeValuesField`).
+ */
+export function ensureKeys(par: JoinParams): JoinKey[] {
+  let keys = par.keys;
+  if (!keys) {
+    keys =
+      par.leftKey || par.rightKey
+        ? [{ left: par.leftKey ?? "", right: par.rightKey ?? "" }]
+        : [{ left: "", right: "" }];
+  }
+  return keys.map((k) => ({
+    ...k,
+    op: k.op ?? "=",
+    lmode: k.lmode ?? "col",
+    rmode: k.rmode ?? "col",
+    rlist: normalizeValuesField(
+      k.rlist && typeof k.rlist === "object" ? k.rlist : createValuesField(),
+    ),
+    lval: k.lval ?? "",
+    rval: k.rval ?? "",
+  }));
+}
+
+/**
+ * Prototipo, righe 3396-3400 (dentro `renderFilter`): il vecchio selettore
+ * globale E/O diventa il connettore di ogni condizione dalla seconda in
+ * poi. Applica anche (Fase 1.1, "una sola fonte di verità per i valori")
+ * la migrazione testo → valori di `normalizeValuesField` a ogni
+ * condizione, oggi sparsa dentro `pickerHtml` (prototipo, righe 2840-2848).
+ */
+export function migrateFilterLogic(par: FilterParams): FilterParams {
+  const baseConditions = par.conditions ?? [newCondition()];
+  const withLogic = par.logic
+    ? baseConditions.map((c, i) =>
+        i > 0 && !c.conn
+          ? { ...c, conn: par.logic === "O" ? ("OR" as const) : ("AND" as const) }
+          : c,
+      )
+    : baseConditions;
+  const conditions = withLogic.map((c) => {
+    const normalized = normalizeValuesField(c);
+    return normalized === c
+      ? c
+      : {
+          ...c,
+          mode: normalized.mode,
+          values: normalized.values,
+          text: normalized.text,
+          sep: normalized.sep,
+        };
+  });
+  const { logic, ...rest } = par;
+  void logic;
+  return { ...rest, conditions };
+}
+
+// --- Riassunti (prototipo, righe 3109-3121, 3143-3194) ----------------------
+
+/** Prototipo, righe 3143-3147: il testo di un lato di una chiave di join. */
+export function sideText(
+  k: JoinKey,
+  side: "l" | "r",
+  columnDef: (name: string) => { values: readonly string[] } | null,
+): string {
+  if (side === "l") return k.lmode === "val" ? (k.lval ? `“${k.lval}”` : "") : k.left;
+  if (k.rmode === "val") return k.rval ? `“${k.rval}”` : "";
+  if (k.rmode === "list") {
+    const t = valuesText(k.rlist);
+    return t ? `(${t})` : "";
+  }
+  return k.right;
+  // `columnDef` è accettato per parità di firma con il prototipo (usato dal
+  // chiamante per calcolare il dominio proposto), non serve qui.
+  void columnDef;
+}
+
+/** Prototipo, righe 3149-3153. */
+export function keyComplete(k: JoinKey): boolean {
+  const l = k.lmode === "val" ? !!(k.lval && String(k.lval).trim()) : !!k.left;
+  const r =
+    k.rmode === "val"
+      ? !!(k.rval && String(k.rval).trim())
+      : k.rmode === "list"
+        ? fieldFilled({ type: "values" }, k.rlist)
+        : !!k.right;
+  return l && r;
+}
+
+/** Prototipo, righe 3190-3194. */
+export function summarizeKey(k: JoinKey): string | null {
+  const l = k.lmode === "val" ? (k.lval ? `“${k.lval}”` : "") : k.left;
+  const r =
+    k.rmode === "val"
+      ? k.rval
+        ? `“${k.rval}”`
+        : ""
+      : k.rmode === "list"
+        ? valuesText(k.rlist)
+          ? `(${valuesText(k.rlist)})`
+          : ""
+        : k.right;
+  if (!l && !r) return null;
+  return `${l || "…"} ${k.op ?? "="} ${r || "…"}`;
+}
+
+/**
+ * Prototipo, righe 3109-3121. Correzione intenzionale rispetto al
+ * prototipo (Fase 1.1, vedi src/etl-core/NOTE_DIVERGENZE.md — "una sola
+ * fonte di verità per i valori"): per gli operatori in `MULTI_OPS` il
+ * riassunto usa sempre `values` (non `text`, e non serve più sapere se
+ * la colonna ha un dominio noto: il parametro `columnHasValues` del
+ * prototipo è stato rimosso). Per gli altri operatori usa `text`.
+ */
+export function summarizeCond(c: FilterCondition): string | null {
+  if (!c.column) return null;
+  if (NO_VALUE_OPS.includes(c.op)) return `${c.column} ${c.op}`;
+  const v = MULTI_OPS.includes(c.op) ? c.values.join(", ") : c.text;
+  if (!v) return `${c.column} ${c.op} …`;
+  return `${c.column} ${c.op} ${v}`;
+}
+
+/**
+ * Prototipo, righe 3219-3222: nessuna condizione di uguaglianza colonna =
+ * colonna significa un confronto incrociato, potenzialmente molto lento.
+ */
+export function hasEquiJoinCondition(keys: readonly JoinKey[]): boolean {
+  return keys.some((k) => k.lmode === "col" && k.rmode === "col" && (k.op ?? "=") === "=");
+}
+
+// --- Colonne multiple (Fase 6b.0) -------------------------------------------
+
+/**
+ * Nome dei risultati di una misura di «Raggruppa»: con più colonne è sempre
+ * `${funzione}_${colonna}` e `alias` non si applica; con una colonna, `alias`
+ * oppure `${funzione}_${colonna}`. Una per colonna, nell'ordine elencato.
+ */
+export function measureNames(row: MultiRow): string[] {
+  const cols = columnsOf(row);
+  const fn = strField(row, "fn") || "somma";
+  const alias = strField(row, "alias");
+  if (cols.length === 1) return [alias || `${fn}_${cols[0]}`];
+  return cols.map((c) => `${fn}_${c}`);
+}
+
+/** Una riga espansa in più del suo indice d'origine non serve: l'ordine è quello delle colonne elencate. */
+function expandRow(list: MultiListDef, row: MultiRow): FlatRow[] {
+  const cols = columnsOf(row);
+  const incomplete = list.fields.some(
+    (f) => f.type !== "columns" && f.req && !fieldFilled(f, row[f.k]),
+  );
+  if (cols.length === 0 || incomplete) return [];
+  const { columns, ...rest } = row;
+  void columns;
+  // con più colonne l'alias non si applica
+  return cols.map((column) => ({
+    ...rest,
+    ...(cols.length > 1 && "alias" in rest ? { alias: "" } : {}),
+    column,
+  }));
+}
+
+/**
+ * Righe espanse di un'operazione a voci multiple: una riga con N colonne
+ * equivale a N righe identiche negli altri campi, nell'ordine in cui le
+ * colonne sono elencate. Le righe incomplete (nessuna colonna o un campo
+ * obbligatorio vuoto) si scartano. Restituisce una lista per ciascuna lista
+ * dell'operazione (`items`, oppure `groupBy` e `measures`), con la colonna
+ * nel campo `column`. Non modifica `params`. Per un tipo senza voci multiple
+ * restituisce un oggetto vuoto.
+ */
+export function flattenRows(type: OperationType, params: Params): Record<string, FlatRow[]> {
+  const md = MULTI_DEFS[type];
+  if (!md) return {};
+  const migrated = ensureMulti(type, params);
+  const out: Record<string, FlatRow[]> = {};
+  for (const list of md.lists) {
+    const rows = migrated[list.key];
+    out[list.key] = Array.isArray(rows)
+      ? (rows as MultiRow[]).flatMap((row) => expandRow(list, row))
+      : [];
+  }
+  return out;
+}
+
+/** Tetto dei valori proposti per un dominio (come `parseCSV`). */
+export const DOMAIN_MAX = 500;
+
+/**
+ * Valori proposti per più colonne: l'unione, nell'ordine in cui le colonne
+ * sono elencate (e, in ciascuna, nell'ordine del suo dominio), senza
+ * duplicati, al massimo 500. Le colonne sconosciute si saltano.
+ */
+export function columnsDomain(
+  schema: readonly ColumnDef[],
+  columns: readonly string[],
+  max = DOMAIN_MAX,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const name of columns) {
+    const def = schema.find((c) => c.name === name);
+    if (!def) continue;
+    for (const v of def.values) {
+      if (seen.has(v)) continue;
+      seen.add(v);
+      out.push(v);
+      if (out.length >= max) return out;
+    }
+  }
+  return out;
+}
+
+/**
+ * I valori scelti che non sono nel dominio: cambiare le colonne di una riga
+ * non li azzera (differenza voluta dal prototipo), l'interfaccia li segnala.
+ */
+export function valuesOutsideDomain(
+  values: readonly string[],
+  domain: readonly string[],
+): string[] {
+  const inDomain = new Set(domain);
+  return values.filter((v) => !inDomain.has(v));
+}
+
+/**
+ * Tutte le migrazioni dei parametri di un componente (filtro, join, voci
+ * multiple), idempotenti: usata al caricamento di un salvataggio di una
+ * versione precedente. Non modifica `par`.
+ */
+export function ensureParams(type: ComponentId, par: Params): Params {
+  if (type === "filter")
+    return migrateFilterLogic(par as unknown as FilterParams) as unknown as Params;
+  if (type === "join") {
+    const jp = par as unknown as JoinParams;
+    return { ...jp, keys: ensureKeys(jp) } as unknown as Params;
+  }
+  if (type !== "dataset" && MULTI_DEFS[type]) return ensureMulti(type, par);
+  return par;
+}
+```
+
+### `src/etl-core/data/csv.ts`
+
+82 righe
+
+```ts
+/**
+ * Lettura CSV e deduzione dei tipi. Porting letterale delle righe
+ * 4672-4708 di docs/prototype/isa-fusion-prototype.html. Lavora su una
+ * stringa già letta, non su `File`/`FileReader` (che non esistono in
+ * Node).
+ */
+import type { ColumnDef, ColumnType } from "../model/types";
+
+export interface ParsedCsv {
+  readonly columns: readonly ColumnDef[];
+  readonly rows: number;
+}
+
+const CANDIDATE_DELIMITERS = [",", ";", "\t", "|"];
+
+function parseLine(line: string, delim: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i += 1;
+        } else {
+          quoted = false;
+        }
+      } else {
+        cur += ch;
+      }
+    } else if (ch === '"') {
+      quoted = true;
+    } else if (ch === delim) {
+      out.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  return out.map((v) => v.trim());
+}
+
+/** Prototipo, righe 4672-4708. `null` se il testo non contiene righe non vuote. */
+export function parseCSV(text: string): ParsedCsv | null {
+  const lines = text
+    .replace(/\r/g, "")
+    .split("\n")
+    .filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return null;
+  const head = lines[0];
+  if (head === undefined) return null;
+  const delim =
+    CANDIDATE_DELIMITERS.slice().sort((a, b) => head.split(b).length - head.split(a).length)[0] ??
+    ",";
+
+  const header = parseLine(head, delim);
+  const rows = lines.slice(1, 1001).map((l) => parseLine(l, delim));
+
+  const columns: ColumnDef[] = header.map((name, ci) => {
+    const vals = rows.map((r) => r[ci]).filter((v): v is string => v !== undefined && v !== "");
+    const isInt = vals.length > 0 && vals.every((v) => /^-?\d+$/.test(v));
+    const isNum = vals.length > 0 && vals.every((v) => /^-?\d+([.,]\d+)?$/.test(v));
+    const isDate =
+      vals.length > 0 &&
+      vals.every((v) => /^\d{4}-\d{2}-\d{2}/.test(v) || /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(v));
+    const type: ColumnType = isInt ? "integer" : isNum ? "numerico" : isDate ? "data" : "stringa";
+    const distinct = Array.from(new Set(vals));
+    const values =
+      type === "integer" || type === "numerico"
+        ? distinct
+            .slice()
+            .sort((a, b) => parseFloat(a.replace(",", ".")) - parseFloat(b.replace(",", ".")))
+        : distinct;
+    return { name: name || `colonna_${ci + 1}`, type, values: values.slice(0, 500) };
+  });
+
+  return { columns, rows: lines.length - 1 };
+}
+```
+
+### `src/etl-core/index.ts`
+
+109 righe
+
+```ts
+/**
+ * Esportazioni pubbliche del dominio ETL (Fase 1). Vedi README.md per la
+ * tabella di corrispondenza con le funzioni del prototipo
+ * docs/prototype/isa-fusion-prototype.html.
+ */
+
+// --- Modello ------------------------------------------------------------
+export * from "./model/types";
+export {
+  createGraph,
+  cardById,
+  inputsOf,
+  outputOf,
+  setCard,
+  removeCard,
+  removeCards,
+  addLink,
+  filterLinks,
+  withLinks,
+  patchCard,
+  withParamAt,
+  createSequentialIdGenerator,
+} from "./model/graph";
+
+// --- Catalogo -------------------------------------------------------------
+export { ICONS, EMPTY_SLOT_ICON } from "./catalog/icons";
+export { META, SECTIONS, MERGE_OPS, sectionOf } from "./catalog/operations";
+export type { OperationMeta, SectionDef } from "./catalog/operations";
+export {
+  PARAM_DEFS,
+  MULTI_DEFS,
+  MULTI_OPS,
+  NO_VALUE_OPS,
+  FILTER_OPS,
+  SEPARATORS,
+  LIST_OPS,
+  JOIN_OPS,
+  JOIN_OP_NAME,
+  LOGIC_OPS,
+  LOGIC_HELP,
+  newCondition,
+  createValuesField,
+  normalizeValuesField,
+  splitTokens,
+  valuesText,
+  fieldFilled,
+  ensureMulti,
+  ensureParams,
+  columnsOf,
+  columnsText,
+  measureNames,
+  flattenRows,
+  columnsDomain,
+  valuesOutsideDomain,
+  DOMAIN_MAX,
+  defaultParams,
+  ensureParamsFor,
+  ensureKeys,
+  migrateFilterLogic,
+  sideText,
+  keyComplete,
+  summarizeKey,
+  summarizeCond,
+  hasEquiJoinCondition,
+} from "./catalog/params";
+export type { Separator } from "./catalog/params";
+
+// --- Regole ---------------------------------------------------------------
+export { boxCapacity, reaches, linkRefusal, relation, compatiblePair } from "./rules/relations";
+export type { Relation, RelationResult } from "./rules/relations";
+export {
+  connect,
+  spawnOutput,
+  refreshOutput,
+  pruneOutputs,
+  enforceCapacity,
+  nodesRemovedBy,
+  deleteNodes,
+  deleteLink,
+  mergeBoxes,
+  insertable,
+  insertOnLink,
+  detachStep,
+  deleteStep,
+  reorderSteps,
+  duplicateNodes,
+  isPartialOutput,
+  defaultPositionFn,
+} from "./rules/mutations";
+export { stepMissing, nodeState } from "./rules/state";
+
+// --- Logica -----------------------------------------------------------
+export {
+  groupRuns,
+  normalizeGroups,
+  groupPair,
+  splitAt,
+  ungroup,
+  addToGroup,
+  leftAssoc,
+  groupedPreview,
+} from "./logic/expressions";
+export type { Groupable, GroupRun } from "./logic/expressions";
+
+// --- Schema e CSV -----------------------------------------------------
+export { schemaOf } from "./schema/schema";
+export { parseCSV } from "./data/csv";
+export type { ParsedCsv } from "./data/csv";
+```
 
 ### `src/etl-core/logic/expressions.ts`
 
@@ -296,7 +1529,7 @@ export function createSequentialIdGenerator(prefix = ""): IdGenerator {
 
 ### `src/etl-core/model/types.ts`
 
-228 righe
+237 righe
 
 ```ts
 /**
@@ -368,21 +1601,30 @@ export interface ValuesField {
   sep: string;
 }
 
-export type MultiFieldType = "text" | "select" | "column" | "value" | "values";
+export type MultiFieldType = "text" | "select" | "column" | "columns" | "value" | "values";
 
 export interface MultiFieldDef {
   readonly k: string;
   readonly label: string;
   readonly type: MultiFieldType;
   readonly opts?: readonly string[];
-  /** Valore predefinito, oppure funzione che lo produce (per i campi `values`). */
-  readonly def: string | (() => ValuesField);
+  /** Valore predefinito, oppure funzione che lo produce (per i campi `values` e `columns`). */
+  readonly def: string | (() => ValuesField) | (() => string[]);
   readonly req?: boolean;
 }
 
 /** Una riga di una lista MULTI_DEFS (es. una conversione, una chiave di raggruppamento). */
 export interface MultiRow {
+  [fieldKey: string]: string | string[] | ValuesField | undefined;
+}
+
+/**
+ * Riga espansa (`flattenRows`): una colonna sola, `column`, e gli altri campi
+ * della riga d'origine. Una riga con N colonne diventa N righe espanse.
+ */
+export interface FlatRow {
   [fieldKey: string]: string | ValuesField | undefined;
+  column: string;
 }
 
 export interface MultiListDef {
@@ -526,804 +1768,5 @@ export type PositionFn = (graph: Graph, anchorId: string) => { x: number; y: num
 /** Esito di un'operazione che può essere rifiutata con un motivo testuale. */
 export type OperationResult =
   { readonly ok: true; readonly graph: Graph } | { readonly ok: false; readonly reason: string };
-```
-
-### `src/etl-core/rules/mutations.ts`
-
-517 righe
-
-```ts
-/**
- * Operazioni sul grafo. Porting delle righe 1730-1957, 2137-2248,
- * 4412-4453, 4480-4618 di docs/prototype/isa-fusion-prototype.html —
- * SENZA animazioni, DOM o geometria di posizionamento (Fase 2): ogni
- * funzione qui riceve un `Graph` e restituisce un nuovo `Graph`, mai
- * mutando l'input.
- *
- * Nota sui contatori di denominazione: il prototipo usa contatori globali
- * mutabili (`outCounter`, `comboCounter`) incrementati una volta per
- * sempre. Un dominio a funzioni pure non ha un posto per questo stato: il
- * numero mostrato ("Output N", "Combined Box N") viene invece derivato
- * dal grafo corrente (quanti output/box combinati esistono già). Nell'uso
- * normale (senza eliminare e poi ricreare più volte gli stessi nodi) il
- * risultato è identico al prototipo; è una conseguenza necessaria del
- * vincolo "funzione pura", non un comportamento diverso deliberato.
- */
-import { META } from "../catalog/operations";
-import { defaultParams } from "../catalog/params";
-import { boxCapacity, linkRefusal } from "./relations";
-import {
-  addLink,
-  cardById,
-  filterLinks,
-  inputsOf,
-  outputOf,
-  patchCard,
-  removeCard,
-  removeCards,
-  setCard,
-} from "../model/graph";
-import type {
-  Card,
-  ComponentId,
-  Graph,
-  IdGenerator,
-  Link,
-  OperationResult,
-  Params,
-  PositionFn,
-} from "../model/types";
-
-/** Prototipo, riga 1745 (uso in `spawnOutput`): scostamento semplice, senza evitare sovrapposizioni. */
-export const defaultPositionFn: PositionFn = (graph, anchorId) => {
-  const anchor = cardById(graph, anchorId);
-  if (!anchor) return { x: 0, y: 0 };
-  return { x: anchor.x + 200, y: anchor.y };
-};
-
-function countOutputs(graph: Graph): number {
-  return Object.values(graph.cards).filter((c) => c.isOutput).length;
-}
-
-function countCombinedBoxes(graph: Graph): number {
-  return Object.values(graph.cards).filter((c) => c.kind === "op" && c.components.length > 1)
-    .length;
-}
-
-function ensureCardParams(card: Card): Params[] {
-  const next = card.params.slice();
-  while (next.length < card.components.length) {
-    next.push(defaultParams(card.components[next.length] as ComponentId));
-  }
-  return next;
-}
-
-/**
- * Prototipo, righe 1616-1635 (`renderOutputIcon`): qui solo la parte di
- * dominio (capacità/riempimento); il disegno delle "fette" è Fase 2.
- */
-export function isPartialOutput(card: Card): boolean {
-  return card.capacity !== undefined && card.capacity > 1 && (card.filled ?? 0) < card.capacity;
-}
-
-/**
- * Prototipo, righe 1875-1885 (`connect`) UNIFICATA con `linkRefusal`
- * (righe 1901-1915): qui `connect` è l'unico punto d'ingresso e rifiuta
- * cicli, duplicati, capienza superata e output non ancora completo — nel
- * prototipo il controllo dei cicli viveva solo in `linkRefusal`, invocata
- * dall'interazione UI prima di chiamare `connect`; qui le due
- * responsabilità sono unite perché la funzione pura è l'unica autorità
- * sulla validità di un collegamento.
- *
- * Garantisce l'output (Fase 1.1): dopo aver aggiunto il collegamento,
- * chiama `refreshOutput` sul box di destinazione — crea l'output se
- * manca e ne aggiorna `capacity`/`filled`. Invariante risultante: dopo
- * `connect`, ogni lavorazione con almeno un ingresso ha un output.
- */
-export function connect(
-  graph: Graph,
-  sourceId: string,
-  targetId: string,
-  nextId: IdGenerator,
-  positionFn: PositionFn = defaultPositionFn,
-): OperationResult {
-  const box = cardById(graph, targetId);
-  if (!box) return { ok: false, reason: "Il box di destinazione non esiste" };
-  const reason = linkRefusal(graph, sourceId, targetId);
-  if (reason) return { ok: false, reason };
-  const linked = addLink(graph, { from: sourceId, to: targetId });
-  return { ok: true, graph: refreshOutput(linked, targetId, nextId, positionFn) };
-}
-
-/**
- * Prototipo, righe 1730-1772 (`spawnOutput`), senza l'animazione di
- * espulsione. Se il box ha già un output lo restituisce senza crearne un
- * altro. Restituisce `null` se il box non esiste.
- */
-export function spawnOutput(
-  graph: Graph,
-  boxId: string,
-  nextId: IdGenerator,
-  positionFn: PositionFn = defaultPositionFn,
-): { graph: Graph; outputId: string } | null {
-  const existing = outputOf(graph, boxId);
-  if (existing) return { graph, outputId: existing };
-  const box = cardById(graph, boxId);
-  if (!box) return null;
-  const outputId = nextId();
-  const pos = positionFn(graph, boxId);
-  const outputCard: Card = {
-    id: outputId,
-    kind: "dataset",
-    isOutput: true,
-    components: ["dataset"],
-    params: [defaultParams("dataset")],
-    name: `Output ${countOutputs(graph) + 1}`,
-    x: pos.x,
-    y: pos.y,
-  };
-  const withCard = setCard(graph, outputCard);
-  const withLink = addLink(withCard, { from: boxId, to: outputId });
-  return { graph: withLink, outputId };
-}
-
-/**
- * Prototipo, righe 1659-1672 (`refreshOutput`): crea l'output se manca e
- * aggiorna `capacity`/`filled`. Non fa nulla se il box non ha ingressi
- * (prototipo, riga 1663: `if (n === 0) return;`).
- */
-export function refreshOutput(
-  graph: Graph,
-  boxId: string,
-  nextId: IdGenerator,
-  positionFn: PositionFn = defaultPositionFn,
-): Graph {
-  const box = cardById(graph, boxId);
-  if (!box || box.kind !== "op") return graph;
-  const n = inputsOf(graph, boxId).length;
-  if (n === 0) return graph;
-  const spawned = spawnOutput(graph, boxId, nextId, positionFn);
-  if (!spawned) return graph;
-  const out = cardById(spawned.graph, spawned.outputId);
-  if (!out) return spawned.graph;
-  const capacity = boxCapacity(box);
-  const filled = Math.min(n, capacity);
-  return setCard(spawned.graph, patchCard(out, { capacity, filled }));
-}
-
-/**
- * Prototipo, righe 4414-4430 (`pruneOutputs`): un output senza produttore,
- * o il cui produttore ha perso tutti i suoi ingressi, non ha ragione di
- * esistere. A cascata.
- */
-export function pruneOutputs(graph: Graph): Graph {
-  let current = graph;
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const id of Object.keys(current.cards)) {
-      const c = current.cards[id];
-      if (!c?.isOutput) continue;
-      const prod = current.links.find((l) => l.to === id);
-      const alive =
-        !!prod && !!current.cards[prod.from] && current.links.some((l) => l.to === prod.from);
-      if (!alive) {
-        current = removeCard(current, id);
-        current = filterLinks(current, (l) => l.from !== id && l.to !== id);
-        changed = true;
-      }
-    }
-  }
-  return current;
-}
-
-/**
- * Prototipo, righe 1638-1648 (`enforceCapacity`): se un box perde
- * capienza (es. ha perso un join), gli ingressi in eccesso vengono
- * rimossi — restano i collegamenti più vecchi.
- */
-export function enforceCapacity(graph: Graph, boxId: string): Graph {
-  const box = cardById(graph, boxId);
-  if (!box || box.kind !== "op") return graph;
-  const cap = boxCapacity(box);
-  const ins = inputsOf(graph, boxId);
-  let next = graph;
-  if (ins.length > cap) {
-    const surplus = new Set(ins.slice(cap));
-    next = filterLinks(next, (l) => !surplus.has(l));
-  }
-  return pruneOutputs(next);
-}
-
-/**
- * Prototipo, righe 4432-4453 (`nodesRemovedBy`): quali nodi sparirebbero
- * davvero eliminando `ids` — il nodo stesso più gli output che restano
- * senza produttore vivo, a cascata.
- */
-export function nodesRemovedBy(graph: Graph, uidOrIds: string | readonly string[]): Set<string> {
-  const ids = Array.isArray(uidOrIds) ? uidOrIds : [uidOrIds];
-  let cards: Record<string, Card> = { ...graph.cards };
-  for (const id of ids) delete cards[id];
-  let links = graph.links.filter((l) => !ids.includes(l.from) && !ids.includes(l.to));
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const id of Object.keys(cards)) {
-      if (!cards[id]?.isOutput) continue;
-      const prod = links.find((l) => l.to === id);
-      const alive = !!prod && !!cards[prod.from] && links.some((l) => l.to === prod.from);
-      if (!alive) {
-        const rest = { ...cards };
-        delete rest[id];
-        cards = rest;
-        links = links.filter((l) => l.from !== id && l.to !== id);
-        changed = true;
-      }
-    }
-  }
-  const removed = new Set<string>(ids);
-  for (const id of Object.keys(graph.cards)) {
-    if (!(id in cards)) removed.add(id);
-  }
-  return removed;
-}
-
-/**
- * Prototipo, riga 4407 (dentro `renderAll`, chiamato dopo ogni
- * eliminazione): `refreshOutput` su ogni lavorazione. Ricrea l'output di
- * un box che ha ancora ingressi ma lo ha perso (es. l'output eliminato
- * direttamente, o il collegamento box → output rimosso).
- */
-function refreshAllOutputs(graph: Graph, nextId: IdGenerator, positionFn: PositionFn): Graph {
-  let next = graph;
-  for (const id of Object.keys(graph.cards)) {
-    next = refreshOutput(next, id, nextId, positionFn);
-  }
-  return next;
-}
-
-/**
- * Prototipo, righe 4480-4506 (`commitDelete`), solo la parte di dominio
- * (senza l'animazione di rientro degli output): rimuove i nodi
- * effettivamente cancellati da `nodesRemovedBy` e i loro collegamenti.
- *
- * Garantisce l'output (Fase 1.1): come `renderAll` nel prototipo (riga
- * 4407), ogni lavorazione rimasta con almeno un ingresso riottiene un
- * output se lo ha perso.
- */
-export function deleteNodes(
-  graph: Graph,
-  uidOrIds: string | readonly string[],
-  nextId: IdGenerator,
-  positionFn: PositionFn = defaultPositionFn,
-): Graph {
-  const removed = nodesRemovedBy(graph, uidOrIds);
-  const withoutCards = removeCards(graph, removed);
-  const next = filterLinks(withoutCards, (l) => !removed.has(l.from) && !removed.has(l.to));
-  return refreshAllOutputs(next, nextId, positionFn);
-}
-
-/**
- * Prototipo, righe 4565-4570 (`deleteLink`): rimuove un collegamento e
- * poi gli output che ne dipendevano. Garantisce l'output come
- * `deleteNodes` (Fase 1.1).
- */
-export function deleteLink(
-  graph: Graph,
-  link: Link,
-  nextId: IdGenerator,
-  positionFn: PositionFn = defaultPositionFn,
-): Graph {
-  const next = filterLinks(graph, (l) => !(l.from === link.from && l.to === link.to));
-  return refreshAllOutputs(pruneOutputs(next), nextId, positionFn);
-}
-
-/**
- * Prototipo, righe 1774-1840 (`performMerge`), senza animazioni/DOM.
- * Fonde `draggedId` dentro `targetId` (entrambi lavorazioni): unisce
- * `components`/`params`, rimappa i collegamenti, rimuove auto-anelli e
- * duplicati, e aggiorna l'eventuale output del box risultante.
- */
-export function mergeBoxes(
-  graph: Graph,
-  draggedId: string,
-  targetId: string,
-  nextId: IdGenerator,
-  positionFn: PositionFn = defaultPositionFn,
-): OperationResult {
-  const dragged = cardById(graph, draggedId);
-  const target = cardById(graph, targetId);
-  if (!dragged || !target || dragged.kind !== "op" || target.kind !== "op") {
-    return { ok: false, reason: "La fusione richiede due lavorazioni" };
-  }
-  const draggedParams = ensureCardParams(dragged);
-  const targetParams = ensureCardParams(target);
-  const merged = [...target.components, ...dragged.components];
-  const mergedParams = [...targetParams, ...draggedParams];
-
-  const wasCombined = target.components.length > 1;
-  const combinedCount = countCombinedBoxes(graph) + 1;
-  const name = wasCombined
-    ? target.name
-    : combinedCount === 1
-      ? "Combined Box"
-      : `Combined Box ${combinedCount}`;
-
-  let links: Link[] = graph.links.map((l) => {
-    let { from, to } = l;
-    if (to === draggedId) to = targetId;
-    if (from === draggedId) from = targetId;
-    return { from, to };
-  });
-  links = links.filter((l) => l.from !== l.to);
-  const produced = new Set(links.filter((l) => l.from === targetId).map((l) => l.to));
-  links = links.filter((l) => !(l.to === targetId && produced.has(l.from)));
-  links = links.filter(
-    (l, i, arr) => arr.findIndex((o) => o.from === l.from && o.to === l.to) === i,
-  );
-
-  const mergedCard: Card = { ...target, components: merged, params: mergedParams, name };
-  let next: Graph = { cards: { ...graph.cards }, links };
-  next = setCard(next, mergedCard);
-  next = removeCard(next, draggedId);
-
-  if (inputsOf(next, targetId).length > 0) {
-    next = refreshOutput(next, targetId, nextId, positionFn);
-  }
-  return { ok: true, graph: next };
-}
-
-// --- Inserimento su un collegamento esistente (prototipo, righe 1846-1873) ---
-
-/** Prototipo, righe 1846-1852: solo su un collegamento dataset → lavorazione, con una lavorazione priva di collegamenti. */
-export function insertable(graph: Graph, link: Link, nodeId: string): boolean {
-  if (link.from === nodeId || link.to === nodeId) return false;
-  const a = cardById(graph, link.from);
-  const b = cardById(graph, link.to);
-  if (!a || !b || a.kind !== "dataset" || b.kind !== "op") return false;
-  return !graph.links.some((l) => l.from === nodeId || l.to === nodeId);
-}
-
-/**
- * Prototipo, righe 1853-1873 (`insertOnLink`), senza posizionamento
- * geometrico (Fase 2) né lo scioglimento hint testuale (UI). Restituisce
- * `null` se l'inserimento non è consentito (vedi `insertable`).
- */
-export function insertOnLink(
-  graph: Graph,
-  link: Link,
-  nodeId: string,
-  nextId: IdGenerator,
-  positionFn: PositionFn = defaultPositionFn,
-): Graph | null {
-  if (!insertable(graph, link, nodeId)) return null;
-  let next = filterLinks(graph, (l) => !(l.from === link.from && l.to === link.to));
-  next = addLink(next, { from: link.from, to: nodeId });
-  const spawned = spawnOutput(next, nodeId, nextId, positionFn);
-  if (spawned) {
-    next = addLink(spawned.graph, { from: spawned.outputId, to: link.to });
-  }
-  next = refreshOutput(next, nodeId, nextId, positionFn);
-  next = refreshOutput(next, link.to, nextId, positionFn);
-  return next;
-}
-
-// --- Passaggi di un box combinato (prototipo, righe 2137-2248) --------------
-
-/**
- * Prototipo, righe 2137-2203 (`detachStep`), senza animazioni/DOM/
- * posizionamento geometrico: sgancia il passaggio a `index` dal box
- * `boxId` e lo trasforma in una card autonoma. Restituisce `null` se il
- * box non è combinato (meno di 2 componenti).
- */
-export function detachStep(
-  graph: Graph,
-  boxId: string,
-  index: number,
-  nextId: IdGenerator,
-  positionFn: PositionFn = defaultPositionFn,
-): { graph: Graph; detachedId: string } | null {
-  const box = cardById(graph, boxId);
-  if (!box || box.kind !== "op" || box.components.length < 2) return null;
-  const compId = box.components[index];
-  if (compId === undefined) return null;
-  const params = ensureCardParams(box);
-  const detachedParams = params[index] ?? defaultParams(compId);
-  const nextComponents = box.components.filter((_, i) => i !== index);
-  const nextParams = params.filter((_, i) => i !== index);
-  const stillCombined = nextComponents.length > 1;
-
-  const updatedBox: Card = {
-    ...box,
-    components: nextComponents,
-    params: nextParams,
-    name: stillCombined ? box.name : metaLabelOf(nextComponents[0] as ComponentId),
-  };
-
-  const detachedId = nextId();
-  const pos = positionFn(graph, boxId);
-  const detachedCard: Card = {
-    id: detachedId,
-    kind: "op",
-    components: [compId],
-    params: [detachedParams],
-    name: metaLabelOf(compId),
-    x: pos.x,
-    y: pos.y,
-  };
-
-  let next = setCard(graph, updatedBox);
-  next = setCard(next, detachedCard);
-  next = enforceCapacity(next, boxId);
-  next = refreshOutput(next, boxId, nextId, positionFn);
-  return { graph: next, detachedId };
-}
-
-function metaLabelOf(component: ComponentId): string {
-  return META[component].label;
-}
-
-/**
- * Prototipo, righe 2205-2247 (`deleteStep`), senza animazioni/DOM.
- * Restituisce il grafo inalterato se il box non è combinato.
- */
-export function deleteStep(
-  graph: Graph,
-  boxId: string,
-  index: number,
-  nextId: IdGenerator,
-  positionFn: PositionFn = defaultPositionFn,
-): Graph {
-  const box = cardById(graph, boxId);
-  if (!box || box.kind !== "op" || box.components.length < 2) return graph;
-  const nextComponents = box.components.filter((_, i) => i !== index);
-  const params = ensureCardParams(box);
-  const nextParams = params.filter((_, i) => i !== index);
-  const stillCombined = nextComponents.length > 1;
-  const updatedBox: Card = {
-    ...box,
-    components: nextComponents,
-    params: nextParams,
-    name: stillCombined ? box.name : metaLabelOf(nextComponents[0] as ComponentId),
-  };
-  let next = setCard(graph, updatedBox);
-  next = enforceCapacity(next, boxId);
-  next = refreshOutput(next, boxId, nextId, positionFn);
-  return next;
-}
-
-/**
- * Prototipo, righe 2330-2338 (dentro il gestore di riordino): sposta il
- * passaggio a `fromIndex` in `toIndex`, spostando `components` e
- * `params` insieme.
- */
-export function reorderSteps(
-  graph: Graph,
-  boxId: string,
-  fromIndex: number,
-  toIndex: number,
-): Graph {
-  const box = cardById(graph, boxId);
-  if (!box) return graph;
-  const params = ensureCardParams(box);
-  const components = box.components.slice();
-  const [movedComponent] = components.splice(fromIndex, 1);
-  if (movedComponent === undefined) return graph;
-  components.splice(toIndex, 0, movedComponent);
-  const [movedParam] = params.splice(fromIndex, 1);
-  params.splice(toIndex, 0, movedParam ?? defaultParams(movedComponent));
-  return setCard(graph, { ...box, components, params });
-}
-
-// --- Duplicazione (prototipo, righe 4594-4618) ------------------------------
-
-/**
- * Prototipo, righe 4594-4618 (`duplicateSelection`): duplica i nodi
- * indicati senza collegamenti, escludendo gli output (che non hanno
- * senso senza il box che li produce). Restituisce gli id creati, nello
- * stesso ordine di `ids`.
- */
-export function duplicateNodes(
-  graph: Graph,
-  ids: readonly string[],
-  nextId: IdGenerator,
-  offset: { x: number; y: number } = { x: 52, y: 52 },
-): { graph: Graph; createdIds: string[] } {
-  let next = graph;
-  const createdIds: string[] = [];
-  for (const id of ids) {
-    const src = cardById(graph, id);
-    if (!src || src.isOutput) continue;
-    const newId = nextId();
-    const { slot, ...srcWithoutSlot } = src;
-    void slot;
-    const copy: Card = {
-      ...srcWithoutSlot,
-      id: newId,
-      name: `${src.name} copia`,
-      x: src.x + offset.x,
-      y: src.y + offset.y,
-    };
-    next = setCard(next, copy);
-    createdIds.push(newId);
-  }
-  return { graph: next, createdIds };
-}
-```
-
-### `src/etl-core/rules/relations.ts`
-
-118 righe
-
-```ts
-/**
- * Capienza, cicli, compatibilità e motivi di rifiuto. Porting letterale
- * delle righe 1543-1550 e 1610-1936 di
- * docs/prototype/isa-fusion-prototype.html.
- */
-import { MERGE_OPS } from "../catalog/operations";
-import { cardById, inputsOf } from "../model/graph";
-import type { Card, Graph } from "../model/types";
-
-/** Prototipo, riga 1612: 1 più il numero di componenti in MERGE_OPS. */
-export function boxCapacity(card: Card): number {
-  return 1 + card.components.filter((c) => (MERGE_OPS as readonly string[]).includes(c)).length;
-}
-
-/**
- * Prototipo, righe 1887-1899: `fromUid` raggiunge `toUid` seguendo i
- * collegamenti in avanti, a qualunque distanza (DFS iterativa).
- */
-export function reaches(graph: Graph, fromId: string, toId: string): boolean {
-  const seen = new Set<string>();
-  const stack = [fromId];
-  while (stack.length > 0) {
-    const cur = stack.pop();
-    if (cur === undefined) break;
-    if (cur === toId) return true;
-    if (seen.has(cur)) continue;
-    seen.add(cur);
-    for (const l of graph.links) {
-      if (l.from === cur) stack.push(l.to);
-    }
-  }
-  return false;
-}
-
-/**
- * Prototipo, righe 1901-1915: perché collegare `dsId` (un dataset) a
- * `boxId` (una lavorazione) sarebbe rifiutato, oppure `null` se è valido.
- *
- * Correzione intenzionale rispetto al prototipo (Fase 1.1, vedi
- * src/etl-core/NOTE_DIVERGENZE.md): i due messaggi di capienza sono
- * generali — "Il box ha già tutte le sue N tabelle" (N = capienza reale,
- * non sempre "due") e "Questo output non è ancora completo: manca ancora
- * una tabella in ingresso" (non specifico al join) — invece dei testi
- * cablati del prototipo.
- */
-export function linkRefusal(graph: Graph, dsId: string, boxId: string): string | null {
-  const ds = cardById(graph, dsId);
-  const box = cardById(graph, boxId);
-  if (!ds || !box) return null;
-  if (ds.capacity !== undefined && ds.capacity > 1 && (ds.filled ?? 0) < ds.capacity) {
-    return "Questo output non è ancora completo: manca ancora una tabella in ingresso";
-  }
-  if (reaches(graph, boxId, dsId)) {
-    return "Un box non può agganciarsi a ciò che produce: sarebbe un ciclo infinito";
-  }
-  const cur = inputsOf(graph, boxId);
-  if (cur.some((l) => l.from === dsId)) {
-    return "Questa tabella è già collegata al box";
-  }
-  const cap = boxCapacity(box);
-  if (cur.length >= cap) {
-    return cap > 1
-      ? `Il box ha già tutte le sue ${cap} tabelle`
-      : "Il box accetta una sola tabella in ingresso";
-  }
-  return null;
-}
-
-export type Relation = "merge" | "link" | "link-reverse" | "displace" | null;
-
-export interface RelationResult {
-  readonly relation: Relation;
-  /** Motivo dello spostamento, presente solo quando `relation === 'displace'`. */
-  readonly displaceReason?: string;
-}
-
-/**
- * Prototipo, righe 1917-1936: cosa succede accostando `aId` a `bId`
- * (l'ordine conta: chi viene trascinato su chi).
- */
-export function relation(graph: Graph, aId: string, bId: string): RelationResult {
-  const a = cardById(graph, aId);
-  const b = cardById(graph, bId);
-  if (!a || !b) return { relation: null };
-  if (a.kind === "op" && b.kind === "op") return { relation: "merge" };
-  if (a.kind === "dataset" && b.kind === "op") {
-    const why = linkRefusal(graph, aId, bId);
-    if (why) return { relation: "displace", displaceReason: why };
-    return { relation: "link" };
-  }
-  if (a.kind === "op" && b.kind === "dataset") {
-    const why = linkRefusal(graph, bId, aId);
-    if (why) return { relation: "displace", displaceReason: why };
-    return { relation: "link-reverse" };
-  }
-  // a.kind === 'dataset' && b.kind === 'dataset'
-  return {
-    relation: "displace",
-    displaceReason: "Due dataset non si fondono: serve una lavorazione, ad esempio un Join",
-  };
-}
-
-/**
- * Prototipo, righe 1543-1550: due nodi "compatibili" (che si fonderebbero
- * o collegherebbero) non si respingono geometricamente — quell'aspetto è
- * fuori dall'ambito di questa fase, ma la regola di compatibilità è
- * domain-pure e viene portata qui.
- */
-export function compatiblePair(graph: Graph, aId: string, bId: string): boolean {
-  const a = cardById(graph, aId);
-  const b = cardById(graph, bId);
-  if (!a || !b) return false;
-  if (a.kind === "op" && b.kind === "op") return true;
-  if (a.kind === "dataset" && b.kind === "op") return linkRefusal(graph, aId, bId) === null;
-  if (a.kind === "op" && b.kind === "dataset") return linkRefusal(graph, bId, aId) === null;
-  return false;
-}
-```
-
-### `src/etl-core/rules/state.ts`
-
-103 righe
-
-```ts
-/**
- * Completezza dei parametri e stato dei nodi. Porting letterale delle
- * righe 1426-1459 di docs/prototype/isa-fusion-prototype.html.
- */
-import { META } from "../catalog/operations";
-import {
-  PARAM_DEFS,
-  ensureKeys,
-  ensureMulti,
-  fieldFilled,
-  keyComplete,
-  MULTI_DEFS,
-  MULTI_OPS,
-  NO_VALUE_OPS,
-} from "../catalog/params";
-import { boxCapacity } from "./relations";
-import { inputsOf, cardById } from "../model/graph";
-import type {
-  ComponentId,
-  FilterCondition,
-  Graph,
-  JoinParams,
-  MultiRow,
-  Params,
-} from "../model/types";
-
-/**
- * Prototipo, righe 1426-1446: cosa manca perché il componente `type`, con
- * i parametri `par`, sia considerato completo. `true` = incompleto.
- *
- * Correzione intenzionale rispetto al prototipo per il filtro (Fase 1.1,
- * vedi src/etl-core/NOTE_DIVERGENZE.md — "una sola fonte di verità per i
- * valori"): un operatore in `MULTI_OPS` è completo solo se `values` non è
- * vuoto (non basta più un `text` residuo); un operatore in `NO_VALUE_OPS`
- * è sempre completo (a colonna impostata); ogni altro operatore richiede
- * `text` non vuoto.
- */
-export function stepMissing(type: ComponentId, par: Params | undefined): boolean {
-  if (!par) return true;
-  if (type === "filter") {
-    const conditions = par["conditions"];
-    if (!Array.isArray(conditions) || conditions.length === 0) return true;
-    return (conditions as FilterCondition[]).some((c) => {
-      if (!c.column) return true;
-      if (NO_VALUE_OPS.includes(c.op)) return false;
-      if (MULTI_OPS.includes(c.op)) return !(c.values && c.values.length > 0);
-      return !(c.text && c.text.trim());
-    });
-  }
-  if (type === "join") {
-    const keys = ensureKeys(par as unknown as JoinParams);
-    if (keys.length === 0) return true;
-    return keys.some((k) => !keyComplete(k));
-  }
-  if (type !== "dataset" && MULTI_DEFS[type]) {
-    const md = MULTI_DEFS[type];
-    if (!md) return false;
-    const migrated = ensureMulti(type, par);
-    return md.lists.some((list) => {
-      const rows = migrated[list.key];
-      if (!Array.isArray(rows) || rows.length === 0) return true;
-      return (rows as MultiRow[]).some((row) =>
-        list.fields.some((f) => (f.req || f.type === "column") && !fieldFilled(f, row[f.k])),
-      );
-    });
-  }
-  if (type === "exportOp") {
-    const dest = par["dest"];
-    return !(typeof dest === "string" && dest.trim().length > 0);
-  }
-  const defs = PARAM_DEFS[type];
-  if (!Array.isArray(defs)) return false;
-  return defs.some((f) => {
-    if (!f.req && f.type !== "column") return false;
-    const v = par[f.k];
-    return !(typeof v === "string" && v.trim().length > 0);
-  });
-}
-
-/**
- * Prototipo, righe 1447-1459: messaggio che descrive perché un nodo non è
- * pronto, oppure `null` se è completo.
- */
-export function nodeState(graph: Graph, id: string): string | null {
-  const d = cardById(graph, id);
-  if (!d) return null;
-  if (d.kind === "dataset") {
-    if (d.isOutput) {
-      return d.capacity !== undefined && d.capacity > 1 && (d.filled ?? 0) < d.capacity
-        ? "In attesa delle tabelle mancanti"
-        : null;
-    }
-    const p0 = d.params[0];
-    const path = p0 ? p0["path"] : undefined;
-    return typeof path === "string" && path.trim().length > 0 ? null : "Origine da configurare";
-  }
-  if (inputsOf(graph, id).length < boxCapacity(d)) return "Mancano tabelle in ingresso";
-  const badIndex = d.components.findIndex((c, i) => stepMissing(c, d.params[i]));
-  if (badIndex < 0) return null;
-  const badType = d.components[badIndex] as ComponentId;
-  return `Da configurare: ${META[badType].label}`;
-}
-```
-
-### `src/etl-core/schema/schema.ts`
-
-37 righe
-
-```ts
-/**
- * Propagazione delle colonne. Porting letterale delle righe 2415-2430 di
- * docs/prototype/isa-fusion-prototype.html.
- */
-import { cardById, inputsOf } from "../model/graph";
-import type { ColumnDef, DatasetParams, Graph } from "../model/types";
-
-/**
- * Le colonne di una sorgente vengono dai suoi parametri (`params[0].columns`,
- * popolate da `parseCSV` al caricamento); quelle di un output, attraverso il
- * box che lo produce; quelle di una lavorazione sono l'unione delle colonne
- * dei suoi ingressi (nell'ordine in cui compaiono, senza duplicati per nome).
- * `null` se non determinabile. Guardia di profondità come nel prototipo
- * (righe 2415-2418), a protezione da un ciclo non ancora rilevato altrove.
- */
-export function schemaOf(graph: Graph, id: string, depth = 0): ColumnDef[] | null {
-  if (depth > 24) return null;
-  const d = cardById(graph, id);
-  if (!d) return null;
-  if (d.kind === "dataset") {
-    if (!d.isOutput) {
-      const p0 = d.params[0] as DatasetParams | undefined;
-      return p0?.columns ?? null;
-    }
-    const prod = graph.links.find((l) => l.to === id);
-    return prod ? schemaOf(graph, prod.from, depth + 1) : null;
-  }
-  const out: ColumnDef[] = [];
-  for (const l of inputsOf(graph, id)) {
-    const cols = schemaOf(graph, l.from, depth + 1) ?? [];
-    for (const c of cols) {
-      if (!out.some((o) => o.name === c.name)) out.push(c);
-    }
-  }
-  return out.length ? out : null;
-}
 ```
 

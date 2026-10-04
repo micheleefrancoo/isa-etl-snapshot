@@ -22,7 +22,7 @@
     },
     {
       "name": "files/01b-etl-core-a.md",
-      "bytes": 56818,
+      "bytes": 52654,
       "files": [
         "src/etl-core/NOTE_DIVERGENZE.md",
         "src/etl-core/README.md",
@@ -30,32 +30,39 @@
         "src/etl-core/__tests__/expressions.test.ts",
         "src/etl-core/__tests__/fase11-requisiti.test.ts",
         "src/etl-core/__tests__/fase11.test.ts",
-        "src/etl-core/__tests__/helpers.ts",
-        "src/etl-core/__tests__/mutations.test.ts"
+        "src/etl-core/__tests__/helpers.ts"
       ]
     },
     {
       "name": "files/01b-etl-core-b.md",
-      "bytes": 54152,
+      "bytes": 49125,
       "files": [
+        "src/etl-core/__tests__/multi-columns.test.ts",
+        "src/etl-core/__tests__/mutations.test.ts",
         "src/etl-core/__tests__/params.test.ts",
         "src/etl-core/__tests__/relations.test.ts",
         "src/etl-core/__tests__/schema.test.ts",
         "src/etl-core/__tests__/state.test.ts",
         "src/etl-core/catalog/icons.ts",
-        "src/etl-core/catalog/operations.ts",
-        "src/etl-core/catalog/params.ts",
-        "src/etl-core/data/csv.ts",
-        "src/etl-core/index.ts"
+        "src/etl-core/catalog/operations.ts"
       ]
     },
     {
       "name": "files/01b-etl-core-c.md",
-      "bytes": 43760,
+      "bytes": 53171,
       "files": [
+        "src/etl-core/catalog/params.ts",
+        "src/etl-core/data/csv.ts",
+        "src/etl-core/index.ts",
         "src/etl-core/logic/expressions.ts",
         "src/etl-core/model/graph.ts",
-        "src/etl-core/model/types.ts",
+        "src/etl-core/model/types.ts"
+      ]
+    },
+    {
+      "name": "files/01b-etl-core-d.md",
+      "bytes": 28081,
+      "files": [
         "src/etl-core/rules/mutations.ts",
         "src/etl-core/rules/relations.ts",
         "src/etl-core/rules/state.ts",
@@ -121,7 +128,7 @@
     },
     {
       "name": "files/01d-etl-store-a.md",
-      "bytes": 50018,
+      "bytes": 50212,
       "files": [
         "src/etl-store/README.md",
         "src/etl-store/__tests__/grouping.test.ts",
@@ -132,9 +139,10 @@
     },
     {
       "name": "files/01d-etl-store-b.md",
-      "bytes": 39067,
+      "bytes": 46280,
       "files": [
         "src/etl-store/__tests__/reduce.test.ts",
+        "src/etl-store/__tests__/save-versions.test.ts",
         "src/etl-store/__tests__/store.test.ts",
         "src/etl-store/derived.ts",
         "src/etl-store/index.ts",
@@ -144,7 +152,7 @@
     },
     {
       "name": "files/01d-etl-store-c.md",
-      "bytes": 57945,
+      "bytes": 58691,
       "files": [
         "src/etl-store/reduce.ts",
         "src/etl-store/serialize.ts",
@@ -1077,6 +1085,7 @@
         "src/etl-core/__tests__/fase11-requisiti.test.ts",
         "src/etl-core/__tests__/fase11.test.ts",
         "src/etl-core/__tests__/helpers.ts",
+        "src/etl-core/__tests__/multi-columns.test.ts",
         "src/etl-core/__tests__/mutations.test.ts",
         "src/etl-core/__tests__/params.test.ts",
         "src/etl-core/__tests__/relations.test.ts",
@@ -1098,7 +1107,8 @@
       "outFiles": [
         "01b-etl-core-a.md",
         "01b-etl-core-b.md",
-        "01b-etl-core-c.md"
+        "01b-etl-core-c.md",
+        "01b-etl-core-d.md"
       ]
     },
     "01c-etl-layout": {
@@ -1152,6 +1162,7 @@
         "src/etl-store/__tests__/persistence.test.ts",
         "src/etl-store/__tests__/react.test.ts",
         "src/etl-store/__tests__/reduce.test.ts",
+        "src/etl-store/__tests__/save-versions.test.ts",
         "src/etl-store/__tests__/store.test.ts",
         "src/etl-store/derived.ts",
         "src/etl-store/index.ts",
@@ -1539,8 +1550,9 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-02T13-25-09Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T07-50-59Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T08-45-00Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T10-30-00Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T10-30-00Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T11-15-00Z.md"
   ],
-  "inScopeFileCount": 306,
-  "reportFileCount": 20
+  "inScopeFileCount": 308,
+  "reportFileCount": 21
 }

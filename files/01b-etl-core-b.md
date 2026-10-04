@@ -2,21 +2,658 @@
 
 File in questo blocco:
 
+- `src/etl-core/__tests__/multi-columns.test.ts`
+- `src/etl-core/__tests__/mutations.test.ts`
 - `src/etl-core/__tests__/params.test.ts`
 - `src/etl-core/__tests__/relations.test.ts`
 - `src/etl-core/__tests__/schema.test.ts`
 - `src/etl-core/__tests__/state.test.ts`
 - `src/etl-core/catalog/icons.ts`
 - `src/etl-core/catalog/operations.ts`
-- `src/etl-core/catalog/params.ts`
-- `src/etl-core/data/csv.ts`
-- `src/etl-core/index.ts`
 
 ---
 
+### `src/etl-core/__tests__/multi-columns.test.ts`
+
+404 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import {
+  MULTI_DEFS,
+  columnsDomain,
+  columnsText,
+  createValuesField,
+  defaultParams,
+  ensureMulti,
+  ensureParams,
+  flattenRows,
+  measureNames,
+  stepMissing,
+  nodeState,
+  valuesOutsideDomain,
+} from "..";
+import type { ColumnDef, MultiRow, OperationType, Params, ValuesField } from "..";
+import { addLink } from "../model/graph";
+import { buildGraph, dataset, op } from "./helpers";
+
+/** Le dieci operazioni che ora scelgono più colonne per riga, con una riga nel vecchio formato. */
+const MULTI_COLUMN_OPS: { type: OperationType; list: string; legacyRow: MultiRow }[] = [
+  { type: "cast", list: "items", legacyRow: { column: "importo", to: "intero" } },
+  { type: "round", list: "items", legacyRow: { column: "importo", decimals: "2" } },
+  { type: "scale", list: "items", legacyRow: { column: "importo", method: "min-max" } },
+  { type: "textClean", list: "items", legacyRow: { column: "nome", action: "maiuscole" } },
+  { type: "fillNa", list: "items", legacyRow: { column: "nome", value: "n/d" } },
+  {
+    type: "replaceVal",
+    list: "items",
+    legacyRow: {
+      column: "regione",
+      match: "è uguale a",
+      find: { ...createValuesField(), values: ["Nord"] },
+      with: "N",
+    },
+  },
+  { type: "dedup", list: "items", legacyRow: { column: "id", cmp: "esatto" } },
+  { type: "selectCols", list: "items", legacyRow: { column: "id" } },
+  { type: "sort", list: "items", legacyRow: { column: "id", dir: "crescente" } },
+  { type: "aggregate", list: "groupBy", legacyRow: { column: "regione" } },
+  { type: "aggregate", list: "measures", legacyRow: { column: "importo", fn: "somma", alias: "" } },
+];
+
+/** Operazioni che restano a colonna singola. */
+const SINGLE_COLUMN_OPS: OperationType[] = ["rename", "splitCol", "compute"];
+
+function legacyParams(type: OperationType, list: string, row: MultiRow): Params {
+  const base = ensureMulti(type, {}) as Params;
+  return { ...base, [list]: [row] };
+}
+
+function deepFreeze<T>(o: T): T {
+  if (o && typeof o === "object") {
+    Object.freeze(o);
+    for (const v of Object.values(o as Record<string, unknown>)) deepFreeze(v);
+  }
+  return o;
+}
+
+describe("migrazione column → columns", () => {
+  for (const { type, list, legacyRow } of MULTI_COLUMN_OPS) {
+    it(`${type}/${list}: una riga con column diventa columns, column sparisce`, () => {
+      const migrated = ensureMulti(type, legacyParams(type, list, legacyRow));
+      const row = (migrated[list] as MultiRow[])[0] as MultiRow;
+      expect(row["columns"]).toEqual([legacyRow["column"]]);
+      expect("column" in row).toBe(false);
+      // gli altri campi restano
+      for (const [k, v] of Object.entries(legacyRow)) {
+        if (k !== "column") expect(row[k]).toEqual(v);
+      }
+    });
+
+    it(`${type}/${list}: stringa vuota → lista vuota`, () => {
+      const migrated = ensureMulti(type, legacyParams(type, list, { ...legacyRow, column: "" }));
+      expect((migrated[list] as MultiRow[])[0]?.["columns"]).toEqual([]);
+    });
+
+    it(`${type}/${list}: è idempotente`, () => {
+      const once = ensureMulti(type, legacyParams(type, list, legacyRow));
+      const twice = ensureMulti(type, once as Params);
+      expect(twice).toEqual(once);
+    });
+
+    it(`${type}/${list}: con columns già presente prevale su column`, () => {
+      const migrated = ensureMulti(
+        type,
+        legacyParams(type, list, { ...legacyRow, columns: ["a", "b"] }),
+      );
+      expect((migrated[list] as MultiRow[])[0]?.["columns"]).toEqual(["a", "b"]);
+    });
+  }
+
+  it("il vecchio formato a voce singola (campi al primo livello) diventa una riga con una colonna", () => {
+    const migrated = ensureMulti("round", { column: "importo", decimals: "3" });
+    expect(migrated["items"]).toEqual([{ columns: ["importo"], decimals: "3" }]);
+    const sort = ensureMulti("sort", { column: "id", dir: "decrescente" });
+    expect((sort["items"] as MultiRow[])[0]).toMatchObject({
+      columns: ["id"],
+      dir: "decrescente",
+    });
+  });
+
+  it("senza dati le righe nuove hanno columns vuoto", () => {
+    for (const { type, list } of MULTI_COLUMN_OPS) {
+      const rows = defaultParams(type)[list] as MultiRow[];
+      expect(rows[0]?.["columns"]).toEqual([]);
+    }
+  });
+
+  it("le operazioni a colonna singola non cambiano", () => {
+    for (const type of SINGLE_COLUMN_OPS) {
+      const md = MULTI_DEFS[type];
+      if (!md) continue; // splitCol non ha voci multiple
+      for (const list of md.lists) {
+        expect(list.fields.some((f) => f.type === "columns")).toBe(false);
+      }
+    }
+    const migrated = ensureMulti("rename", { items: [{ column: "a", newName: "b" }] });
+    expect(migrated["items"]).toEqual([{ column: "a", newName: "b" }]);
+  });
+
+  it("ensureParams applica la migrazione e lascia stare un componente senza voci multiple", () => {
+    const m = ensureParams("cast", { items: [{ column: "x", to: "testo" }] });
+    expect((m["items"] as MultiRow[])[0]?.["columns"]).toEqual(["x"]);
+    const lim = { n: "5", from: "inizio" };
+    expect(ensureParams("limit", lim)).toBe(lim);
+  });
+});
+
+describe("flattenRows", () => {
+  const params = {
+    items: [
+      { columns: ["a", "b", "c"], to: "intero" },
+      { columns: [], to: "testo" },
+      { columns: ["d"], to: "data" },
+    ],
+  };
+
+  it("una riga con N colonne equivale a N righe, nell'ordine elencato; le righe vuote si scartano", () => {
+    const flat = flattenRows("cast", params);
+    expect(flat["items"]?.map((r) => `${r.column}:${String(r["to"])}`)).toEqual([
+      "a:intero",
+      "b:intero",
+      "c:intero",
+      "d:data",
+    ]);
+    // nessun campo `columns` nelle righe espanse
+    expect(flat["items"]?.every((r) => !("columns" in r))).toBe(true);
+  });
+
+  it("l'ordine delle colonne è significativo", () => {
+    const f1 = flattenRows("sort", { items: [{ columns: ["a", "b"], dir: "crescente" }] });
+    const f2 = flattenRows("sort", { items: [{ columns: ["b", "a"], dir: "crescente" }] });
+    expect(f1["items"]?.map((r) => r.column)).toEqual(["a", "b"]);
+    expect(f2["items"]?.map((r) => r.column)).toEqual(["b", "a"]);
+  });
+
+  it("una riga con un campo obbligatorio vuoto è incompleta e si scarta", () => {
+    const flat = flattenRows("round", {
+      items: [
+        { columns: ["a"], decimals: "" },
+        { columns: ["b"], decimals: "2" },
+      ],
+    });
+    expect(flat["items"]?.map((r) => r.column)).toEqual(["b"]);
+  });
+
+  it("raggruppa: chiavi e misure in due liste; l'alias non si applica con più colonne", () => {
+    const flat = flattenRows("aggregate", {
+      groupBy: [{ columns: ["regione", "area"] }],
+      measures: [
+        { columns: ["importo"], fn: "somma", alias: "tot" },
+        { columns: ["a", "b"], fn: "media", alias: "ignorato" },
+      ],
+    });
+    expect(flat["groupBy"]?.map((r) => r.column)).toEqual(["regione", "area"]);
+    expect(flat["measures"]?.map((r) => `${r.column}/${String(r["alias"])}`)).toEqual([
+      "importo/tot",
+      "a/",
+      "b/",
+    ]);
+  });
+
+  it("accetta anche il vecchio formato e un tipo senza voci multiple", () => {
+    expect(flattenRows("round", { items: [{ column: "x", decimals: "1" }] })["items"]).toEqual([
+      { decimals: "1", column: "x" },
+    ]);
+    expect(flattenRows("limit", { n: "1" })).toEqual({});
+  });
+});
+
+describe("completezza: stepMissing e nodeState", () => {
+  it("colonne vuote → incompleto; una o più colonne → completo", () => {
+    expect(stepMissing("cast", { items: [{ columns: [], to: "testo" }] })).toBe(true);
+    expect(stepMissing("cast", { items: [{ columns: ["a"], to: "testo" }] })).toBe(false);
+    expect(stepMissing("cast", { items: [{ columns: ["a", "b"], to: "testo" }] })).toBe(false);
+  });
+
+  it("un altro campo obbligatorio vuoto rende la riga incompleta", () => {
+    expect(stepMissing("round", { items: [{ columns: ["a"], decimals: "" }] })).toBe(true);
+    expect(stepMissing("fillNa", { items: [{ columns: ["a", "b"], value: "" }] })).toBe(true);
+  });
+
+  it("basta una riga incompleta; aggregate richiede chiavi e misure", () => {
+    expect(
+      stepMissing("sort", {
+        items: [
+          { columns: ["a"], dir: "crescente" },
+          { columns: [], dir: "crescente" },
+        ],
+      }),
+    ).toBe(true);
+    expect(
+      stepMissing("aggregate", {
+        groupBy: [{ columns: ["a"] }],
+        measures: [{ columns: [], fn: "somma", alias: "" }],
+      }),
+    ).toBe(true);
+    expect(
+      stepMissing("aggregate", {
+        groupBy: [{ columns: ["a", "b"] }],
+        measures: [{ columns: ["c", "d"], fn: "somma", alias: "" }],
+      }),
+    ).toBe(false);
+  });
+
+  it("anche nel vecchio formato", () => {
+    expect(stepMissing("cast", { items: [{ column: "a", to: "testo" }] })).toBe(false);
+    expect(stepMissing("cast", { items: [{ column: "", to: "testo" }] })).toBe(true);
+  });
+
+  it("nodeState avvisa con colonne vuote e tace quando ce ne sono", () => {
+    const cols: ColumnDef[] = [{ name: "a", type: "stringa", values: ["x"] }];
+    const ds = dataset("ds-1", {
+      params0: { source: "CSV", path: "a.csv", header: "Sì", columns: cols } as Params,
+    });
+    const make = (columns: string[]) => {
+      const card = op("op-1", ["cast"], {
+        params: [{ items: [{ columns, to: "testo" }] }],
+      });
+      return addLink(buildGraph([ds, card]), { from: "ds-1", to: "op-1" });
+    };
+    expect(nodeState(make([]), "op-1")).toBe("Da configurare: Converti tipo");
+    expect(nodeState(make(["a"]), "op-1")).toBeNull();
+    expect(nodeState(make(["a", "b"]), "op-1")).toBeNull();
+  });
+});
+
+describe("riassunti", () => {
+  it("columnsText: 0, 1, 3 e 4 colonne", () => {
+    expect(columnsText([])).toBe("");
+    expect(columnsText(["a"])).toBe("a");
+    expect(columnsText(["a", "b", "c"])).toBe("a, b, c");
+    expect(columnsText(["a", "b", "c", "d"])).toBe("a, b +2");
+    expect(columnsText(["a", "b", "c", "d", "e"])).toBe("a, b +3");
+    expect(columnsText(["a", "b", "c", "d"], 5)).toBe("a, b, c, d");
+  });
+
+  const sum = (type: OperationType, list: string, row: MultiRow) =>
+    MULTI_DEFS[type]?.lists.find((l) => l.key === list)?.sum(row);
+
+  it("ogni operazione riassume l'elenco di colonne; senza colonne nessun riassunto", () => {
+    expect(sum("cast", "items", { columns: ["importo", "quantita"], to: "intero" })).toBe(
+      "importo, quantita → intero",
+    );
+    expect(sum("round", "items", { columns: ["a", "b"], decimals: "2" })).toBe("a, b · 2 decimali");
+    expect(sum("scale", "items", { columns: ["a"], method: "z-score" })).toBe("a · z-score");
+    expect(sum("textClean", "items", { columns: ["a", "b"], action: "minuscole" })).toBe(
+      "a, b · minuscole",
+    );
+    expect(sum("fillNa", "items", { columns: ["a", "b"], value: "0" })).toBe("a, b = 0");
+    expect(sum("selectCols", "items", { columns: ["a", "b", "c", "d"] })).toBe("a, b +2");
+    expect(sum("dedup", "items", { columns: ["a", "b"], cmp: "ignora spazi" })).toBe(
+      "a, b · ignora spazi",
+    );
+    expect(sum("dedup", "items", { columns: ["a"], cmp: "esatto" })).toBe("a");
+    expect(sum("sort", "items", { columns: ["a", "b"], dir: "decrescente" })).toBe("a, b ↓");
+    expect(sum("aggregate", "groupBy", { columns: ["a", "b"] })).toBe("a, b");
+    expect(
+      sum("replaceVal", "items", {
+        columns: ["a", "b"],
+        match: "contiene",
+        find: { ...createValuesField(), values: ["x"] } as ValuesField,
+        with: "y",
+      }),
+    ).toBe("a, b contiene x → y");
+    for (const { type, list } of MULTI_COLUMN_OPS) {
+      expect(sum(type, list, { columns: [] }), `${type}/${list}`).toBeNull();
+    }
+  });
+
+  it("le misure: con una colonna l'alias si vede, con più no", () => {
+    expect(sum("aggregate", "measures", { columns: ["a"], fn: "somma", alias: "tot" })).toBe(
+      "somma(a) → tot",
+    );
+    expect(sum("aggregate", "measures", { columns: ["a", "b"], fn: "media", alias: "tot" })).toBe(
+      "media(a, b)",
+    );
+  });
+});
+
+describe("measureNames", () => {
+  it("una colonna: alias oppure funzione_colonna", () => {
+    expect(measureNames({ columns: ["importo"], fn: "somma", alias: "totale" })).toEqual([
+      "totale",
+    ]);
+    expect(measureNames({ columns: ["importo"], fn: "somma", alias: "" })).toEqual([
+      "somma_importo",
+    ]);
+  });
+
+  it("più colonne: sempre funzione_colonna, alias ignorato", () => {
+    expect(measureNames({ columns: ["a", "b"], fn: "media", alias: "x" })).toEqual([
+      "media_a",
+      "media_b",
+    ]);
+  });
+
+  it("nessuna colonna: nessun nome", () => {
+    expect(measureNames({ columns: [], fn: "somma", alias: "x" })).toEqual([]);
+  });
+});
+
+describe("domini di valori", () => {
+  const schema: ColumnDef[] = [
+    { name: "regione", type: "stringa", values: ["Nord", "Sud", "Centro"] },
+    { name: "zona", type: "stringa", values: ["Sud", "Isole", "Nord"] },
+    { name: "vuota", type: "stringa", values: [] },
+  ];
+
+  it("l'unione nell'ordine delle colonne elencate, senza duplicati", () => {
+    expect(columnsDomain(schema, ["regione", "zona"])).toEqual(["Nord", "Sud", "Centro", "Isole"]);
+    expect(columnsDomain(schema, ["zona", "regione"])).toEqual(["Sud", "Isole", "Nord", "Centro"]);
+    expect(columnsDomain(schema, ["regione", "regione"])).toEqual(["Nord", "Sud", "Centro"]);
+  });
+
+  it("colonne sconosciute o senza valori si saltano; nessuna colonna → vuoto", () => {
+    expect(columnsDomain(schema, ["x", "vuota"])).toEqual([]);
+    expect(columnsDomain(schema, [])).toEqual([]);
+  });
+
+  it("tetto di 500 valori", () => {
+    const big: ColumnDef[] = [
+      { name: "a", type: "stringa", values: Array.from({ length: 400 }, (_, i) => `a${i}`) },
+      { name: "b", type: "stringa", values: Array.from({ length: 400 }, (_, i) => `b${i}`) },
+    ];
+    const d = columnsDomain(big, ["a", "b"]);
+    expect(d).toHaveLength(500);
+    expect(d[399]).toBe("a399");
+    expect(d[400]).toBe("b0");
+  });
+
+  it("valuesOutsideDomain: i valori scelti non presenti", () => {
+    expect(valuesOutsideDomain(["Nord", "Mare", "Sud", "Cielo"], ["Nord", "Sud"])).toEqual([
+      "Mare",
+      "Cielo",
+    ]);
+    expect(valuesOutsideDomain([], ["Nord"])).toEqual([]);
+    expect(valuesOutsideDomain(["x"], [])).toEqual(["x"]);
+  });
+
+  it("cambiare le colonne di una riga NON azzera i valori già scelti", () => {
+    const find = { ...createValuesField(), values: ["Nord", "Mare"] };
+    const before = ensureMulti("replaceVal", {
+      items: [{ columns: ["regione"], match: "è uguale a", find, with: "N" }],
+    });
+    const row = (before["items"] as MultiRow[])[0] as MultiRow;
+    const changed = ensureMulti("replaceVal", { items: [{ ...row, columns: ["zona"] }] });
+    const kept = ((changed["items"] as MultiRow[])[0] as MultiRow)["find"] as ValuesField;
+    expect(kept.values).toEqual(["Nord", "Mare"]);
+    expect(valuesOutsideDomain(kept.values, columnsDomain(schema, ["zona"]))).toEqual(["Mare"]);
+  });
+});
+
+describe("Riempi vuoti con più colonne", () => {
+  it("il valore è unico per la riga (un solo campo value)", () => {
+    const md = MULTI_DEFS.fillNa?.lists[0];
+    expect(md?.fields.filter((f) => f.k === "value")).toHaveLength(1);
+    const flat = flattenRows("fillNa", { items: [{ columns: ["a", "b"], value: "0" }] });
+    expect(flat["items"]?.map((r) => String(r["value"]))).toEqual(["0", "0"]);
+  });
+});
+
+describe("nessuna funzione modifica gli input", () => {
+  it("ensureMulti, ensureParams, flattenRows, stepMissing, measureNames sui dati congelati", () => {
+    for (const { type, list, legacyRow } of MULTI_COLUMN_OPS) {
+      const params = deepFreeze(legacyParams(type, list, legacyRow));
+      const copy = JSON.stringify(params);
+      expect(() => ensureMulti(type, params)).not.toThrow();
+      expect(() => ensureParams(type, params)).not.toThrow();
+      expect(() => flattenRows(type, params)).not.toThrow();
+      expect(() => stepMissing(type, params)).not.toThrow();
+      expect(JSON.stringify(params)).toBe(copy);
+    }
+    const row = deepFreeze({ columns: ["a", "b"], fn: "somma", alias: "x" });
+    expect(() => measureNames(row)).not.toThrow();
+    const cols = deepFreeze(["a", "b"]);
+    expect(() => columnsText(cols)).not.toThrow();
+    const schema = deepFreeze([{ name: "a", type: "stringa", values: ["x"] }] as ColumnDef[]);
+    expect(() => columnsDomain(schema, cols)).not.toThrow();
+    expect(() => valuesOutsideDomain(deepFreeze(["x"]), deepFreeze(["y"]))).not.toThrow();
+  });
+});
+```
+
+### `src/etl-core/__tests__/mutations.test.ts`
+
+222 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import { dataset, op, buildGraph, testIdGenerator } from "./helpers";
+import {
+  connect,
+  refreshOutput,
+  mergeBoxes,
+  deleteNodes,
+  nodesRemovedBy,
+  insertable,
+  insertOnLink,
+  duplicateNodes,
+} from "../rules/mutations";
+import { cardById, outputOf, inputsOf } from "../model/graph";
+import type { Graph } from "../model/types";
+
+function expectOk(result: { ok: boolean }): asserts result is { ok: true; graph: Graph } {
+  expect(result.ok).toBe(true);
+}
+
+describe("output parziale (scenario 3)", () => {
+  it("dopo la prima tabella su un join capacity=2 filled=1; completo dopo la seconda", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([dataset("A"), dataset("B"), op("box", ["join"])]);
+
+    const r1 = connect(graph, "A", "box", nextId);
+    expectOk(r1);
+    graph = refreshOutput(r1.graph, "box", nextId);
+    const outId = outputOf(graph, "box") as string;
+    let out = cardById(graph, outId);
+    expect(out?.capacity).toBe(2);
+    expect(out?.filled).toBe(1);
+    expect(out && (out.capacity ?? 0) > 1 && (out.filled ?? 0) < (out.capacity ?? 0)).toBe(true);
+
+    const r2 = connect(graph, "B", "box", nextId);
+    expectOk(r2);
+    graph = refreshOutput(r2.graph, "box", nextId);
+    out = cardById(graph, outId);
+    expect(out?.capacity).toBe(2);
+    expect(out?.filled).toBe(2);
+  });
+});
+
+describe("mergeBoxes (scenario 4)", () => {
+  it("il box risultante ha entrambi gli output, nessun collegamento da un proprio output verso se stesso", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([
+      dataset("A"),
+      dataset("B"),
+      op("box1", ["filter"]),
+      op("box2", ["sort"]),
+    ]);
+
+    const c1 = connect(graph, "A", "box1", nextId);
+    expectOk(c1);
+    graph = refreshOutput(c1.graph, "box1", nextId);
+    const c2 = connect(graph, "B", "box2", nextId);
+    expectOk(c2);
+    graph = refreshOutput(c2.graph, "box2", nextId);
+
+    const out1Before = outputOf(graph, "box1") as string;
+    const out2Before = outputOf(graph, "box2") as string;
+
+    const merged = mergeBoxes(graph, "box2", "box1", nextId);
+    expectOk(merged);
+    graph = merged.graph;
+
+    expect(cardById(graph, "box1")?.components).toEqual(["filter", "sort"]);
+    expect(cardById(graph, "box2")).toBeUndefined();
+
+    const producedByBox1 = graph.links.filter((l) => l.from === "box1").map((l) => l.to);
+    expect(new Set(producedByBox1)).toEqual(new Set([out1Before, out2Before]));
+    expect(graph.links.some((l) => l.from === "box1" && l.to === "box1")).toBe(false);
+    // Nessun collegamento da un proprio output verso il box stesso.
+    expect(graph.links.some((l) => l.from === out1Before && l.to === "box1")).toBe(false);
+    expect(graph.links.some((l) => l.from === out2Before && l.to === "box1")).toBe(false);
+  });
+
+  it("il nome diventa 'Combined Box' alla prima fusione tra due box semplici", () => {
+    const nextId = testIdGenerator("n");
+    const graph = buildGraph([op("a", ["filter"]), op("b", ["sort"])]);
+    const merged = mergeBoxes(graph, "b", "a", nextId);
+    expectOk(merged);
+    expect(cardById(merged.graph, "a")?.name).toBe("Combined Box");
+  });
+});
+
+describe("eliminazione di un box (scenario 6)", () => {
+  it("il suo output e tutto cio che dipendeva solo da lui sparisce; nodesRemovedBy lo prevede", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([dataset("A"), op("box1", ["filter"]), op("box2", ["sort"])]);
+    const c1 = connect(graph, "A", "box1", nextId);
+    expectOk(c1);
+    graph = refreshOutput(c1.graph, "box1", nextId);
+    const out1 = outputOf(graph, "box1") as string;
+    const c2 = connect(graph, out1, "box2", nextId);
+    expectOk(c2);
+    graph = refreshOutput(c2.graph, "box2", nextId);
+    const out2 = outputOf(graph, "box2") as string;
+
+    // nodesRemovedBy segue solo la cascata degli OUTPUT (prototipo, righe
+    // 4432-4453: il ciclo filtra `c[id].isOutput`): `box2` non è un
+    // output, quindi resta — orfano, senza ingressi — anche se il suo
+    // unico input (`out1`) sparisce con `box1`.
+    const removed = nodesRemovedBy(graph, "box1");
+    expect(removed).toEqual(new Set(["box1", out1, out2]));
+
+    graph = deleteNodes(graph, "box1", nextId);
+    expect(cardById(graph, "box1")).toBeUndefined();
+    expect(cardById(graph, out1)).toBeUndefined();
+    expect(cardById(graph, out2)).toBeUndefined();
+    expect(cardById(graph, "box2")).toBeDefined();
+    expect(cardById(graph, "A")).toBeDefined();
+    expect(graph.links).toHaveLength(0);
+  });
+});
+
+describe("insertOnLink (scenario 7)", () => {
+  it("dataset -> box diventa dataset -> X -> output di X -> box", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([dataset("A"), op("box", ["sort"]), op("X", ["filter"])]);
+    const c1 = connect(graph, "A", "box", nextId);
+    expectOk(c1);
+    graph = refreshOutput(c1.graph, "box", nextId);
+    const linkAtoBox = graph.links.find((l) => l.from === "A" && l.to === "box");
+    expect(linkAtoBox).toBeDefined();
+
+    const next = insertOnLink(graph, linkAtoBox!, "X", nextId);
+    expect(next).not.toBeNull();
+    graph = next as typeof graph;
+
+    expect(graph.links.some((l) => l.from === "A" && l.to === "X")).toBe(true);
+    const outX = outputOf(graph, "X") as string;
+    expect(outX).toBeTruthy();
+    expect(graph.links.some((l) => l.from === outX && l.to === "box")).toBe(true);
+    expect(graph.links.some((l) => l.from === "A" && l.to === "box")).toBe(false);
+  });
+
+  it("e rifiutato su un collegamento box -> output", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([dataset("A"), op("box", ["sort"]), op("X", ["filter"])]);
+    const c1 = connect(graph, "A", "box", nextId);
+    expectOk(c1);
+    graph = refreshOutput(c1.graph, "box", nextId);
+    const outId = outputOf(graph, "box") as string;
+    const linkBoxToOut = graph.links.find((l) => l.from === "box" && l.to === outId)!;
+
+    expect(insertable(graph, linkBoxToOut, "X")).toBe(false);
+    expect(insertOnLink(graph, linkBoxToOut, "X", nextId)).toBeNull();
+  });
+
+  it("e rifiutato quando X ha gia collegamenti", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([
+      dataset("A"),
+      dataset("D2"),
+      op("box", ["sort"]),
+      op("X", ["filter"]),
+      op("Y", ["sort"]),
+    ]);
+    const c1 = connect(graph, "A", "box", nextId);
+    expectOk(c1);
+    graph = refreshOutput(c1.graph, "box", nextId);
+    const c2 = connect(graph, "D2", "Y", nextId);
+    expectOk(c2);
+    graph = c2.graph;
+    // X non ha collegamenti: inseribile.
+    const linkAtoBox = graph.links.find((l) => l.from === "A" && l.to === "box")!;
+    expect(insertable(graph, linkAtoBox, "X")).toBe(true);
+    // Y ha gia un collegamento (D2 -> Y): non inseribile.
+    expect(insertable(graph, linkAtoBox, "Y")).toBe(false);
+  });
+});
+
+describe("purezza delle funzioni di rules/mutations.ts (scenario 15)", () => {
+  it("nessuna funzione modifica il grafo che riceve", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([
+      dataset("A"),
+      dataset("B"),
+      op("box1", ["filter"]),
+      op("box2", ["join"]),
+      op("box3", ["sort"]),
+    ]);
+    const c1 = connect(graph, "A", "box1", nextId);
+    expectOk(c1);
+    graph = refreshOutput(c1.graph, "box1", nextId);
+    const c2 = connect(graph, "B", "box2", nextId);
+    expectOk(c2);
+    graph = c2.graph;
+
+    const snapshot = JSON.parse(JSON.stringify(graph));
+
+    connect(graph, outputOf(graph, "box1") as string, "box2", nextId);
+    refreshOutput(graph, "box2", nextId);
+    mergeBoxes(graph, "box3", "box2", nextId);
+    deleteNodes(graph, "box1", nextId);
+    nodesRemovedBy(graph, "box1");
+    insertOnLink(graph, graph.links[0]!, "box3", nextId);
+    duplicateNodes(graph, ["A", "B"], nextId);
+
+    expect(JSON.parse(JSON.stringify(graph))).toEqual(snapshot);
+  });
+});
+
+describe("duplicateNodes", () => {
+  it("duplica senza collegamenti, escludendo gli output", () => {
+    const nextId = testIdGenerator("n");
+    let graph = buildGraph([dataset("A"), op("box", ["filter"])]);
+    const c1 = connect(graph, "A", "box", nextId);
+    expectOk(c1);
+    graph = refreshOutput(c1.graph, "box", nextId);
+    const outId = outputOf(graph, "box") as string;
+
+    const { graph: next, createdIds } = duplicateNodes(graph, ["A", "box", outId], nextId);
+    expect(createdIds).toHaveLength(2); // l'output e escluso
+    for (const id of createdIds) {
+      expect(inputsOf(next, id)).toHaveLength(0);
+      expect(next.links.some((l) => l.from === id)).toBe(false);
+    }
+  });
+});
+```
+
 ### `src/etl-core/__tests__/params.test.ts`
 
-124 righe
+125 righe
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -77,7 +714,8 @@ describe("migrazioni (scenario 9)", () => {
     const migrated = ensureMulti("round", legacy);
     const rows = migrated["items"] as MultiRow[];
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.["column"]).toBe("importo");
+    expect(rows[0]?.["columns"]).toEqual(["importo"]);
+    expect(rows[0]?.["column"]).toBeUndefined();
     expect(rows[0]?.["decimals"]).toBe("3");
   });
 
@@ -650,1052 +1288,5 @@ export function sectionOf(type: ComponentId): SectionDef | null {
   if (type === "dataset") return SECTIONS.find((s) => s.id === "data") ?? null;
   return SECTIONS.find((s) => s.items?.includes(type)) ?? null;
 }
-```
-
-### `src/etl-core/catalog/params.ts`
-
-846 righe
-
-```ts
-/**
- * Definizioni dei parametri, valori predefiniti e migrazioni.
- * Porting letterale di PARAM_DEFS, MULTI_DEFS e delle relative costanti
- * (righe 2433-2617 di docs/prototype/isa-fusion-prototype.html), più le
- * migrazioni sparse nelle funzioni `render*` (renderFilter riga 3394,
- * ensureKeys riga 3124).
- */
-import type {
-  ComponentId,
-  FilterCondition,
-  FilterParams,
-  JoinKey,
-  JoinOp,
-  JoinParams,
-  LogicOp,
-  MultiFieldDef,
-  MultiListDef,
-  MultiOperationDef,
-  MultiParams,
-  MultiRow,
-  OperationType,
-  Params,
-  SimpleFieldDef,
-  ValuesField,
-} from "../model/types";
-
-// --- Vocabolari (prototipo: righe 2433-2439, 3142, 3158-3159, 3299-3303) ---
-
-export const MULTI_OPS: readonly string[] = ["=", "≠", "è uno di", "non è uno di", "contiene"];
-export const NO_VALUE_OPS: readonly string[] = ["è vuoto", "non è vuoto"];
-export const FILTER_OPS: readonly string[] = [
-  "=",
-  "≠",
-  "è uno di",
-  "non è uno di",
-  "contiene",
-  ">",
-  "<",
-  "≥",
-  "≤",
-  "è vuoto",
-  "non è vuoto",
-];
-
-export interface Separator {
-  readonly label: string;
-  readonly ch: string;
-}
-
-export const SEPARATORS: readonly Separator[] = [
-  { label: "virgola", ch: "," },
-  { label: "punto e virgola", ch: ";" },
-  { label: "barra verticale", ch: "|" },
-  { label: "a capo", ch: "\n" },
-];
-
-export const LIST_OPS: readonly string[] = ["è uno di", "non è uno di"];
-export const JOIN_OPS: readonly JoinOp[] = ["=", "≠", "<", "≤", ">", "≥"];
-export const JOIN_OP_NAME: readonly string[] = [
-  "uguale a",
-  "diverso da",
-  "minore di",
-  "minore o uguale a",
-  "maggiore di",
-  "maggiore o uguale a",
-];
-
-export const LOGIC_OPS: readonly LogicOp[] = ["AND", "OR", "XOR", "NAND", "NOR", "XNOR"];
-export const LOGIC_HELP: Readonly<Record<LogicOp, string>> = {
-  AND: "entrambe vere",
-  OR: "almeno una vera",
-  XOR: "una sola delle due vera",
-  NAND: "non entrambe vere",
-  NOR: "nessuna delle due vera",
-  XNOR: "entrambe vere o entrambe false",
-};
-
-// --- Costruttori di valore predefinito (prototipo: newCondition, VALUES_DEF) ---
-
-/** Prototipo, riga 2440-2442. */
-export function newCondition(): FilterCondition {
-  return { column: "", op: "=", mode: "list", values: [], text: "", sep: "," };
-}
-
-/** Prototipo, riga 2529 (`VALUES_DEF`). */
-export function createValuesField(): ValuesField {
-  return { mode: "list", values: [], text: "", sep: "," };
-}
-
-/** Prototipo, righe 2530-2533. */
-export function valuesText(v: string | ValuesField | undefined): string {
-  if (v === undefined) return "";
-  if (typeof v === "string") return v;
-  return v.mode === "list" ? v.values.join(", ") : v.text;
-}
-
-/**
- * Correzione intenzionale rispetto al prototipo (Fase 1.1, vedi
- * src/etl-core/NOTE_DIVERGENZE.md — "una sola fonte di verità per i
- * valori"): un campo a più valori conta solo `values`; `text` è solo un
- * formato di transito verso `values` (vedi `normalizeValuesField`), non
- * un secondo modo di essere "compilato". Nel prototipo (righe 2534-2537)
- * `fieldFilled` considerava compilato anche un `text` non vuoto rimasto
- * dalla modalità manuale.
- */
-export function fieldFilled(
-  f: { readonly type: string },
-  v: string | ValuesField | undefined,
-): boolean {
-  if (f.type === "values") {
-    const vf = v as ValuesField | undefined;
-    return !!(vf && vf.values && vf.values.length > 0);
-  }
-  return !!(v && String(v).trim().length > 0);
-}
-
-/**
- * Correzione intenzionale rispetto al prototipo (Fase 1.1): migrazione
- * unica per ogni campo a più valori, oggi sparsa dentro `pickerHtml`
- * (prototipo, righe 2840-2848). Se `mode` è `'manual'` e `text` non è
- * vuoto, `text` viene diviso SOLO sul separatore registrato `sep` (o `,`
- * se assente), come la migrazione del prototipo: il testo era stato
- * scritto con quel separatore esplicito, quindi con `sep` `;` un valore
- * come "Rossi, Mario" resta intero. I token non vuoti vengono aggiunti a
- * `values` senza duplicati, poi `text` diventa `''` e `mode` diventa
- * `'list'`. Altrimenti il campo torna inalterato (mai mutato: restituisce
- * un nuovo oggetto solo se c'è qualcosa da migrare).
- *
- * La divisione su più separatori insieme riguarda solo l'inserimento dal
- * vivo nel selettore di valori: vedi `splitTokens`.
- */
-export function normalizeValuesField(v: ValuesField): ValuesField {
-  if (v.mode === "list" || !v.text || !v.text.trim()) return v;
-  const tokens = v.text
-    .split(v.sep || ",")
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0);
-  const values = v.values.slice();
-  for (const t of tokens) {
-    if (!values.includes(t)) values.push(t);
-  }
-  return { mode: "list", values, text: "", sep: v.sep };
-}
-
-/**
- * Prototipo, riga 2839 (`splitTokens`): divide un testo incollato o
- * scritto dal vivo nel selettore di valori su `,` `;` `|` e a capo, con
- * trim, senza token vuoti e senza duplicati. Solo per l'interfaccia: la
- * migrazione dei testi salvati usa `normalizeValuesField`, che divide
- * solo sul separatore registrato.
- */
-export function splitTokens(text: string | null | undefined): string[] {
-  const tokens = String(text ?? "")
-    .split(/[,;|\n]/)
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0);
-  return Array.from(new Set(tokens));
-}
-
-function strField(row: MultiRow, key: string): string {
-  const v = row[key];
-  return typeof v === "string" ? v : "";
-}
-
-// --- PARAM_DEFS (prototipo, righe 2445-2525) --------------------------------
-
-const COLUMN_FIELD = (label = "Colonna"): SimpleFieldDef => ({
-  k: "column",
-  label,
-  type: "column",
-  def: "",
-});
-
-/**
- * Definizioni a campo semplice, una per tipo di operazione (più `dataset`).
- * `filter` è `'custom'`: i suoi parametri (`FilterParams`) non seguono
- * questo schema generico, esattamente come nel prototipo.
- */
-export const PARAM_DEFS: Readonly<Record<ComponentId, readonly SimpleFieldDef[] | "custom">> = {
-  dataset: [
-    {
-      k: "source",
-      label: "Origine",
-      type: "select",
-      opts: ["CSV", "Database", "API", "Foglio di calcolo"],
-      def: "CSV",
-    },
-    { k: "path", label: "Percorso o tabella", type: "text", def: "" },
-    {
-      k: "header",
-      label: "Prima riga di intestazione",
-      type: "select",
-      opts: ["Sì", "No"],
-      def: "Sì",
-    },
-  ],
-  filter: "custom",
-  join: [
-    {
-      k: "type",
-      label: "Tipo di join",
-      type: "select",
-      opts: ["inner", "left", "right", "full"],
-      def: "inner",
-    },
-  ],
-  sort: [
-    COLUMN_FIELD(),
-    {
-      k: "dir",
-      label: "Direzione",
-      type: "select",
-      opts: ["crescente", "decrescente"],
-      def: "crescente",
-    },
-  ],
-  exportOp: [
-    {
-      k: "format",
-      label: "Formato",
-      type: "select",
-      opts: ["CSV", "XLSX", "Parquet", "Tabella DB"],
-      def: "CSV",
-    },
-    { k: "dest", label: "Destinazione", type: "text", def: "", req: true },
-  ],
-  dedup: [
-    COLUMN_FIELD("Colonna chiave"),
-    {
-      k: "keep",
-      label: "Mantieni",
-      type: "select",
-      opts: ["la prima", "l’ultima"],
-      def: "la prima",
-    },
-  ],
-  limit: [
-    { k: "n", label: "Numero di righe", type: "text", def: "100", req: true },
-    { k: "from", label: "Dall’", type: "select", opts: ["inizio", "fine"], def: "inizio" },
-  ],
-  sample: [
-    { k: "pct", label: "Percentuale", type: "text", def: "10", req: true },
-    { k: "seed", label: "Seme casuale", type: "text", def: "" },
-  ],
-  selectCols: [
-    COLUMN_FIELD("Colonna da tenere"),
-    { k: "mode", label: "Modo", type: "select", opts: ["tieni", "escludi"], def: "tieni" },
-  ],
-  compute: [
-    { k: "name", label: "Nuova colonna", type: "text", def: "", req: true },
-    { k: "formula", label: "Formula", type: "text", def: "", req: true },
-  ],
-  cast: [
-    COLUMN_FIELD(),
-    {
-      k: "to",
-      label: "Nuovo tipo",
-      type: "select",
-      opts: ["intero", "decimale", "testo", "data", "booleano"],
-      def: "decimale",
-    },
-  ],
-  round: [COLUMN_FIELD(), { k: "decimals", label: "Decimali", type: "text", def: "2", req: true }],
-  scale: [
-    COLUMN_FIELD(),
-    {
-      k: "method",
-      label: "Metodo",
-      type: "select",
-      opts: ["min-max", "z-score", "percentuale"],
-      def: "min-max",
-    },
-  ],
-  aggregate: [
-    { k: "groupBy", label: "Raggruppa per", type: "column", def: "" },
-    { k: "measure", label: "Misura", type: "column", def: "" },
-    {
-      k: "fn",
-      label: "Funzione",
-      type: "select",
-      opts: ["somma", "media", "conteggio", "minimo", "massimo"],
-      def: "somma",
-    },
-  ],
-  textClean: [
-    COLUMN_FIELD(),
-    {
-      k: "action",
-      label: "Operazione",
-      type: "select",
-      opts: ["rimuovi spazi", "maiuscole", "minuscole", "iniziali maiuscole"],
-      def: "rimuovi spazi",
-    },
-  ],
-  replaceVal: [
-    COLUMN_FIELD(),
-    { k: "find", label: "Cerca", type: "text", def: "", req: true },
-    { k: "with", label: "Sostituisci con", type: "text", def: "" },
-  ],
-  splitCol: [
-    COLUMN_FIELD(),
-    {
-      k: "sep",
-      label: "Separatore",
-      type: "select",
-      opts: [",", ";", "|", "spazio", "-"],
-      def: ",",
-    },
-  ],
-  rename: [COLUMN_FIELD(), { k: "newName", label: "Nuovo nome", type: "text", def: "", req: true }],
-  fillNa: [
-    COLUMN_FIELD(),
-    { k: "value", label: "Valore di riempimento", type: "text", def: "", req: true },
-  ],
-  union: [
-    { k: "mode", label: "Righe", type: "select", opts: ["tutte", "senza duplicati"], def: "tutte" },
-    {
-      k: "align",
-      label: "Allineamento colonne",
-      type: "select",
-      opts: ["per nome", "per posizione"],
-      def: "per nome",
-    },
-  ],
-};
-
-// --- MULTI_DEFS (prototipo, righe 2538-2582) --------------------------------
-
-const COLF = (label?: string): MultiFieldDef => ({
-  k: "column",
-  label: label ?? "Colonna",
-  type: "column",
-  def: "",
-});
-const VALUES_FIELD_DEF = (label: string, req = true): MultiFieldDef => ({
-  k: "find",
-  label,
-  type: "values",
-  def: createValuesField,
-  req,
-});
-
-export const MULTI_DEFS: Readonly<Partial<Record<OperationType, MultiOperationDef>>> = {
-  cast: {
-    lists: [
-      {
-        key: "items",
-        label: "Colonne da convertire",
-        noun: "Conversione",
-        add: "Aggiungi conversione",
-        fields: [
-          COLF(),
-          {
-            k: "to",
-            label: "Nuovo tipo",
-            type: "select",
-            opts: ["intero", "decimale", "testo", "data", "booleano"],
-            def: "decimale",
-          },
-        ],
-        sum: (r) =>
-          strField(r, "column") ? `${strField(r, "column")} → ${strField(r, "to")}` : null,
-      },
-    ],
-  },
-  rename: {
-    lists: [
-      {
-        key: "items",
-        label: "Colonne da rinominare",
-        noun: "Rinomina",
-        add: "Aggiungi colonna",
-        fields: [COLF(), { k: "newName", label: "Nuovo nome", type: "text", def: "", req: true }],
-        sum: (r) =>
-          strField(r, "column")
-            ? `${strField(r, "column")} → ${strField(r, "newName") || "…"}`
-            : null,
-      },
-    ],
-  },
-  fillNa: {
-    lists: [
-      {
-        key: "items",
-        label: "Colonne da riempire",
-        noun: "Riempimento",
-        add: "Aggiungi colonna",
-        fields: [
-          COLF(),
-          { k: "value", label: "Valore di riempimento", type: "value", def: "", req: true },
-        ],
-        sum: (r) =>
-          strField(r, "column")
-            ? `${strField(r, "column")} = ${strField(r, "value") || "…"}`
-            : null,
-      },
-    ],
-  },
-  replaceVal: {
-    lists: [
-      {
-        key: "items",
-        label: "Sostituzioni",
-        noun: "Sostituzione",
-        add: "Aggiungi sostituzione",
-        fields: [
-          COLF(),
-          {
-            k: "match",
-            label: "Quando il valore",
-            type: "select",
-            opts: [
-              "è uguale a",
-              "è diverso da",
-              "contiene",
-              "inizia con",
-              "finisce con",
-              "corrisponde all’espressione",
-            ],
-            def: "è uguale a",
-          },
-          VALUES_FIELD_DEF("Valori da cercare"),
-          { k: "with", label: "Sostituisci con", type: "value", def: "" },
-        ],
-        sum: (r) => {
-          const column = strField(r, "column");
-          if (!column) return null;
-          const match = strField(r, "match") || "è uguale a";
-          const find = valuesText(r["find"] as string | ValuesField | undefined) || "…";
-          const withVal = strField(r, "with") || "∅";
-          return `${column} ${match} ${find} → ${withVal}`;
-        },
-      },
-    ],
-  },
-  round: {
-    lists: [
-      {
-        key: "items",
-        label: "Colonne da arrotondare",
-        noun: "Arrotondamento",
-        add: "Aggiungi colonna",
-        fields: [COLF(), { k: "decimals", label: "Decimali", type: "text", def: "2", req: true }],
-        sum: (r) =>
-          strField(r, "column")
-            ? `${strField(r, "column")} · ${strField(r, "decimals")} decimali`
-            : null,
-      },
-    ],
-  },
-  scale: {
-    lists: [
-      {
-        key: "items",
-        label: "Colonne da normalizzare",
-        noun: "Normalizzazione",
-        add: "Aggiungi colonna",
-        fields: [
-          COLF(),
-          {
-            k: "method",
-            label: "Metodo",
-            type: "select",
-            opts: ["min-max", "z-score", "percentuale"],
-            def: "min-max",
-          },
-        ],
-        sum: (r) =>
-          strField(r, "column") ? `${strField(r, "column")} · ${strField(r, "method")}` : null,
-      },
-    ],
-  },
-  textClean: {
-    lists: [
-      {
-        key: "items",
-        label: "Colonne da pulire",
-        noun: "Pulizia",
-        add: "Aggiungi colonna",
-        fields: [
-          COLF(),
-          {
-            k: "action",
-            label: "Operazione",
-            type: "select",
-            opts: ["rimuovi spazi", "maiuscole", "minuscole", "iniziali maiuscole"],
-            def: "rimuovi spazi",
-          },
-        ],
-        sum: (r) =>
-          strField(r, "column") ? `${strField(r, "column")} · ${strField(r, "action")}` : null,
-      },
-    ],
-  },
-  compute: {
-    lists: [
-      {
-        key: "items",
-        label: "Colonne calcolate",
-        noun: "Colonna",
-        add: "Aggiungi colonna calcolata",
-        fields: [
-          { k: "name", label: "Nuova colonna", type: "text", def: "", req: true },
-          { k: "formula", label: "Formula", type: "text", def: "", req: true },
-        ],
-        sum: (r) =>
-          strField(r, "name") ? `${strField(r, "name")} = ${strField(r, "formula") || "…"}` : null,
-      },
-    ],
-  },
-  selectCols: {
-    globals: [
-      { k: "mode", label: "Modo", type: "select", opts: ["tieni", "escludi"], def: "tieni" },
-    ],
-    lists: [
-      {
-        key: "items",
-        label: "Colonne",
-        noun: "Colonna",
-        add: "Aggiungi colonna",
-        fields: [COLF()],
-        sum: (r) => strField(r, "column") || null,
-      },
-    ],
-  },
-  dedup: {
-    globals: [
-      {
-        k: "keep",
-        label: "Mantieni",
-        type: "select",
-        opts: ["la prima", "l’ultima"],
-        def: "la prima",
-      },
-    ],
-    lists: [
-      {
-        key: "items",
-        label: "Colonne chiave",
-        noun: "Chiave",
-        add: "Aggiungi chiave",
-        fields: [
-          COLF(),
-          {
-            k: "cmp",
-            label: "Confronto",
-            type: "select",
-            opts: ["esatto", "ignora maiuscole", "ignora spazi", "ignora maiuscole e spazi"],
-            def: "esatto",
-          },
-        ],
-        sum: (r) => {
-          const column = strField(r, "column");
-          if (!column) return null;
-          const cmp = strField(r, "cmp");
-          return cmp && cmp !== "esatto" ? `${column} · ${cmp}` : column;
-        },
-        note: "Due righe sono duplicate quando coincidono su tutte le chiavi.",
-      },
-    ],
-  },
-  sort: {
-    lists: [
-      {
-        key: "items",
-        label: "Criteri di ordinamento",
-        noun: "Criterio",
-        add: "Aggiungi criterio",
-        fields: [
-          COLF(),
-          {
-            k: "dir",
-            label: "Direzione",
-            type: "select",
-            opts: ["crescente", "decrescente"],
-            def: "crescente",
-          },
-        ],
-        sum: (r) => {
-          const column = strField(r, "column");
-          if (!column) return null;
-          return column + (strField(r, "dir") === "crescente" ? " ↑" : " ↓");
-        },
-        note: "Il primo criterio è il principale; i successivi decidono a parità del precedente.",
-      },
-    ],
-  },
-  aggregate: {
-    lists: [
-      {
-        key: "groupBy",
-        label: "Raggruppa per",
-        noun: "Chiave",
-        add: "Aggiungi chiave",
-        fields: [COLF()],
-        sum: (r) => strField(r, "column") || null,
-      },
-      {
-        key: "measures",
-        label: "Misure",
-        noun: "Misura",
-        add: "Aggiungi misura",
-        fields: [
-          COLF("Colonna"),
-          {
-            k: "fn",
-            label: "Funzione",
-            type: "select",
-            opts: ["somma", "media", "conteggio", "minimo", "massimo"],
-            def: "somma",
-          },
-          { k: "alias", label: "Nome del risultato", type: "text", def: "" },
-        ],
-        sum: (r) => {
-          const column = strField(r, "column");
-          if (!column) return null;
-          const fn = strField(r, "fn") || "somma";
-          const alias = strField(r, "alias");
-          return `${fn}(${column})${alias ? ` → ${alias}` : ""}`;
-        },
-      },
-    ],
-  },
-};
-
-// --- Valori predefiniti e migrazioni (prototipo, righe 2584-2617, 3124-3140, 3394-3400) ---
-
-function blankRow(list: MultiListDef): MultiRow {
-  const row: MultiRow = {};
-  for (const f of list.fields) {
-    row[f.k] = typeof f.def === "function" ? f.def() : f.def;
-  }
-  return row;
-}
-
-/** Prototipo, righe 2585-2602: migra il vecchio formato a voce singola in una lista di una riga. */
-export function ensureMulti(type: OperationType, par: Params): MultiParams {
-  const md = MULTI_DEFS[type];
-  if (!md) return par as MultiParams;
-  const next: MultiParams = { ...(par as MultiParams) };
-  for (const f of md.globals ?? []) {
-    if (next[f.k] === undefined) next[f.k] = f.def;
-  }
-  for (const list of md.lists) {
-    const existing = next[list.key];
-    if (!Array.isArray(existing)) {
-      const row = blankRow(list);
-      for (const f of list.fields) {
-        const legacy = next[f.k];
-        if (legacy !== undefined && legacy !== "") row[f.k] = legacy as string;
-      }
-      next[list.key] = [row];
-    } else {
-      next[list.key] = existing.map((row) => {
-        const migrated: MultiRow = { ...row };
-        for (const f of list.fields) {
-          if (f.type === "values") {
-            const v = migrated[f.k];
-            const asField: ValuesField =
-              v === undefined || typeof v !== "object"
-                ? v
-                  ? { ...createValuesField(), mode: "manual", text: String(v) }
-                  : createValuesField()
-                : v;
-            migrated[f.k] = normalizeValuesField(asField);
-          }
-        }
-        return migrated;
-      });
-    }
-  }
-  return next;
-}
-
-/**
- * Prototipo, righe 2604-2612. Correzione intenzionale rispetto al
- * prototipo (Fase 1.1): produce direttamente il formato attuale — il
- * filtro senza il campo `logic` (superato, mai stato lì fin dall'inizio
- * in questo dominio: non ha senso generarlo solo per poi migrarlo), il
- * join con le chiavi già passate da `ensureKeys` (op `'='`, `lmode`/
- * `rmode` `'col'`, `rlist` vuota, `lval`/`rval` vuoti).
- */
-export function defaultParams(type: ComponentId): Params {
-  if (type === "filter") {
-    const params: FilterParams = { conditions: [newCondition()] };
-    return params as unknown as Params;
-  }
-  if (type === "join") {
-    const params: JoinParams = {
-      type: "inner",
-      keys: ensureKeys({ type: "inner", keys: [{ left: "", right: "" }] }),
-    };
-    return params as unknown as Params;
-  }
-  if (type !== "dataset" && MULTI_DEFS[type]) return ensureMulti(type, {});
-  const defs = PARAM_DEFS[type];
-  const out: Record<string, string> = {};
-  if (Array.isArray(defs)) {
-    for (const f of defs) out[f.k] = f.def;
-  }
-  return out;
-}
-
-/** Prototipo, righe 2613-2617: assicura che `card.params` abbia una voce per componente. */
-export function ensureParamsFor(
-  components: readonly ComponentId[],
-  params: readonly Params[],
-): Params[] {
-  const next = params.slice();
-  while (next.length < components.length) {
-    next.push(defaultParams(components[next.length] as ComponentId));
-  }
-  return next;
-}
-
-/**
- * Prototipo, righe 3124-3140. Normalizza anche `rlist` (Fase 1.1: una
- * sola fonte di verità per i valori, vedi `normalizeValuesField`).
- */
-export function ensureKeys(par: JoinParams): JoinKey[] {
-  let keys = par.keys;
-  if (!keys) {
-    keys =
-      par.leftKey || par.rightKey
-        ? [{ left: par.leftKey ?? "", right: par.rightKey ?? "" }]
-        : [{ left: "", right: "" }];
-  }
-  return keys.map((k) => ({
-    ...k,
-    op: k.op ?? "=",
-    lmode: k.lmode ?? "col",
-    rmode: k.rmode ?? "col",
-    rlist: normalizeValuesField(
-      k.rlist && typeof k.rlist === "object" ? k.rlist : createValuesField(),
-    ),
-    lval: k.lval ?? "",
-    rval: k.rval ?? "",
-  }));
-}
-
-/**
- * Prototipo, righe 3396-3400 (dentro `renderFilter`): il vecchio selettore
- * globale E/O diventa il connettore di ogni condizione dalla seconda in
- * poi. Applica anche (Fase 1.1, "una sola fonte di verità per i valori")
- * la migrazione testo → valori di `normalizeValuesField` a ogni
- * condizione, oggi sparsa dentro `pickerHtml` (prototipo, righe 2840-2848).
- */
-export function migrateFilterLogic(par: FilterParams): FilterParams {
-  const baseConditions = par.conditions ?? [newCondition()];
-  const withLogic = par.logic
-    ? baseConditions.map((c, i) =>
-        i > 0 && !c.conn
-          ? { ...c, conn: par.logic === "O" ? ("OR" as const) : ("AND" as const) }
-          : c,
-      )
-    : baseConditions;
-  const conditions = withLogic.map((c) => {
-    const normalized = normalizeValuesField(c);
-    return normalized === c
-      ? c
-      : {
-          ...c,
-          mode: normalized.mode,
-          values: normalized.values,
-          text: normalized.text,
-          sep: normalized.sep,
-        };
-  });
-  const { logic, ...rest } = par;
-  void logic;
-  return { ...rest, conditions };
-}
-
-// --- Riassunti (prototipo, righe 3109-3121, 3143-3194) ----------------------
-
-/** Prototipo, righe 3143-3147: il testo di un lato di una chiave di join. */
-export function sideText(
-  k: JoinKey,
-  side: "l" | "r",
-  columnDef: (name: string) => { values: readonly string[] } | null,
-): string {
-  if (side === "l") return k.lmode === "val" ? (k.lval ? `“${k.lval}”` : "") : k.left;
-  if (k.rmode === "val") return k.rval ? `“${k.rval}”` : "";
-  if (k.rmode === "list") {
-    const t = valuesText(k.rlist);
-    return t ? `(${t})` : "";
-  }
-  return k.right;
-  // `columnDef` è accettato per parità di firma con il prototipo (usato dal
-  // chiamante per calcolare il dominio proposto), non serve qui.
-  void columnDef;
-}
-
-/** Prototipo, righe 3149-3153. */
-export function keyComplete(k: JoinKey): boolean {
-  const l = k.lmode === "val" ? !!(k.lval && String(k.lval).trim()) : !!k.left;
-  const r =
-    k.rmode === "val"
-      ? !!(k.rval && String(k.rval).trim())
-      : k.rmode === "list"
-        ? fieldFilled({ type: "values" }, k.rlist)
-        : !!k.right;
-  return l && r;
-}
-
-/** Prototipo, righe 3190-3194. */
-export function summarizeKey(k: JoinKey): string | null {
-  const l = k.lmode === "val" ? (k.lval ? `“${k.lval}”` : "") : k.left;
-  const r =
-    k.rmode === "val"
-      ? k.rval
-        ? `“${k.rval}”`
-        : ""
-      : k.rmode === "list"
-        ? valuesText(k.rlist)
-          ? `(${valuesText(k.rlist)})`
-          : ""
-        : k.right;
-  if (!l && !r) return null;
-  return `${l || "…"} ${k.op ?? "="} ${r || "…"}`;
-}
-
-/**
- * Prototipo, righe 3109-3121. Correzione intenzionale rispetto al
- * prototipo (Fase 1.1, vedi src/etl-core/NOTE_DIVERGENZE.md — "una sola
- * fonte di verità per i valori"): per gli operatori in `MULTI_OPS` il
- * riassunto usa sempre `values` (non `text`, e non serve più sapere se
- * la colonna ha un dominio noto: il parametro `columnHasValues` del
- * prototipo è stato rimosso). Per gli altri operatori usa `text`.
- */
-export function summarizeCond(c: FilterCondition): string | null {
-  if (!c.column) return null;
-  if (NO_VALUE_OPS.includes(c.op)) return `${c.column} ${c.op}`;
-  const v = MULTI_OPS.includes(c.op) ? c.values.join(", ") : c.text;
-  if (!v) return `${c.column} ${c.op} …`;
-  return `${c.column} ${c.op} ${v}`;
-}
-
-/**
- * Prototipo, righe 3219-3222: nessuna condizione di uguaglianza colonna =
- * colonna significa un confronto incrociato, potenzialmente molto lento.
- */
-export function hasEquiJoinCondition(keys: readonly JoinKey[]): boolean {
-  return keys.some((k) => k.lmode === "col" && k.rmode === "col" && (k.op ?? "=") === "=");
-}
-```
-
-### `src/etl-core/data/csv.ts`
-
-82 righe
-
-```ts
-/**
- * Lettura CSV e deduzione dei tipi. Porting letterale delle righe
- * 4672-4708 di docs/prototype/isa-fusion-prototype.html. Lavora su una
- * stringa già letta, non su `File`/`FileReader` (che non esistono in
- * Node).
- */
-import type { ColumnDef, ColumnType } from "../model/types";
-
-export interface ParsedCsv {
-  readonly columns: readonly ColumnDef[];
-  readonly rows: number;
-}
-
-const CANDIDATE_DELIMITERS = [",", ";", "\t", "|"];
-
-function parseLine(line: string, delim: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let quoted = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const ch = line[i];
-    if (quoted) {
-      if (ch === '"') {
-        if (line[i + 1] === '"') {
-          cur += '"';
-          i += 1;
-        } else {
-          quoted = false;
-        }
-      } else {
-        cur += ch;
-      }
-    } else if (ch === '"') {
-      quoted = true;
-    } else if (ch === delim) {
-      out.push(cur);
-      cur = "";
-    } else {
-      cur += ch;
-    }
-  }
-  out.push(cur);
-  return out.map((v) => v.trim());
-}
-
-/** Prototipo, righe 4672-4708. `null` se il testo non contiene righe non vuote. */
-export function parseCSV(text: string): ParsedCsv | null {
-  const lines = text
-    .replace(/\r/g, "")
-    .split("\n")
-    .filter((l) => l.trim().length > 0);
-  if (lines.length === 0) return null;
-  const head = lines[0];
-  if (head === undefined) return null;
-  const delim =
-    CANDIDATE_DELIMITERS.slice().sort((a, b) => head.split(b).length - head.split(a).length)[0] ??
-    ",";
-
-  const header = parseLine(head, delim);
-  const rows = lines.slice(1, 1001).map((l) => parseLine(l, delim));
-
-  const columns: ColumnDef[] = header.map((name, ci) => {
-    const vals = rows.map((r) => r[ci]).filter((v): v is string => v !== undefined && v !== "");
-    const isInt = vals.length > 0 && vals.every((v) => /^-?\d+$/.test(v));
-    const isNum = vals.length > 0 && vals.every((v) => /^-?\d+([.,]\d+)?$/.test(v));
-    const isDate =
-      vals.length > 0 &&
-      vals.every((v) => /^\d{4}-\d{2}-\d{2}/.test(v) || /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(v));
-    const type: ColumnType = isInt ? "integer" : isNum ? "numerico" : isDate ? "data" : "stringa";
-    const distinct = Array.from(new Set(vals));
-    const values =
-      type === "integer" || type === "numerico"
-        ? distinct
-            .slice()
-            .sort((a, b) => parseFloat(a.replace(",", ".")) - parseFloat(b.replace(",", ".")))
-        : distinct;
-    return { name: name || `colonna_${ci + 1}`, type, values: values.slice(0, 500) };
-  });
-
-  return { columns, rows: lines.length - 1 };
-}
-```
-
-### `src/etl-core/index.ts`
-
-101 righe
-
-```ts
-/**
- * Esportazioni pubbliche del dominio ETL (Fase 1). Vedi README.md per la
- * tabella di corrispondenza con le funzioni del prototipo
- * docs/prototype/isa-fusion-prototype.html.
- */
-
-// --- Modello ------------------------------------------------------------
-export * from "./model/types";
-export {
-  createGraph,
-  cardById,
-  inputsOf,
-  outputOf,
-  setCard,
-  removeCard,
-  removeCards,
-  addLink,
-  filterLinks,
-  withLinks,
-  patchCard,
-  withParamAt,
-  createSequentialIdGenerator,
-} from "./model/graph";
-
-// --- Catalogo -------------------------------------------------------------
-export { ICONS, EMPTY_SLOT_ICON } from "./catalog/icons";
-export { META, SECTIONS, MERGE_OPS, sectionOf } from "./catalog/operations";
-export type { OperationMeta, SectionDef } from "./catalog/operations";
-export {
-  PARAM_DEFS,
-  MULTI_DEFS,
-  MULTI_OPS,
-  NO_VALUE_OPS,
-  FILTER_OPS,
-  SEPARATORS,
-  LIST_OPS,
-  JOIN_OPS,
-  JOIN_OP_NAME,
-  LOGIC_OPS,
-  LOGIC_HELP,
-  newCondition,
-  createValuesField,
-  normalizeValuesField,
-  splitTokens,
-  valuesText,
-  fieldFilled,
-  ensureMulti,
-  defaultParams,
-  ensureParamsFor,
-  ensureKeys,
-  migrateFilterLogic,
-  sideText,
-  keyComplete,
-  summarizeKey,
-  summarizeCond,
-  hasEquiJoinCondition,
-} from "./catalog/params";
-export type { Separator } from "./catalog/params";
-
-// --- Regole ---------------------------------------------------------------
-export { boxCapacity, reaches, linkRefusal, relation, compatiblePair } from "./rules/relations";
-export type { Relation, RelationResult } from "./rules/relations";
-export {
-  connect,
-  spawnOutput,
-  refreshOutput,
-  pruneOutputs,
-  enforceCapacity,
-  nodesRemovedBy,
-  deleteNodes,
-  deleteLink,
-  mergeBoxes,
-  insertable,
-  insertOnLink,
-  detachStep,
-  deleteStep,
-  reorderSteps,
-  duplicateNodes,
-  isPartialOutput,
-  defaultPositionFn,
-} from "./rules/mutations";
-export { stepMissing, nodeState } from "./rules/state";
-
-// --- Logica -----------------------------------------------------------
-export {
-  groupRuns,
-  normalizeGroups,
-  groupPair,
-  splitAt,
-  ungroup,
-  addToGroup,
-  leftAssoc,
-  groupedPreview,
-} from "./logic/expressions";
-export type { Groupable, GroupRun } from "./logic/expressions";
-
-// --- Schema e CSV -----------------------------------------------------
-export { schemaOf } from "./schema/schema";
-export { parseCSV } from "./data/csv";
-export type { ParsedCsv } from "./data/csv";
 ```
 

@@ -860,7 +860,7 @@ export function reduce(state: EtlState, command: Command): ReduceOutcome {
 
 ### `src/etl-store/serialize.ts`
 
-188 righe
+204 righe
 
 ```ts
 /**
@@ -869,13 +869,20 @@ export function reduce(state: EtlState, command: Command): ReduceOutcome {
  * opzioni, con un numero di versione. Non si salvano cronologia, selezione,
  * inspector, vista, percorsi.
  */
-import { META } from "../etl-core";
+import { META, ensureParams } from "../etl-core";
 import type { Card, ColumnDef, Graph, Link } from "../etl-core";
 import { DEFAULT_OPTIONS, initialState } from "./state";
 import type { EtlState, LibraryItem, Options, PanelState, Panels } from "./types";
 
-/** Versione del formato. Un dato di versione diversa viene ignorato. */
-export const SAVE_VERSION = 1;
+/**
+ * Versione del formato. Un dato di versione sconosciuta viene ignorato; uno
+ * della versione 1 si carica eseguendo su ogni card le migrazioni dei
+ * parametri (`ensureParams`: colonne multiple, Fase 6b.0); la versione 2 si
+ * carica com'è.
+ */
+export const SAVE_VERSION = 2;
+/** Versioni che `fromSaved` sa leggere. */
+const READABLE_VERSIONS: readonly unknown[] = [1, SAVE_VERSION];
 
 export interface SavedState {
   readonly version: typeof SAVE_VERSION;
@@ -995,19 +1002,28 @@ function maxSuffix(ids: readonly string[], re: RegExp): number {
  */
 export function fromSaved(raw: unknown): EtlState | null {
   try {
-    if (!isObj(raw) || raw["version"] !== SAVE_VERSION) return null;
+    if (!isObj(raw) || !READABLE_VERSIONS.includes(raw["version"])) return null;
+    const legacy = raw["version"] !== SAVE_VERSION;
     const { graph, mode, library, panels, options } = raw;
     if (!validGraph(graph)) return null;
     if (mode !== "free" && mode !== "grid") return null;
     if (!Array.isArray(library) || !library.every(validLibraryItem)) return null;
     if (!isObj(panels) || !validPanel(panels["tools"]) || !validPanel(panels["insp"])) return null;
     if (!validOptions(options)) return null;
-    const cards = Object.values(graph.cards);
+    // un salvataggio di una versione precedente passa dalle migrazioni dei parametri
+    const migrate = (c: Card): Card =>
+      legacy
+        ? { ...c, params: c.params.map((p, i) => ensureParams(c.components[i] ?? "dataset", p)) }
+        : c;
+    const cardMap: Record<string, Card> = Object.fromEntries(
+      Object.entries(graph.cards).map(([id, c]) => [id, migrate(c as Card)]),
+    );
+    const cards = Object.values(cardMap);
     const base = initialState();
     return {
       ...base,
       graph: {
-        cards: { ...graph.cards },
+        cards: cardMap,
         links: graph.links.map((l: Link) => ({ from: l.from, to: l.to })),
       },
       mode,
