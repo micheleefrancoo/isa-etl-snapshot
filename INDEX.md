@@ -1,21 +1,21 @@
 # INDEX.md
 
-Generato: 2026-10-04T09:26:22Z (UTC)
-Repository sorgente: isa-glass-platform, branch `main`, commit `8db80876fa6b379c066117db6dbee9ba78052279`
+Generato: 2026-10-04T09:59:45Z (UTC)
+Repository sorgente: isa-glass-platform, branch `main`, commit `d560fddff5566f2fa1423d2be4e5e23baed8019a`
 Working tree del repository sorgente: pulito (nessuna modifica non committata).
 
-Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` del repository snapshot (isa-etl-snapshot): tutti gli URL sotto puntano a quel commit e restano validi anche dopo aggiornamenti futuri.
+Questo indice è fissato al commit `6a46c92379c173f62de3428b7958cd809736c744` del repository snapshot (isa-etl-snapshot): tutti gli URL sotto puntano a quel commit e restano validi anche dopo aggiornamenti futuri.
 
 ## Da leggere per primi
 
-1. [STATUS.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/STATUS.md) — stato di type check, lint, test, build
-2. [ENV.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/ENV.md) — configurazione completa (package.json, tsconfig, vite, eslint, CSS)
-3. [TREE.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/TREE.md) — albero completo del repository
+1. [STATUS.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/STATUS.md) — stato di type check, lint, test, build
+2. [ENV.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/ENV.md) — configurazione completa (package.json, tsconfig, vite, eslint, CSS)
+3. [TREE.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/TREE.md) — albero completo del repository
 4. I blocchi in `files/`, in ordine, elencati sotto.
 
 ## Blocchi (files/)
 
-### [files/01-canvas.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01-canvas.md)
+### [files/01-canvas.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01-canvas.md)
 
 55.6 KB. File sorgente contenuti:
 
@@ -34,9 +34,9 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/canvas/layout/surfacePanels.ts`
 - `src/canvas/store/canvasStore.tsx`
 
-### [files/01b-etl-core-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01b-etl-core-a.md)
+### [files/01b-etl-core-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01b-etl-core-a.md)
 
-56.8 KB. File sorgente contenuti:
+52.7 KB. File sorgente contenuti:
 
 - `src/etl-core/NOTE_DIVERGENZE.md`
 - `src/etl-core/README.md`
@@ -45,35 +45,41 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/etl-core/__tests__/fase11-requisiti.test.ts`
 - `src/etl-core/__tests__/fase11.test.ts`
 - `src/etl-core/__tests__/helpers.ts`
+
+### [files/01b-etl-core-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01b-etl-core-b.md)
+
+49.1 KB. File sorgente contenuti:
+
+- `src/etl-core/__tests__/multi-columns.test.ts`
 - `src/etl-core/__tests__/mutations.test.ts`
-
-### [files/01b-etl-core-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01b-etl-core-b.md)
-
-54.2 KB. File sorgente contenuti:
-
 - `src/etl-core/__tests__/params.test.ts`
 - `src/etl-core/__tests__/relations.test.ts`
 - `src/etl-core/__tests__/schema.test.ts`
 - `src/etl-core/__tests__/state.test.ts`
 - `src/etl-core/catalog/icons.ts`
 - `src/etl-core/catalog/operations.ts`
+
+### [files/01b-etl-core-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01b-etl-core-c.md)
+
+53.2 KB. File sorgente contenuti:
+
 - `src/etl-core/catalog/params.ts`
 - `src/etl-core/data/csv.ts`
 - `src/etl-core/index.ts`
-
-### [files/01b-etl-core-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01b-etl-core-c.md)
-
-43.8 KB. File sorgente contenuti:
-
 - `src/etl-core/logic/expressions.ts`
 - `src/etl-core/model/graph.ts`
 - `src/etl-core/model/types.ts`
+
+### [files/01b-etl-core-d.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01b-etl-core-d.md)
+
+28.1 KB. File sorgente contenuti:
+
 - `src/etl-core/rules/mutations.ts`
 - `src/etl-core/rules/relations.ts`
 - `src/etl-core/rules/state.ts`
 - `src/etl-core/schema/schema.ts`
 
-### [files/01c-etl-layout-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01c-etl-layout-a.md)
+### [files/01c-etl-layout-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01c-etl-layout-a.md)
 
 56.7 KB. File sorgente contenuti:
 
@@ -88,7 +94,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/etl-layout/__tests__/golden/06-corsie.json`
 - `src/etl-layout/__tests__/golden/07-join-output-parziale.json`
 
-### [files/01c-etl-layout-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01c-etl-layout-b.md)
+### [files/01c-etl-layout-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01c-etl-layout-b.md)
 
 51.2 KB. File sorgente contenuti:
 
@@ -103,7 +109,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/etl-layout/__tests__/golden/corretti/09-catena-riordino.json`
 - `src/etl-layout/__tests__/properties.test.ts`
 
-### [files/01c-etl-layout-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01c-etl-layout-c.md)
+### [files/01c-etl-layout-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01c-etl-layout-c.md)
 
 54.2 KB. File sorgente contenuti:
 
@@ -117,7 +123,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/etl-layout/nodes.ts`
 - `src/etl-layout/path.ts`
 
-### [files/01c-etl-layout-d.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01c-etl-layout-d.md)
+### [files/01c-etl-layout-d.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01c-etl-layout-d.md)
 
 30.5 KB. File sorgente contenuti:
 
@@ -126,9 +132,9 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/etl-layout/slots.ts`
 - `src/etl-layout/types.ts`
 
-### [files/01d-etl-store-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01d-etl-store-a.md)
+### [files/01d-etl-store-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01d-etl-store-a.md)
 
-50.0 KB. File sorgente contenuti:
+50.2 KB. File sorgente contenuti:
 
 - `src/etl-store/README.md`
 - `src/etl-store/__tests__/grouping.test.ts`
@@ -136,20 +142,21 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/etl-store/__tests__/persistence.test.ts`
 - `src/etl-store/__tests__/react.test.ts`
 
-### [files/01d-etl-store-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01d-etl-store-b.md)
+### [files/01d-etl-store-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01d-etl-store-b.md)
 
-39.1 KB. File sorgente contenuti:
+46.3 KB. File sorgente contenuti:
 
 - `src/etl-store/__tests__/reduce.test.ts`
+- `src/etl-store/__tests__/save-versions.test.ts`
 - `src/etl-store/__tests__/store.test.ts`
 - `src/etl-store/derived.ts`
 - `src/etl-store/index.ts`
 - `src/etl-store/persistence.ts`
 - `src/etl-store/react.ts`
 
-### [files/01d-etl-store-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01d-etl-store-c.md)
+### [files/01d-etl-store-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01d-etl-store-c.md)
 
-57.9 KB. File sorgente contenuti:
+58.7 KB. File sorgente contenuti:
 
 - `src/etl-store/reduce.ts`
 - `src/etl-store/serialize.ts`
@@ -157,7 +164,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/etl-store/store.ts`
 - `src/etl-store/types.ts`
 
-### [files/01e-etl-canvas-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01e-etl-canvas-a.md)
+### [files/01e-etl-canvas-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01e-etl-canvas-a.md)
 
 59.1 KB. File sorgente contenuti:
 
@@ -168,7 +175,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/etl-canvas/Node.tsx`
 - `src/etl-canvas/README.md`
 
-### [files/01e-etl-canvas-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01e-etl-canvas-b.md)
+### [files/01e-etl-canvas-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01e-etl-canvas-b.md)
 
 58.9 KB. File sorgente contenuti:
 
@@ -182,7 +189,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/etl-canvas/__tests__/interaction.test.ts`
 - `src/etl-canvas/__tests__/keyboard.test.ts`
 
-### [files/01e-etl-canvas-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01e-etl-canvas-c.md)
+### [files/01e-etl-canvas-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01e-etl-canvas-c.md)
 
 57.5 KB. File sorgente contenuti:
 
@@ -196,7 +203,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/etl-canvas/__tests__/tokens.test.ts`
 - `src/etl-canvas/__tests__/toolbox-drop.test.ts`
 
-### [files/01e-etl-canvas-d.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01e-etl-canvas-d.md)
+### [files/01e-etl-canvas-d.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01e-etl-canvas-d.md)
 
 53.7 KB. File sorgente contenuti:
 
@@ -209,7 +216,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/etl-canvas/drop.ts`
 - `src/etl-canvas/engine.ts`
 
-### [files/01e-etl-canvas-e.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01e-etl-canvas-e.md)
+### [files/01e-etl-canvas-e.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01e-etl-canvas-e.md)
 
 55.2 KB. File sorgente contenuti:
 
@@ -223,7 +230,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/etl-canvas/panels/ControlBar.tsx`
 - `src/etl-canvas/panels/Dock.tsx`
 
-### [files/01e-etl-canvas-f.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01e-etl-canvas-f.md)
+### [files/01e-etl-canvas-f.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01e-etl-canvas-f.md)
 
 55.5 KB. File sorgente contenuti:
 
@@ -239,7 +246,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/etl-canvas/panels/ui-icons.tsx`
 - `src/etl-canvas/seed.ts`
 
-### [files/01e-etl-canvas-g.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/01e-etl-canvas-g.md)
+### [files/01e-etl-canvas-g.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/01e-etl-canvas-g.md)
 
 16.0 KB. File sorgente contenuti:
 
@@ -247,7 +254,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/etl-canvas/transitions.ts`
 - `src/etl-canvas/view.ts`
 
-### [files/02-isa-etl-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/02-isa-etl-a.md)
+### [files/02-isa-etl-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/02-isa-etl-a.md)
 
 52.7 KB. File sorgente contenuti:
 
@@ -260,19 +267,19 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/components/isa/etl/settings-panels/panel-controls.tsx`
 - `src/components/isa/etl/tool-palette.tsx`
 
-### [files/02-isa-etl-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/02-isa-etl-b.md)
+### [files/02-isa-etl-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/02-isa-etl-b.md)
 
 49.9 KB. File sorgente contenuti:
 
 - `src/components/isa/etl/workflow-canvas.tsx`
 
-### [files/02-isa-etl-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/02-isa-etl-c.md)
+### [files/02-isa-etl-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/02-isa-etl-c.md)
 
 54.2 KB. File sorgente contenuti:
 
 - `src/components/isa/etl/workflow-canvas.tsx`
 
-### [files/03-components-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/03-components-a.md)
+### [files/03-components-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/03-components-a.md)
 
 56.3 KB. File sorgente contenuti:
 
@@ -290,7 +297,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/components/isa/ui/isa-menu.tsx`
 - `src/components/isa/ui/isa-modal.tsx`
 
-### [files/03-components-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/03-components-b.md)
+### [files/03-components-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/03-components-b.md)
 
 55.3 KB. File sorgente contenuti:
 
@@ -311,7 +318,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/components/ui/collapsible.tsx`
 - `src/components/ui/command.tsx`
 
-### [files/03-components-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/03-components-c.md)
+### [files/03-components-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/03-components-c.md)
 
 55.5 KB. File sorgente contenuti:
 
@@ -333,7 +340,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/components/ui/resizable.tsx`
 - `src/components/ui/scroll-area.tsx`
 
-### [files/03-components-d.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/03-components-d.md)
+### [files/03-components-d.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/03-components-d.md)
 
 49.2 KB. File sorgente contenuti:
 
@@ -352,7 +359,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/components/ui/toggle.tsx`
 - `src/components/ui/tooltip.tsx`
 
-### [files/04-lib-hooks-store-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/04-lib-hooks-store-a.md)
+### [files/04-lib-hooks-store-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/04-lib-hooks-store-a.md)
 
 49.8 KB. File sorgente contenuti:
 
@@ -367,7 +374,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/lib/etl-node-size.ts`
 - `src/lib/etl-schema.ts`
 
-### [files/04-lib-hooks-store-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/04-lib-hooks-store-b.md)
+### [files/04-lib-hooks-store-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/04-lib-hooks-store-b.md)
 
 27.8 KB. File sorgente contenuti:
 
@@ -378,7 +385,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/lib/theme.tsx`
 - `src/lib/utils.ts`
 
-### [files/05-app-pages-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/05-app-pages-a.md)
+### [files/05-app-pages-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/05-app-pages-a.md)
 
 59.0 KB. File sorgente contenuti:
 
@@ -402,19 +409,19 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/routes/users.tsx`
 - `src/server.ts`
 
-### [files/05-app-pages-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/05-app-pages-b.md)
+### [files/05-app-pages-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/05-app-pages-b.md)
 
 1.1 KB. File sorgente contenuti:
 
 - `src/start.ts`
 
-### [files/06-styles.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/06-styles.md)
+### [files/06-styles.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/06-styles.md)
 
 7.5 KB. File sorgente contenuti:
 
 - `src/styles.css`
 
-### [files/08-scripts-config-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/08-scripts-config-a.md)
+### [files/08-scripts-config-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/08-scripts-config-a.md)
 
 57.2 KB. File sorgente contenuti:
 
@@ -431,7 +438,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `scripts/e2e-fase5.mjs`
 - `scripts/e2e-fase6a.mjs`
 
-### [files/08-scripts-config-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/08-scripts-config-b.md)
+### [files/08-scripts-config-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/08-scripts-config-b.md)
 
 55.0 KB. File sorgente contenuti:
 
@@ -443,7 +450,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `scripts/token-legacy-files.txt`
 - `scripts/visual-compare.mjs`
 
-### [files/08-scripts-config-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/08-scripts-config-c.md)
+### [files/08-scripts-config-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/08-scripts-config-c.md)
 
 37.4 KB. File sorgente contenuti:
 
@@ -455,7 +462,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `vite.config.ts`
 - `vitest.config.ts`
 
-### [files/09-docs.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/09-docs.md)
+### [files/09-docs.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/09-docs.md)
 
 3.6 KB. File sorgente contenuti:
 
@@ -463,50 +470,50 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `README.md`
 - `roadmap.md`
 
-### [files/10-prototype-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/10-prototype-a.md)
+### [files/10-prototype-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/10-prototype-a.md)
 
 49.8 KB. File sorgente contenuti:
 
 - `docs/prototype/isa-fusion-prototype.html`
 
-### [files/10-prototype-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/10-prototype-b.md)
+### [files/10-prototype-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/10-prototype-b.md)
 
 49.9 KB. File sorgente contenuti:
 
 - `docs/prototype/isa-fusion-prototype.html`
 
-### [files/10-prototype-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/10-prototype-c.md)
+### [files/10-prototype-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/10-prototype-c.md)
 
 49.9 KB. File sorgente contenuti:
 
 - `docs/prototype/isa-fusion-prototype.html`
 
-### [files/10-prototype-d.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/10-prototype-d.md)
+### [files/10-prototype-d.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/10-prototype-d.md)
 
 49.9 KB. File sorgente contenuti:
 
 - `docs/prototype/isa-fusion-prototype.html`
 
-### [files/10-prototype-e.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/10-prototype-e.md)
+### [files/10-prototype-e.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/10-prototype-e.md)
 
 49.9 KB. File sorgente contenuti:
 
 - `docs/prototype/isa-fusion-prototype.html`
 
-### [files/10-prototype-f.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/10-prototype-f.md)
+### [files/10-prototype-f.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/10-prototype-f.md)
 
 11.1 KB. File sorgente contenuti:
 
 - `docs/prototype/isa-fusion-prototype.html`
 
-### [files/11-inventory.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/11-inventory.md)
+### [files/11-inventory.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/11-inventory.md)
 
 52.7 KB. File sorgente contenuti:
 
 - `docs/inventory/INVENTARIO_2026-09-28T19-40-33Z.md`
 - `docs/inventory/lovable-1e72955.diff`
 
-### [files/12-docs-other-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-a.md)
+### [files/12-docs-other-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-a.md)
 
 34.4 KB. File sorgente contenuti:
 
@@ -516,158 +523,158 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `docs/visual/fase4b/console.txt`
 - `docs/visual/fase4b/misure.json`
 
-### [files/12-docs-other-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-b.md)
+### [files/12-docs-other-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-b.md)
 
 48.5 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/prototipo.webm`
 
-### [files/12-docs-other-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-c.md)
+### [files/12-docs-other-c.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-c.md)
 
 49.7 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/prototipo.webm`
 
-### [files/12-docs-other-d.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-d.md)
+### [files/12-docs-other-d.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-d.md)
 
 49.8 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/prototipo.webm`
 
-### [files/12-docs-other-e.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-e.md)
+### [files/12-docs-other-e.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-e.md)
 
 49.7 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/prototipo.webm`
 
-### [files/12-docs-other-f.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-f.md)
+### [files/12-docs-other-f.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-f.md)
 
 49.4 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/prototipo.webm`
 
-### [files/12-docs-other-g.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-g.md)
+### [files/12-docs-other-g.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-g.md)
 
 49.8 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/prototipo.webm`
 
-### [files/12-docs-other-h.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-h.md)
+### [files/12-docs-other-h.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-h.md)
 
 49.5 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/prototipo.webm`
 
-### [files/12-docs-other-i.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-i.md)
+### [files/12-docs-other-i.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-i.md)
 
 49.7 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/prototipo.webm`
 
-### [files/12-docs-other-j.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-j.md)
+### [files/12-docs-other-j.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-j.md)
 
 49.9 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/prototipo.webm`
 
-### [files/12-docs-other-k.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-k.md)
+### [files/12-docs-other-k.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-k.md)
 
 48.6 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/prototipo.webm`
 
-### [files/12-docs-other-l.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-l.md)
+### [files/12-docs-other-l.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-l.md)
 
 49.4 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/prototipo.webm`
 
-### [files/12-docs-other-m.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-m.md)
+### [files/12-docs-other-m.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-m.md)
 
 49.9 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/prototipo.webm`
 
-### [files/12-docs-other-n.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-n.md)
+### [files/12-docs-other-n.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-n.md)
 
 28.9 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/prototipo.webm`
 
-### [files/12-docs-other-o.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-o.md)
+### [files/12-docs-other-o.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-o.md)
 
 49.7 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/v2-chiaro.webm`
 
-### [files/12-docs-other-p.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-p.md)
+### [files/12-docs-other-p.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-p.md)
 
 49.0 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/v2-chiaro.webm`
 
-### [files/12-docs-other-q.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-q.md)
+### [files/12-docs-other-q.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-q.md)
 
 49.5 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/v2-chiaro.webm`
 
-### [files/12-docs-other-r.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-r.md)
+### [files/12-docs-other-r.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-r.md)
 
 48.7 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/v2-chiaro.webm`
 
-### [files/12-docs-other-s.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-s.md)
+### [files/12-docs-other-s.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-s.md)
 
 49.7 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/v2-chiaro.webm`
 
-### [files/12-docs-other-t.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-t.md)
+### [files/12-docs-other-t.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-t.md)
 
 49.6 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/v2-chiaro.webm`
 
-### [files/12-docs-other-u.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-u.md)
+### [files/12-docs-other-u.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-u.md)
 
 49.4 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/v2-chiaro.webm`
 
-### [files/12-docs-other-v.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-v.md)
+### [files/12-docs-other-v.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-v.md)
 
 49.5 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/v2-chiaro.webm`
 
-### [files/12-docs-other-w.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-w.md)
+### [files/12-docs-other-w.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-w.md)
 
 49.4 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/v2-chiaro.webm`
 
-### [files/12-docs-other-x.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-x.md)
+### [files/12-docs-other-x.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-x.md)
 
 49.1 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/v2-chiaro.webm`
 
-### [files/12-docs-other-y.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-y.md)
+### [files/12-docs-other-y.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-y.md)
 
 49.7 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/v2-chiaro.webm`
 
-### [files/12-docs-other-z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/12-docs-other-z.md)
+### [files/12-docs-other-z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/12-docs-other-z.md)
 
 28.3 KB. File sorgente contenuti:
 
 - `docs/visual/fase4b/v2-chiaro.webm`
 - `docs/visual/fase6a/posizioni-nodi.json`
 
-### [files/13-misc-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/13-misc-a.md)
+### [files/13-misc-a.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/13-misc-a.md)
 
 57.9 KB. File sorgente contenuti:
 
@@ -681,7 +688,7 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 - `src/theme/__tests__/support.ts`
 - `src/theme/__tests__/themes.test.ts`
 
-### [files/13-misc-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/files/13-misc-b.md)
+### [files/13-misc-b.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/files/13-misc-b.md)
 
 48.0 KB. File sorgente contenuti:
 
@@ -697,26 +704,27 @@ Questo indice è fissato al commit `58cf6b30646085e7869a23ab50df71e5f0706e0e` de
 
 ## Report (reports/)
 
-- [VALIDATION_REPORT_2026-09-19T10-24-53Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md)
-- [VALIDATION_REPORT_2026-09-19T11-38-16Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-19T11-38-16Z.md)
-- [VALIDATION_REPORT_2026-09-28T18-45-29Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-28T18-45-29Z.md)
-- [VALIDATION_REPORT_2026-09-28T19-44-43Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-28T19-44-43Z.md)
-- [VALIDATION_REPORT_2026-09-28T20-14-48Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-28T20-14-48Z.md)
-- [VALIDATION_REPORT_2026-09-28T21-06-48Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-28T21-06-48Z.md)
-- [VALIDATION_REPORT_2026-09-29T07-20-03Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-29T07-20-03Z.md)
-- [VALIDATION_REPORT_2026-09-29T08-33-03Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-29T08-33-03Z.md)
-- [VALIDATION_REPORT_2026-09-29T08-57-43Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-29T08-57-43Z.md)
-- [VALIDATION_REPORT_2026-09-29T09-28-26Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-29T09-28-26Z.md)
-- [VALIDATION_REPORT_2026-09-29T09-39-17Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-29T09-39-17Z.md)
-- [VALIDATION_REPORT_2026-09-29T15-34-16Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-29T15-34-16Z.md)
-- [VALIDATION_REPORT_2026-09-29T16-50-41Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-29T16-50-41Z.md)
-- [VALIDATION_REPORT_2026-09-29T17-13-50Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-29T17-13-50Z.md)
-- [VALIDATION_REPORT_2026-09-29T19-51-32Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-09-29T19-51-32Z.md)
-- [VALIDATION_REPORT_2026-10-02T12-35-11Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-10-02T12-35-11Z.md)
-- [VALIDATION_REPORT_2026-10-02T13-25-09Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-10-02T13-25-09Z.md)
-- [VALIDATION_REPORT_2026-10-04T07-50-59Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-10-04T07-50-59Z.md)
-- [VALIDATION_REPORT_2026-10-04T08-45-00Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-10-04T08-45-00Z.md)
-- [VALIDATION_REPORT_2026-10-04T10-30-00Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/58cf6b30646085e7869a23ab50df71e5f0706e0e/reports/VALIDATION_REPORT_2026-10-04T10-30-00Z.md)
+- [VALIDATION_REPORT_2026-09-19T10-24-53Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-19T10-24-53Z.md)
+- [VALIDATION_REPORT_2026-09-19T11-38-16Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-19T11-38-16Z.md)
+- [VALIDATION_REPORT_2026-09-28T18-45-29Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-28T18-45-29Z.md)
+- [VALIDATION_REPORT_2026-09-28T19-44-43Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-28T19-44-43Z.md)
+- [VALIDATION_REPORT_2026-09-28T20-14-48Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-28T20-14-48Z.md)
+- [VALIDATION_REPORT_2026-09-28T21-06-48Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-28T21-06-48Z.md)
+- [VALIDATION_REPORT_2026-09-29T07-20-03Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-29T07-20-03Z.md)
+- [VALIDATION_REPORT_2026-09-29T08-33-03Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-29T08-33-03Z.md)
+- [VALIDATION_REPORT_2026-09-29T08-57-43Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-29T08-57-43Z.md)
+- [VALIDATION_REPORT_2026-09-29T09-28-26Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-29T09-28-26Z.md)
+- [VALIDATION_REPORT_2026-09-29T09-39-17Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-29T09-39-17Z.md)
+- [VALIDATION_REPORT_2026-09-29T15-34-16Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-29T15-34-16Z.md)
+- [VALIDATION_REPORT_2026-09-29T16-50-41Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-29T16-50-41Z.md)
+- [VALIDATION_REPORT_2026-09-29T17-13-50Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-29T17-13-50Z.md)
+- [VALIDATION_REPORT_2026-09-29T19-51-32Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-09-29T19-51-32Z.md)
+- [VALIDATION_REPORT_2026-10-02T12-35-11Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-10-02T12-35-11Z.md)
+- [VALIDATION_REPORT_2026-10-02T13-25-09Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-10-02T13-25-09Z.md)
+- [VALIDATION_REPORT_2026-10-04T07-50-59Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-10-04T07-50-59Z.md)
+- [VALIDATION_REPORT_2026-10-04T08-45-00Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-10-04T08-45-00Z.md)
+- [VALIDATION_REPORT_2026-10-04T10-30-00Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-10-04T10-30-00Z.md)
+- [VALIDATION_REPORT_2026-10-04T11-15-00Z.md](https://raw.githubusercontent.com/micheleefrancoo/isa-etl-snapshot/6a46c92379c173f62de3428b7958cd809736c744/reports/VALIDATION_REPORT_2026-10-04T11-15-00Z.md)
 
 ## File esclusi dallo snapshot
 
