@@ -13,7 +13,7 @@ File in questo blocco:
 
 ### `src/etl-store/__tests__/reduce.test.ts`
 
-447 righe
+487 righe
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -431,6 +431,27 @@ describe("setPanel, setView, setOptions", () => {
     ).toMatch(/sconosciuto/);
   });
 
+  it("setPanel: un solo pannello aperto alla volta, su qualunque bordo, nello stesso aggiornamento", () => {
+    const sides = ["left", "right", "top", "bottom"] as const;
+    for (const a of sides) {
+      for (const b of sides) {
+        let s = ok(initialState(), { type: "setPanel", payload: { panel: "tools", side: a } });
+        s = ok(s, { type: "setPanel", payload: { panel: "insp", side: b, open: true } });
+        // aprire l'Inspector chiude la cassetta, anche se stanno su bordi diversi
+        expect(s.panels.insp.open).toBe(true);
+        expect(s.panels.tools.open).toBe(false);
+        s = ok(s, { type: "setPanel", payload: { panel: "tools", open: true } });
+        expect(s.panels.tools.open).toBe(true);
+        expect(s.panels.insp.open).toBe(false);
+        s = ok(s, { type: "setPanel", payload: { panel: "insp", open: true } });
+        expect([s.panels.tools.open, s.panels.insp.open]).toEqual([false, true]);
+        // chiudere non apre l'altro
+        s = ok(s, { type: "setPanel", payload: { panel: "insp", open: false } });
+        expect([s.panels.tools.open, s.panels.insp.open]).toEqual([false, false]);
+      }
+    }
+  });
+
   it("setView: zoom limitato tra 0,35 e 2; rifiuta valori non finiti", () => {
     const s = ok(initialState(), { type: "setView", payload: { x: 10, zoom: 9 } });
     expect(s.view).toEqual({ x: 10, y: 0, zoom: 2 });
@@ -462,11 +483,30 @@ describe("comando sconosciuto e purezza", () => {
     void CARD;
   });
 });
+
+describe("clearAll", () => {
+  it("elimina nodi e collegamenti, tiene libreria e modalità; rifiuta su un canvas vuoto", () => {
+    const { state } = connected();
+    let withLib = ok(state, {
+      type: "loadDataset",
+      payload: { name: "a", path: "a.csv", columns: COLUMNS, rows: 3 },
+    });
+    withLib = ok(withLib, { type: "setMode", payload: { mode: "grid" } });
+    const s = ok(withLib, { type: "clearAll", payload: {} });
+    expect(Object.keys(s.graph.cards)).toEqual([]);
+    expect(s.graph.links).toEqual([]);
+    expect(s.selection).toEqual([]);
+    expect(s.inspector).toEqual({ nodeId: null, step: 0 });
+    expect(s.library).toEqual(withLib.library);
+    expect(s.mode).toBe("grid");
+    expect(refused(s, { type: "clearAll", payload: {} })).toBe("Il canvas è già vuoto");
+  });
+});
 ```
 
 ### `src/etl-store/__tests__/store.test.ts`
 
-232 righe
+263 righe
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -698,6 +738,37 @@ describe("scenario completo", () => {
     expect(store.getState().graph).toEqual(final.graph);
     expect(store.getState().counters).toEqual(final.counters);
     expect(store.historySize()).toEqual({ past: steps, future: 0 });
+  });
+});
+
+describe("clearAll", () => {
+  it("è un solo passo di cronologia e una voce di registro; annullare ripristina tutto", () => {
+    const { store } = storeWith(1500);
+    const before = store.getState().graph;
+    const logBefore = store.getLog().length;
+    expect(store.dispatch({ type: "clearAll", payload: {} })).toEqual({ ok: true });
+    expect(store.historySize().past).toBe(1);
+    expect(store.getLog().length).toBe(logBefore + 1);
+    expect(store.getLog().at(-1)?.type).toBe("clearAll");
+    expect(Object.keys(store.getState().graph.cards)).toEqual([]);
+    store.undo();
+    expect(store.getState().graph).toEqual(before);
+    store.redo();
+    expect(Object.keys(store.getState().graph.cards)).toEqual([]);
+  });
+
+  it("la libreria dei dataset caricati non viene toccata", () => {
+    const { store } = storeWith();
+    store.dispatch({
+      type: "loadDataset",
+      payload: { name: "b", path: "b.csv", columns: COLUMNS, rows: 1 },
+    });
+    const library = store.getState().library;
+    expect(library.length).toBeGreaterThan(0);
+    store.dispatch({ type: "clearAll", payload: {} });
+    expect(store.getState().library).toEqual(library);
+    store.undo();
+    expect(store.getState().library).toEqual(library);
   });
 });
 ```

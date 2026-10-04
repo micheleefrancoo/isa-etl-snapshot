@@ -12,7 +12,7 @@ File in questo blocco:
 
 ### `src/etl-store/README.md`
 
-223 righe
+224 righe
 
 ```md
 # etl-store — Fase 3: stato, cronologia, registro, salvataggio
@@ -86,6 +86,7 @@ README di etl-layout.
 | `reorderSteps`      | 2330-2338 (vista espansa), 3834-3843 (inspector)               | `pushHistory` (2331, 3838); componenti e parametri spostati insieme; il passaggio selezionato segue                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | sì                 |
 | `deleteNodes`       | 4480-4506 (`commitDelete`)                                     | `pushHistory` (4481); nodi e output rimasti senza produttore; gli output di box che hanno ancora ingressi rinascono (`renderAll`, 4407)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | sì                 |
 | `deleteLink`        | 4565-4573                                                      | `pushHistory` (4568); `pruneOutputs`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | sì                 |
+| `clearAll`          | (assente nel prototipo: barra dei controlli, Fase 6a.2)        | elimina nodi e collegamenti; libreria, contatori e modalità restano                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | sì                 |
 | `duplicate`         | 4594-4618 (`duplicateSelection`)                               | output esclusi; `pushHistory` (4597); copie a `+GRID·2`, nome `… copia` (4604-4605); postazioni in Organizzato, altrimenti separazione se si sovrappongono (4616); le copie diventano la selezione (4617)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | sì                 |
 | `setParams`         | inspector (3515-3900): modifica diretta di `cards[uid].params` | sostituisce i parametri di un passaggio                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | sì (aggiunta)      |
 | `renameNode`        | 3860-3870 (nome nell'inspector, al blur)                       | spazi tolti; un nome vuoto viene rifiutato (nel prototipo restava il nome precedente)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | sì (aggiunta)      |
@@ -508,7 +509,7 @@ export function withDatasetAndFilter(): { state: EtlState; ds: string; filter: s
 
 ### `src/etl-store/__tests__/persistence.test.ts`
 
-165 righe
+177 righe
 
 ```ts
 import { readFileSync, readdirSync } from "node:fs";
@@ -594,6 +595,18 @@ describe("salvataggio", () => {
     expect(parseSaved("{non è json")).toBeNull();
     expect(parseSaved(null)).toBeNull();
     expect(fromSaved({ ...good, version: SAVE_VERSION + 1 })).toBeNull();
+    // entrambi i pannelli aperti: si normalizza lasciando aperta solo la cassetta
+    const both = fromSaved({
+      ...good,
+      panels: { tools: { side: "left", open: true }, insp: { side: "right", open: true } },
+    });
+    expect(both?.panels.tools.open).toBe(true);
+    expect(both?.panels.insp.open).toBe(false);
+    const onlyInsp = fromSaved({
+      ...good,
+      panels: { tools: { side: "left", open: false }, insp: { side: "right", open: true } },
+    });
+    expect(onlyInsp?.panels.insp.open).toBe(true);
     expect(fromSaved({ ...good, mode: "altro" })).toBeNull();
     expect(
       fromSaved({ ...good, graph: { cards: {}, links: [{ from: "a", to: "b" }] } }),

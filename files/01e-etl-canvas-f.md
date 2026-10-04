@@ -2,31 +2,548 @@
 
 File in questo blocco:
 
+- `src/etl-canvas/panels/EtlWorkspace.tsx`
+- `src/etl-canvas/panels/InspectorShell.tsx`
+- `src/etl-canvas/panels/Toolbox.tsx`
+- `src/etl-canvas/panels/actions.ts`
+- `src/etl-canvas/panels/csv.ts`
+- `src/etl-canvas/panels/families.ts`
 - `src/etl-canvas/panels/layout.ts`
+- `src/etl-canvas/panels/overlayLayout.ts`
 - `src/etl-canvas/panels/panels.css`
 - `src/etl-canvas/panels/ui-icons.tsx`
 - `src/etl-canvas/seed.ts`
-- `src/etl-canvas/tokens.css`
-- `src/etl-canvas/transitions.ts`
-- `src/etl-canvas/view.ts`
 
 ---
 
+### `src/etl-canvas/panels/EtlWorkspace.tsx`
+
+125 righe
+
+```tsx
+/**
+ * Lo spazio di lavoro: il canvas al centro, i pannelli (cassetta e Inspector)
+ * agganciati ai bordi. È ciò che la rotta ETL monta al posto del solo canvas.
+ *
+ * Come il canvas, si monta solo nel browser: sul server e nel primo rendering
+ * di idratazione produce lo stesso segnaposto (i pannelli dipendono dallo
+ * stato salvato nel browser).
+ */
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
+import type { EtlStore } from "../../etl-store";
+import { EtlCanvas } from "../EtlCanvas";
+import { Icon } from "../icons";
+import type { CanvasDropPayload } from "../drop";
+import { createInteractionController } from "../interaction";
+import { createPanelActions, followInspector } from "./actions";
+import { DockLayout } from "./Dock";
+import { familyOfType } from "./families";
+import { InspectorShell } from "./InspectorShell";
+import { Toolbox } from "./Toolbox";
+
+const noopSubscribe = () => () => {};
+
+interface Ghost {
+  readonly x: number;
+  readonly y: number;
+  readonly payload: CanvasDropPayload;
+}
+
+export function EtlWorkspace(props: { store: EtlStore }) {
+  const { store } = props;
+  const isClient = useSyncExternalStore(
+    noopSubscribe,
+    () => true,
+    () => false,
+  );
+  const [controller] = useState(() => createInteractionController(store));
+  const actions = useMemo(() => createPanelActions(store), [store]);
+  const [ghost, setGhost] = useState<Ghost | null>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const cleanup = useRef<(() => void) | null>(null);
+
+  // l'Inspector si apre con la selezione e si chiude con la deselezione
+  useEffect(() => followInspector(store, controller, actions), [store, controller, actions]);
+  useEffect(() => () => cleanup.current?.(), []);
+
+  /** Trascinamento di una voce della cassetta (prototipo, righe 4939-5067): un nodo esterno, con la stessa anteprima del trascinamento tra nodi. */
+  const onItemPointerDown = (payload: CanvasDropPayload, e: ReactPointerEvent<HTMLElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    setGhost({ x: e.clientX, y: e.clientY, payload });
+    const stagePoint = (cx: number, cy: number) => {
+      const r = hostRef.current?.querySelector(".ec-stage")?.getBoundingClientRect();
+      if (!r) return null;
+      const inside = cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
+      return inside ? { x: cx - r.left, y: cy - r.top } : null;
+    };
+    const move = (ev: PointerEvent) => {
+      setGhost({ x: ev.clientX, y: ev.clientY, payload });
+      controller.hoverExternal(payload, stagePoint(ev.clientX, ev.clientY));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", abort);
+      cleanup.current = null;
+      setGhost(null);
+    };
+    const up = (ev: PointerEvent) => {
+      stop();
+      controller.dropExternal(payload, stagePoint(ev.clientX, ev.clientY));
+    };
+    const abort = () => {
+      stop();
+      controller.dropExternal(payload, null);
+    };
+    cleanup.current = abort;
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", abort);
+  };
+
+  return (
+    <div ref={hostRef} className="ec-workspace-host">
+      {isClient ? (
+        <DockLayout
+          store={store}
+          actions={actions}
+          controller={controller}
+          canvas={(overlay) => (
+            <EtlCanvas store={store} controller={controller} minHeight={0} overlay={overlay} />
+          )}
+          content={{
+            tools: ({ side }) => (
+              <Toolbox
+                store={store}
+                side={side}
+                onClose={() => actions.close("tools")}
+                onItemPointerDown={onItemPointerDown}
+              />
+            ),
+            insp: ({ side }) => (
+              <InspectorShell store={store} side={side} onClose={() => actions.close("insp")} />
+            ),
+          }}
+          overlay={
+            ghost ? (
+              <div
+                className={"ec-ghost" + (ghost.payload.component === "dataset" ? " ec-source" : "")}
+                data-testid="ec-ghost"
+                data-family={familyOfType(ghost.payload.component)}
+                style={{ left: ghost.x - 44, top: ghost.y - 44 }}
+              >
+                <Icon id={ghost.payload.component} />
+              </div>
+            ) : null
+          }
+        />
+      ) : (
+        <EtlCanvas store={store} />
+      )}
+    </div>
+  );
+}
+```
+
+### `src/etl-canvas/panels/InspectorShell.tsx`
+
+40 righe
+
+```tsx
+/**
+ * Il guscio dell'Inspector (Fase 6a): si apre e si chiude come gli altri
+ * pannelli; il suo contenuto è per ora solo il nome del nodo selezionato.
+ * Campi, layout a colonne e selettori sono della Fase 6b.
+ */
+import type { EtlStore, Side } from "../../etl-store";
+import { useEtlState } from "../../etl-store/react";
+import { CloseArrow } from "./ui-icons";
+
+export function InspectorShell(props: { store: EtlStore; side: Side; onClose: () => void }) {
+  const { store, side } = props;
+  const nodeId = useEtlState((s) => s.inspector.nodeId, store);
+  const name = useEtlState(
+    (s) => (s.inspector.nodeId ? s.graph.cards[s.inspector.nodeId]?.name : undefined),
+    store,
+  );
+  return (
+    <div className="ec-tb-inner" data-testid="ec-inspector">
+      <div className="ec-tb-head">
+        <div className="ec-tb-title">Inspector</div>
+        <button
+          type="button"
+          className="ec-close-btn"
+          aria-label="Nascondi l’inspector"
+          onClick={props.onClose}
+        >
+          <CloseArrow side={side} />
+        </button>
+      </div>
+      {nodeId ? (
+        <div className="ec-insp-name" data-testid="ec-inspector-name">
+          {name ?? nodeId}
+        </div>
+      ) : (
+        <div className="ec-tb-empty">Nessun nodo selezionato</div>
+      )}
+    </div>
+  );
+}
+```
+
+### `src/etl-canvas/panels/Toolbox.tsx`
+
+166 righe
+
+```tsx
+/**
+ * La cassetta degli strumenti (prototipo, `buildPalette` righe 4727-4752, e i
+ * gestori 4912-4937). Le sezioni e le voci NON sono scritte qui: derivano dal
+ * catalogo di etl-core (`SECTIONS`, `META`), così un'operazione aggiunta al
+ * dominio compare da sola. La sezione Dataset mostra la libreria di etl-store
+ * e il caricamento di un CSV.
+ */
+import { useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
+import { META, SECTIONS } from "../../etl-core";
+import type { ComponentId } from "../../etl-core";
+import type { EtlStore, Side } from "../../etl-store";
+import { useEtlState } from "../../etl-store/react";
+import { Icon } from "../icons";
+import { FAMILY_OF_SECTION } from "./families";
+import type { CanvasDropPayload } from "../drop";
+import { loadCsvFile } from "./csv";
+import { ChevronIcon, CloseArrow, UploadIcon } from "./ui-icons";
+
+export interface ToolboxProps {
+  readonly store: EtlStore;
+  readonly side: Side;
+  readonly onClose: () => void;
+  /** Inizio del trascinamento di una voce (il canvas ne mostra l'anteprima): vedi EtlWorkspace. */
+  readonly onItemPointerDown: (
+    payload: CanvasDropPayload,
+    e: ReactPointerEvent<HTMLElement>,
+  ) => void;
+}
+
+function Item(props: {
+  type: ComponentId;
+  label: string;
+  meta?: string | undefined;
+  lib?: string | undefined;
+  family?: string | undefined;
+  onPointerDown: ToolboxProps["onItemPointerDown"];
+}) {
+  const { type, lib } = props;
+  const payload: CanvasDropPayload = lib
+    ? { component: type, libraryId: lib }
+    : { component: type };
+  return (
+    <div
+      className={"ec-pal-item" + (type === "dataset" ? " ec-source" : "")}
+      data-type={type}
+      data-lib={lib}
+      data-family={props.family}
+      onPointerDown={(e) => props.onPointerDown(payload, e)}
+    >
+      <div className="ec-pal-chip">
+        <Icon id={type} />
+      </div>
+      <div className="ec-pal-label">{props.label}</div>
+      {props.meta ? <div className="ec-lib-meta">{props.meta}</div> : null}
+    </div>
+  );
+}
+
+export function Toolbox(props: ToolboxProps) {
+  const { store, side } = props;
+  const library = useEtlState((s) => s.library, store);
+  const horiz = side === "top" || side === "bottom";
+  const [open, setOpen] = useState<Readonly<Record<string, boolean>>>(() =>
+    Object.fromEntries(SECTIONS.map((s) => [s.id, true])),
+  );
+  const [status, setStatus] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const onFile = async (file: File | undefined) => {
+    if (!file) return;
+    const outcome = await loadCsvFile(store, file);
+    setStatus(outcome.message);
+    if (outcome.ok) setOpen((o) => ({ ...o, data: true }));
+  };
+
+  return (
+    <div className="ec-tb-inner" data-testid="ec-toolbox">
+      <div className="ec-tb-head">
+        <div className="ec-tb-title">Strumenti</div>
+        <button
+          type="button"
+          className="ec-close-btn"
+          aria-label="Nascondi la cassetta degli strumenti"
+          onClick={props.onClose}
+        >
+          <CloseArrow side={side} />
+        </button>
+      </div>
+      {SECTIONS.map((sec) => {
+        const isOpen = horiz || open[sec.id] !== false;
+        return (
+          <div key={sec.id} className={"ec-tb-sec" + (isOpen ? " ec-open" : "")} data-sec={sec.id}>
+            <button
+              type="button"
+              className="ec-tb-sec-head"
+              aria-expanded={isOpen}
+              onClick={() => setOpen((o) => ({ ...o, [sec.id]: !(o[sec.id] !== false) }))}
+            >
+              <span className="ec-chev">
+                <ChevronIcon />
+              </span>
+              <span className="ec-tb-sec-name">{sec.name}</span>
+            </button>
+            <div className="ec-tb-sec-body">
+              {sec.items ? (
+                sec.items.map((t) => (
+                  <Item
+                    key={t}
+                    type={t}
+                    label={META[t].label}
+                    family={FAMILY_OF_SECTION[sec.id]}
+                    onPointerDown={props.onItemPointerDown}
+                  />
+                ))
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="ec-tb-upload"
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    <UploadIcon />
+                    Carica dataset
+                  </button>
+                  {library.length ? (
+                    library.map((lb) => (
+                      <Item
+                        key={lb.id}
+                        type="dataset"
+                        lib={lb.id}
+                        label={lb.name}
+                        meta={`${lb.columns.length} col · ${lb.rows} righe`}
+                        onPointerDown={props.onItemPointerDown}
+                      />
+                    ))
+                  ) : (
+                    <div className="ec-tb-empty">Nessun dataset caricato</div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      {status ? (
+        <div className="ec-tb-status" role="status">
+          {status}
+        </div>
+      ) : null}
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".csv,.tsv,.txt"
+        hidden
+        data-testid="ec-file-input"
+        onChange={(e) => {
+          const input = e.currentTarget;
+          void onFile(input.files?.[0]);
+          input.value = "";
+        }}
+      />
+    </div>
+  );
+}
+```
+
+### `src/etl-canvas/panels/actions.ts`
+
+88 righe
+
+```ts
+/**
+ * Azioni sui pannelli: comandi di etl-store (`setPanel`) più la regola
+ * dell'Inspector che segue la selezione. Nessuna logica di dominio e nessun
+ * DOM. La vista non si compensa qui: dopo ogni cambio la tiene visibile
+ * `keepVisible` (layout.ts), chiamata da chi misura l'area.
+ */
+import type { CommandResult, EtlStore, PanelKey, Side } from "../../etl-store";
+import type { InteractionController } from "../interaction";
+
+export interface PanelActions {
+  open(key: PanelKey): CommandResult;
+  close(key: PanelKey): CommandResult;
+  /** Sposta il pannello su un altro bordo: si chiude, si sposta e si riapre (prototipo, `setSide`). */
+  moveTo(key: PanelKey, side: Side): CommandResult;
+  /**
+   * Apertura automatica dell'Inspector (clic su un nodo). Se sostituisce la
+   * cassetta aperta, lo ricorda: alla chiusura automatica la cassetta si
+   * riapre.
+   */
+  autoOpenInspector(): void;
+  /** Chiusura automatica dell'Inspector (deselezione): riapre la cassetta se era stata sostituita. */
+  autoCloseInspector(): void;
+}
+
+export function createPanelActions(store: EtlStore): PanelActions {
+  // la cassetta aperta che l'apertura automatica dell'Inspector ha sostituito
+  let replacedTools = false;
+  const apply = (payload: { panel: PanelKey; open?: boolean; side?: Side }): CommandResult =>
+    store.dispatch({ type: "setPanel", payload });
+  // qualunque azione esplicita dell'utente su un pannello azzera la memoria
+  const explicit = (payload: { panel: PanelKey; open?: boolean; side?: Side }): CommandResult => {
+    replacedTools = false;
+    return apply(payload);
+  };
+  return {
+    open: (key) => explicit({ panel: key, open: true }),
+    close: (key) => explicit({ panel: key, open: false }),
+    moveTo: (key, side) => explicit({ panel: key, side }),
+    autoOpenInspector() {
+      const { panels } = store.getState();
+      if (panels.insp.open) return;
+      replacedTools = panels.tools.open;
+      apply({ panel: "insp", open: true });
+    },
+    autoCloseInspector() {
+      const { panels } = store.getState();
+      const restore = replacedTools;
+      replacedTools = false;
+      if (!panels.insp.open) return;
+      apply({ panel: "insp", open: false });
+      if (restore) apply({ panel: "tools", open: true });
+    },
+  };
+}
+
+/**
+ * L'Inspector segue la selezione (prototipo: `selectCard` apre, `deselect`
+ * chiude — righe 2694-2727), con due differenze volute (Fase 6a.2):
+ *
+ * - si apre solo al CLIC su un nodo (rilascio senza trascinamento, con un solo
+ *   nodo selezionato): mai alla pressione, durante un trascinamento, un
+ *   riquadro di selezione, una selezione multipla o dopo un rilascio dalla
+ *   cassetta;
+ * - si chiude quando non c'è più un nodo nell'inspector (deselezione) e, se
+ *   aveva sostituito la cassetta, la riapre.
+ *
+ * Se l'utente lo chiude con un nodo ancora selezionato, resta chiuso fino al
+ * prossimo clic. Restituisce la funzione per smettere di ascoltare.
+ */
+export function followInspector(
+  store: EtlStore,
+  controller: Pick<InteractionController, "subscribeClick">,
+  actions: PanelActions,
+): () => void {
+  let had = store.getState().inspector.nodeId !== null;
+  const offClick = controller.subscribeClick(() => actions.autoOpenInspector());
+  const offStore = store.subscribe(() => {
+    const has = store.getState().inspector.nodeId !== null;
+    if (has === had) return;
+    had = has;
+    if (!has) actions.autoCloseInspector();
+  });
+  return () => {
+    offClick();
+    offStore();
+  };
+}
+```
+
+### `src/etl-canvas/panels/csv.ts`
+
+37 righe
+
+```ts
+/**
+ * Caricamento di un dataset dalla cassetta (prototipo, righe 4921-4937): la
+ * lettura e la deduzione dei tipi sono `parseCSV` di etl-core, la libreria è
+ * quella di etl-store (`loadCsv` → comando `loadDataset`, che conserva solo i
+ * metadati: nome, percorso, colonne, righe — mai il contenuto del file).
+ */
+import type { EtlStore } from "../../etl-store";
+
+export interface CsvLoadOutcome {
+  readonly ok: boolean;
+  /** Messaggio per l'utente (prototipo, riga 4934 e 4927). */
+  readonly message: string;
+}
+
+/** Carica il testo di un CSV già letto. */
+export function loadCsvText(store: EtlStore, fileName: string, text: string): CsvLoadOutcome {
+  const result = store.loadCsv(text, fileName);
+  if (!result.ok) return { ok: false, message: result.reason };
+  const item = store.getState().library.at(-1);
+  return {
+    ok: true,
+    message: item
+      ? `${fileName} caricato: ${item.columns.length} colonne, ${item.rows} righe. Trascinalo sul canvas.`
+      : `${fileName} caricato.`,
+  };
+}
+
+/** Legge un file scelto dall'utente (solo nel browser: `FileReader`) e lo carica. */
+export function loadCsvFile(store: EtlStore, file: File): Promise<CsvLoadOutcome> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(loadCsvText(store, file.name, String(reader.result ?? "")));
+    reader.onerror = () => resolve({ ok: false, message: "Il file non si può leggere" });
+    reader.readAsText(file);
+  });
+}
+```
+
+### `src/etl-canvas/panels/families.ts`
+
+17 righe
+
+```ts
+import { sectionOf } from "../../etl-core";
+import type { ComponentId } from "../../etl-core";
+
+/** Famiglia di colore di una sezione della cassetta (la stessa dei nodi sul canvas: `data-family`). */
+export const FAMILY_OF_SECTION: Readonly<Record<string, string>> = {
+  rows: "filter",
+  xform: "transform",
+  merge: "merge",
+  out: "output",
+};
+
+/** Famiglia di un componente, o `undefined` per il dataset. */
+export function familyOfType(type: ComponentId): string | undefined {
+  const section = sectionOf(type);
+  return section ? FAMILY_OF_SECTION[section.id] : undefined;
+}
+```
+
 ### `src/etl-canvas/panels/layout.ts`
 
-152 righe
+216 righe
 
 ```ts
 /**
  * Geometria dei pannelli agganciabili: funzioni pure sullo stato dei pannelli
  * di etl-store (`Panels`: lato e aperto/chiuso di ciascuno). Misure del
  * prototipo (docs/prototype/isa-fusion-prototype.html, righe 4756-4900), salvo
- * l'altezza dell'area di lavoro (vedi `viewCompensation`).
+ * la regola della vista (vedi `keepVisible`).
  *
- * Nessuna logica di dominio: misure e compensazione della vista sono
+ * Nessuna logica di dominio: misure e posizione della vista sono
  * geometria dell'interfaccia.
  */
+import type { Card } from "../../etl-core";
+import { CARD, LABEL_H } from "../../etl-layout";
+import type { Size } from "../../etl-layout";
 import type { PanelKey, Panels, Side, View } from "../../etl-store";
+import type { Insets } from "../view";
 
 /** I due pannelli, nell'ordine delle schede (prototipo, riga 4797). */
 export const PANEL_KEYS: readonly PanelKey[] = ["tools", "insp"];
@@ -93,35 +610,95 @@ export function openExtent(panels: Panels, side: Side): number {
   );
 }
 
-/**
- * Spostamento da dare alla vista perché i nodi restino fermi sullo schermo
- * quando i pannelli passano da `before` a `after`.
- *
- * Solo i bordi SINISTRO e ALTO spostano l'origine del canvas: lì il canvas
- * cede spazio dal suo lato d'origine, quindi `view.x` (sinistra) e `view.y`
- * (alto) si compensano. A destra e in basso il canvas cede dal lato opposto e
- * la vista non cambia. Vale anche quando cambia la misura di un pannello
- * aperto (due pannelli che diventano schede).
- *
- * Nel prototipo (righe 4780-4784, 4815-4824) i pannelli orizzontali non
- * toglievano altezza al canvas ma la aggiungevano all'area di lavoro, perché
- * la pagina scorre; nell'app il contenitore ha l'altezza della finestra, quindi
- * anche i pannelli orizzontali sottraggono spazio al canvas (vedi
- * NOTE_DIVERGENZE.md).
- */
-export function viewCompensation(
-  before: Panels,
-  after: Panels,
-): { readonly dx: number; readonly dy: number } {
+/** Area visibile con lo spazio dei widget in sovrimpressione già escluso (margine di sicurezza). */
+export interface Visibility {
+  readonly size: Size;
+  readonly insets: Insets;
+}
+
+interface Box {
+  readonly x1: number;
+  readonly y1: number;
+  readonly x2: number;
+  readonly y2: number;
+}
+
+/** Rettangolo di un nodo (quadrato più etichetta) sullo schermo, con la vista data. */
+function screenBox(c: Pick<Card, "x" | "y">, v: View): Box {
+  const x1 = v.x + c.x * v.zoom;
+  const y1 = v.y + c.y * v.zoom;
+  return { x1, y1, x2: x1 + CARD * v.zoom, y2: y1 + (CARD + LABEL_H) * v.zoom };
+}
+
+function safeBox(a: Visibility): Box {
   return {
-    dx: openExtent(before, "left") - openExtent(after, "left"),
-    dy: openExtent(before, "top") - openExtent(after, "top"),
+    x1: a.insets.left,
+    y1: a.insets.top,
+    x2: a.size.w - a.insets.right,
+    y2: a.size.h - a.insets.bottom,
   };
 }
 
-/** Applica la compensazione a una vista. */
-export function compensate(view: View, before: Panels, after: Panels): View {
-  const { dx, dy } = viewCompensation(before, after);
+/** Identificativi dei nodi interamente dentro l'area visibile sicura. */
+export function visibleIds(
+  cards: readonly Card[],
+  view: View,
+  area: Visibility,
+): readonly string[] {
+  const safe = safeBox(area);
+  return cards
+    .filter((c) => {
+      const b = screenBox(c, view);
+      return b.x1 >= safe.x1 && b.y1 >= safe.y1 && b.x2 <= safe.x2 && b.y2 <= safe.y2;
+    })
+    .map((c) => c.id);
+}
+
+/** Spostamento minimo di un intervallo [lo, hi] perché stia in [a, b]; se non entra, si allinea ad `a`. */
+function shiftInto(lo: number, hi: number, a: number, b: number): number {
+  if (hi - lo > b - a) return a - lo;
+  if (lo < a) return a - lo;
+  if (hi > b) return b - hi;
+  return 0;
+}
+
+/**
+ * Regola dei pannelli (Fase 6a.2, sostituisce quella del prototipo «nodi
+ * fermi sullo schermo», righe 4780-4784 e 4818-4821): un pannello aperto
+ * riduce l'area del canvas e non copre mai un nodo. Le posizioni nel mondo
+ * non cambiano e lo zoom nemmeno; cambia solo la vista. Il canvas si
+ * sposta con i suoi bordi (a sinistra e in alto il bordo avanza e i nodi
+ * vanno con lui; a destra e in basso restano dove sono rispetto
+ * all'origine) e, se l'area si restringe, i nodi che prima erano interamente
+ * visibili e ora sarebbero fuori si riportano dentro con lo scorrimento
+ * minimo. Se l'insieme non entra nell'area, si allinea al bordo di partenza
+ * (sinistra, alto) e il resto resta raggiungibile con scorrimento e
+ * minimappa.
+ *
+ * `prev` è l'area prima del cambio (apertura, chiusura, cambio di scheda,
+ * spostamento della tacca, ridimensionamento), `next` quella dopo. Restituisce
+ * la stessa vista se non serve scorrere.
+ */
+export function keepVisible(
+  cards: readonly Card[],
+  view: View,
+  prev: Visibility,
+  next: Visibility,
+): View {
+  const was = new Set(visibleIds(cards, view, prev));
+  if (was.size === 0) return view;
+  const boxes = cards.filter((c) => was.has(c.id)).map((c) => screenBox(c, view));
+  const lo = {
+    x: Math.min(...boxes.map((b) => b.x1)),
+    y: Math.min(...boxes.map((b) => b.y1)),
+  };
+  const hi = {
+    x: Math.max(...boxes.map((b) => b.x2)),
+    y: Math.max(...boxes.map((b) => b.y2)),
+  };
+  const safe = safeBox(next);
+  const dx = shiftInto(lo.x, hi.x, safe.x1, safe.x2);
+  const dy = shiftInto(lo.y, hi.y, safe.y1, safe.y2);
   return dx === 0 && dy === 0 ? view : { ...view, x: view.x + dx, y: view.y + dy };
 }
 
@@ -130,7 +707,7 @@ export function compensate(view: View, before: Panels, after: Panels): View {
  * pannelli in alto e in basso lasciano meno spazio, scorre il contenitore
  * dello spazio di lavoro, non la pagina.
  */
-export const MIN_CANVAS_HEIGHT = 200;
+export const MIN_CANVAS_HEIGHT = 160;
 
 /** Il bordo del canvas più vicino a un punto (riga 4851-4856). */
 export function nearestSide(
@@ -170,9 +747,264 @@ export function activeTab(panels: Panels, side: Side): PanelKey | null {
 }
 ```
 
+### `src/etl-canvas/panels/overlayLayout.ts`
+
+249 righe
+
+```ts
+/**
+ * Disposizione dei widget in sovrimpressione al canvas (minimappa, controlli
+ * di zoom, suggerimento di rilascio, tacche dei pannelli chiusi): funzione
+ * pura, nessun DOM. Decide le posizioni a partire dalla misura dell'area e dal
+ * bordo del pannello aperto, così nessun componente scrive una posizione a
+ * mano e due widget non si sovrappongono mai.
+ *
+ * Regole:
+ * - minimappa in basso a sinistra; con il pannello in basso va in alto a
+ *   sinistra (lontano dal pannello); con il pannello in alto resta in basso a
+ *   sinistra;
+ * - controlli di zoom in basso a destra;
+ * - se un widget ne tocca un altro (area piccola) la minimappa, nell'ordine,
+ *   passa all'angolo opposto, poi si riduce a un pulsante compatto (che si
+ *   espande al clic), poi prova gli altri angoli; se nemmeno così c'è posto
+ *   non si mostra (`rect: null`);
+ * - il suggerimento prova in basso e in alto, al centro, e ovunque si evita
+ *   il resto; senza posto non si mostra.
+ *
+ * Le misure dei widget sono quelle del CSS del canvas (`canvas.css`,
+ * `panels.css`), che le prende da qui.
+ */
+import type { Size } from "../../etl-layout";
+import type { PanelKey, Side } from "../../etl-store";
+import type { Insets } from "../view";
+
+export interface Rect {
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
+export type Corner = "bl" | "br" | "tl" | "tr";
+
+/** Distanza dei widget dal bordo dell'area (prototipo: 12 px, riga 152). */
+export const OVERLAY_MARGIN = 12;
+/** Spazio minimo tra due widget. */
+export const OVERLAY_GAP = 4;
+/** Respiro tra un widget e i nodi (margine di sicurezza dell'area visibile). */
+export const SAFE_GAP = 8;
+export const MINIMAP_SIZE = { w: 168, h: 104 } as const;
+export const MINIMAP_COMPACT = 40;
+export const ZOOM_SIZE = { w: 176, h: 38 } as const;
+/** Tacca: lato lungo e lato corto (prototipo, CSS `.notch`, righe 290-293). */
+export const NOTCH_LONG = 66;
+export const NOTCH_SHORT = 24;
+export const HINT_HEIGHT = 30;
+export const HINT_WIDTHS = [360, 240] as const;
+
+export interface NotchInput {
+  readonly key: PanelKey;
+  readonly side: Side;
+  /** Scostamento lungo il bordo (due tacche sullo stesso bordo si affiancano). */
+  readonly offset: number;
+  /** Visibile (pannello chiuso) o nascosta: una tacca nascosta non occupa posto. */
+  readonly visible: boolean;
+}
+
+export interface OverlayInput {
+  /** Area del canvas (senza i pannelli). */
+  readonly area: Size;
+  /** Bordo del pannello aperto, se ce n'è uno. */
+  readonly openSide: Side | null;
+  readonly notches: readonly NotchInput[];
+}
+
+export interface OverlayLayout {
+  readonly minimap: {
+    /** Posizione occupata (piena o compatta); `null` se non c'è posto. */
+    readonly rect: Rect | null;
+    readonly corner: Corner | null;
+    readonly compact: boolean;
+    /** Posizione da piena, ancorata allo stesso angolo: la usa il pulsante compatto quando si espande. */
+    readonly expanded: Rect | null;
+  };
+  readonly zoom: Rect;
+  readonly hint: Rect | null;
+  readonly notches: Readonly<Record<PanelKey, Rect>>;
+  /** Spazio che i nodi devono evitare per restare visibili (anche per «Adatta»). */
+  readonly insets: Insets;
+}
+
+const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
+
+export function intersects(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+const inflate = (r: Rect, by: number): Rect => ({
+  x: r.x - by,
+  y: r.y - by,
+  w: r.w + by * 2,
+  h: r.h + by * 2,
+});
+
+function inside(r: Rect, area: Size): boolean {
+  return r.x >= 0 && r.y >= 0 && r.x + r.w <= area.w && r.y + r.h <= area.h;
+}
+
+/** Angolo dell'area; `inward` allontana il widget dal bordo orizzontale (per scavalcare una tacca). */
+function cornerRect(corner: Corner, size: { w: number; h: number }, area: Size, inward = 0): Rect {
+  const m = OVERLAY_MARGIN;
+  const top = corner === "tl" || corner === "tr";
+  return {
+    x: corner === "bl" || corner === "tl" ? m : area.w - m - size.w,
+    y: top ? m + inward : area.h - m - size.h - inward,
+    w: size.w,
+    h: size.h,
+  };
+}
+
+/** Quanto spostare un widget verso l'interno per scavalcare una tacca (24 px) più il respiro. */
+const CLEAR_NOTCH = NOTCH_SHORT + OVERLAY_GAP * 2;
+
+const OPPOSITE: Record<Corner, Corner> = { bl: "tr", br: "tl", tl: "br", tr: "bl" };
+const ALL_CORNERS: readonly Corner[] = ["bl", "tl", "br", "tr"];
+
+/** Rettangolo di una tacca sul suo bordo, al centro più lo scostamento. */
+export function notchRect(side: Side, offset: number, area: Size): Rect {
+  switch (side) {
+    case "left":
+      return { x: 0, y: area.h / 2 - NOTCH_LONG / 2 + offset, w: NOTCH_SHORT, h: NOTCH_LONG };
+    case "right":
+      return {
+        x: area.w - NOTCH_SHORT,
+        y: area.h / 2 - NOTCH_LONG / 2 + offset,
+        w: NOTCH_SHORT,
+        h: NOTCH_LONG,
+      };
+    case "top":
+      return { x: area.w / 2 - NOTCH_LONG / 2 + offset, y: 0, w: NOTCH_LONG, h: NOTCH_SHORT };
+    case "bottom":
+      return {
+        x: area.w / 2 - NOTCH_LONG / 2 + offset,
+        y: area.h - NOTCH_SHORT,
+        w: NOTCH_LONG,
+        h: NOTCH_SHORT,
+      };
+  }
+}
+
+/** Spazio da riservare ai nodi per un widget: la fascia meno costosa tra quella verticale e quella orizzontale. */
+function insetsFor(rects: readonly Rect[], area: Size): Insets {
+  let top = 0;
+  let right = 0;
+  let bottom = 0;
+  let left = 0;
+  for (const r of rects) {
+    const upper = r.y + r.h / 2 < area.h / 2;
+    const leftSide = r.x + r.w / 2 < area.w / 2;
+    const vertical = (upper ? r.y + r.h : area.h - r.y) + SAFE_GAP;
+    const horizontal = (leftSide ? r.x + r.w : area.w - r.x) + SAFE_GAP;
+    if (vertical / Math.max(1, area.h) <= horizontal / Math.max(1, area.w)) {
+      if (upper) top = Math.max(top, vertical);
+      else bottom = Math.max(bottom, vertical);
+    } else if (leftSide) left = Math.max(left, horizontal);
+    else right = Math.max(right, horizontal);
+  }
+  return { top, right, bottom, left };
+}
+
+export function overlayLayout(input: OverlayInput): OverlayLayout {
+  const { area, openSide } = input;
+
+  const notches = {} as Record<PanelKey, Rect>;
+  const obstacles: Rect[] = [];
+  for (const n of input.notches) {
+    const r = notchRect(n.side, n.offset, area);
+    notches[n.key] = r;
+    if (n.visible) obstacles.push(r);
+  }
+  const free = (r: Rect, others: readonly Rect[]): boolean =>
+    inside(r, area) &&
+    others.every((o) => !intersects(inflate(r, OVERLAY_GAP / 2), inflate(o, OVERLAY_GAP / 2)));
+
+  // controlli di zoom: in basso a destra; solo in aree minuscole provano gli altri angoli
+  let zoom = cornerRect("br", ZOOM_SIZE, area);
+  zoomSearch: for (const inward of [0, CLEAR_NOTCH]) {
+    for (const c of ["br", "bl", "tr", "tl"] as const) {
+      const r = cornerRect(c, ZOOM_SIZE, area, inward);
+      if (free(r, obstacles)) {
+        zoom = r;
+        break zoomSearch;
+      }
+    }
+  }
+  const placed: Rect[] = [...obstacles, zoom];
+
+  // minimappa
+  const preferred: Corner = openSide === "bottom" ? "tl" : "bl";
+  const full = (c: Corner, inward = 0): Rect => cornerRect(c, MINIMAP_SIZE, area, inward);
+  const compact = (c: Corner, inward = 0): Rect =>
+    cornerRect(c, { w: MINIMAP_COMPACT, h: MINIMAP_COMPACT }, area, inward);
+  const others = ALL_CORNERS.filter((c) => c !== preferred && c !== OPPOSITE[preferred]);
+  const sequence: { corner: Corner; compact: boolean }[] = [
+    { corner: preferred, compact: false },
+    { corner: OPPOSITE[preferred], compact: false },
+    { corner: preferred, compact: true },
+    { corner: OPPOSITE[preferred], compact: true },
+    ...others.map((corner) => ({ corner, compact: true })),
+  ];
+  // se nemmeno così c'è posto, si riprova scavalcando le tacche
+  const candidates = [0, CLEAR_NOTCH].flatMap((inward) => sequence.map((c) => ({ ...c, inward })));
+  let minimap: OverlayLayout["minimap"] = {
+    rect: null,
+    corner: null,
+    compact: false,
+    expanded: null,
+  };
+  for (const cand of candidates) {
+    const rect = cand.compact ? compact(cand.corner, cand.inward) : full(cand.corner, cand.inward);
+    if (free(rect, placed)) {
+      minimap = {
+        rect,
+        corner: cand.corner,
+        compact: cand.compact,
+        expanded: cand.compact ? full(cand.corner, cand.inward) : rect,
+      };
+      placed.push(rect);
+      break;
+    }
+  }
+
+  // suggerimento di rilascio: al centro, in basso o in alto
+  let hint: Rect | null = null;
+  search: for (const width of HINT_WIDTHS) {
+    const w = Math.min(width, Math.floor(area.w * 0.7));
+    for (const y of [
+      area.h - OVERLAY_MARGIN - HINT_HEIGHT,
+      OVERLAY_MARGIN,
+      area.h - OVERLAY_MARGIN - HINT_HEIGHT - CLEAR_NOTCH,
+      OVERLAY_MARGIN + CLEAR_NOTCH,
+    ]) {
+      const r = { x: Math.round((area.w - w) / 2), y, w, h: HINT_HEIGHT };
+      if (free(r, placed)) {
+        hint = r;
+        break search;
+      }
+    }
+  }
+
+  const insets = insetsFor(
+    [...(minimap.rect ? [minimap.rect] : []), zoom].filter((r) => inside(r, area)),
+    area,
+  );
+  return { minimap, zoom, hint, notches, insets: area.w > 0 && area.h > 0 ? insets : NO_INSETS };
+}
+```
+
 ### `src/etl-canvas/panels/panels.css`
 
-638 righe
+724 righe
 
 ```css
 /*
@@ -200,38 +1032,44 @@ export function activeTab(panels: Panels, side: Side): PanelKey | null {
   /* l'altezza è quella del contenitore: sopra e sotto i pannelli tolgono altezza al canvas (riga centrale) */
   height: 100%;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: auto minmax(var(--ec-canvas-min-h), 1fr) auto;
+  grid-template-rows: auto auto minmax(var(--ec-canvas-min-h), 1fr) auto;
   color: var(--ec-ink);
   font-family: var(--ec-font);
 }
 .ec-workspace * {
   box-sizing: border-box;
 }
-.ec-dock-top {
+/* barra dei controlli: una riga fissa sopra tutto, dentro lo spazio di lavoro (Fase 6a.2) */
+.ec-bar-row {
   grid-column: 1 / 4;
   grid-row: 1;
+  min-width: 0;
+}
+.ec-dock-top {
+  grid-column: 1 / 4;
+  grid-row: 2;
   display: flex;
   flex-direction: column;
 }
 .ec-dock-bottom {
   grid-column: 1 / 4;
-  grid-row: 3;
+  grid-row: 4;
   display: flex;
   flex-direction: column;
 }
 .ec-dock-left {
   grid-column: 1;
-  grid-row: 2;
+  grid-row: 3;
   display: flex;
 }
 .ec-dock-right {
   grid-column: 3;
-  grid-row: 2;
+  grid-row: 3;
   display: flex;
 }
 .ec-center {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 3;
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -508,12 +1346,15 @@ export function activeTab(panels: Panels, side: Side): PanelKey | null {
 }
 .ec-workspace .ec-center .ec-hint {
   position: absolute;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
+  /* posizione e misura: inline, da overlayLayout.ts */
+  box-sizing: border-box;
   z-index: 16;
-  max-width: 70%;
-  padding: 7px 14px;
+  padding: 0 14px;
+  line-height: 28px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   border-radius: var(--ec-r-pill);
   background: var(--ec-surface-strong);
   border: 1px solid var(--ec-panel-border);
@@ -812,11 +1653,88 @@ export function activeTab(panels: Panels, side: Side): PanelKey | null {
     animation: none;
   }
 }
+
+/* barra dei controlli — solo token */
+.ec-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 6px 4px 8px;
+}
+.ec-seg {
+  display: flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: var(--ec-r-pill);
+  background: var(--ec-surface-strong);
+  border: 1px solid var(--ec-panel-border);
+}
+.ec-seg-btn,
+.ec-bar-btn {
+  all: unset;
+  cursor: pointer;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--ec-r-pill);
+  font-family: var(--ec-font);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ec-ink);
+  white-space: nowrap;
+}
+.ec-bar-btn {
+  background: var(--ec-surface-strong);
+  border: 1px solid var(--ec-panel-border);
+}
+.ec-bar-icon {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+.ec-seg-btn.ec-on {
+  background: var(--ec-accent-soft);
+  color: var(--ec-accent-text);
+}
+.ec-bar svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.ec-seg-btn:hover,
+.ec-bar-btn:hover:not(:disabled) {
+  color: var(--ec-accent-text);
+}
+.ec-bar-danger:hover:not(:disabled) {
+  color: var(--ec-danger);
+}
+.ec-seg-btn:focus-visible,
+.ec-bar-btn:focus-visible {
+  outline: 2px solid var(--ec-select);
+  outline-offset: 2px;
+}
+.ec-bar-btn:disabled {
+  cursor: default;
+  color: var(--ec-muted);
+}
+.ec-bar-sep {
+  flex: none;
+  align-self: stretch;
+  margin: 4px 2px;
+  border-left: 1px solid var(--ec-panel-border);
+}
 ```
 
 ### `src/etl-canvas/panels/ui-icons.tsx`
 
-73 righe
+113 righe
 
 ```tsx
 /** Icone dell'interfaccia dei pannelli (prototipo, righe 4790-4793, 813-818, 893): tracciati statici, nessun dato dell'utente. */
@@ -889,6 +1807,46 @@ export function CloseArrow(props: { side: Side }) {
         <polyline points="15 6 9 12 15 18" />
       </Svg>
     </span>
+  );
+}
+
+export function UndoIcon() {
+  return (
+    <Svg>
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+    </Svg>
+  );
+}
+
+export function RedoIcon() {
+  return (
+    <Svg>
+      <path d="m15 14 5-5-5-5" />
+      <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+    </Svg>
+  );
+}
+
+export function ReorderIcon() {
+  return (
+    <Svg>
+      <rect x="4" y="4" width="6" height="6" rx="1.5" />
+      <rect x="14" y="4" width="6" height="6" rx="1.5" />
+      <rect x="4" y="14" width="6" height="6" rx="1.5" />
+      <rect x="14" y="14" width="6" height="6" rx="1.5" />
+    </Svg>
+  );
+}
+
+export function TrashIcon() {
+  return (
+    <Svg>
+      <path d="M4 7h16" />
+      <path d="M9 7V4.5h6V7" />
+      <path d="M6.5 7l1 12.5h9l1-12.5" />
+      <path d="M10 11v5M14 11v5" />
+    </Svg>
   );
 }
 ```
@@ -964,417 +1922,6 @@ export function prototypeScene(): EtlState {
     graph: { cards: Object.fromEntries(cards.map((c) => [c.id, c])), links: [] },
     counters: { ...base.counters, ds: 1 },
   };
-}
-```
-
-### `src/etl-canvas/tokens.css`
-
-144 righe
-
-```css
-/*
- * Token del canvas ETL (livello 3 — di componente). Ambito: SOLO il
- * contenitore `.etl-canvas` e lo spazio di lavoro `.ec-workspace` che lo
- * contiene (pannelli e cassetta, Fase 6a).
- *
- * Usano SOLO token semantici (`--isa-*`, definiti per tema e per modo in
- * src/theme/themes/*.css), mai colori o misure scritte a mano: il modo
- * chiaro/scuro e il tema (`data-theme`) arrivano da `<html>` per eredità.
- * Nel tema predefinito, chiaro: valori IDENTICI al prototipo
- * (docs/prototype/isa-fusion-prototype.html); ogni token riporta la riga da
- * cui viene. Scuro: progettato (il prototipo non lo definisce) a partire dal
- * tema scuro dell'app, con la stessa tinta d'accento #6C63FF; l'accento resta
- * sui riempimenti, mentre testi ed elementi sottili usano una tinta più chiara.
- */
-.etl-canvas,
-.ec-workspace {
-  /* sfondo della pagina dietro al canvas — riga 10 */
-  --ec-bg: var(--isa-surface-base);
-  /* superficie del canvas (stage) — riga 623 */
-  --ec-stage: var(--isa-stage);
-  /* vetro dei controlli e della minimappa — riga 11 */
-  --ec-surface-strong: var(--isa-surface-raised);
-  /* bordo del vetro — riga 12 */
-  --ec-panel-border: var(--isa-border);
-  /* testo — riga 13 */
-  --ec-ink: var(--isa-text);
-  /* testo secondario — riga 14 */
-  --ec-muted: var(--isa-text-muted);
-  /* stato vuoto (elemento nuovo, assente nel prototipo): testo con contrasto ≥ 4,5:1 */
-  --ec-empty-ink: var(--isa-text-secondary);
-  /* accento — riga 15 */
-  --ec-accent: var(--isa-accent);
-  /* accento come colore di testo (etichette, "Adatta") — righe 15, 149, 649: coincide con l'accento */
-  --ec-accent-text: var(--isa-accent-text);
-  /* accento tenue — riga 16 */
-  --ec-accent-soft: var(--isa-accent-soft);
-  /* accento medio — riga 17 */
-  --ec-accent-soft-2: var(--isa-accent-soft-2);
-  /* nodo lavorazione (chip tinto) — riga 631 */
-  --ec-node-op: var(--isa-tint);
-  /* icona del nodo lavorazione — riga 631 */
-  --ec-node-op-ink: var(--isa-tint-ink);
-  /* bordo del nodo lavorazione: il prototipo non ne ha (trasparente) */
-  --ec-node-op-border: var(--isa-tint-border);
-  /* nodo dataset e output (chip pieno) — riga 634 */
-  --ec-node-fill: var(--isa-dataset-fill);
-  /* icona sul chip pieno — riga 634 */
-  --ec-node-fill-ink: var(--isa-text-on-accent);
-  /* opacità dell'output — riga 637 */
-  --ec-output-opacity: 0.92;
-  /* output parziale: fondo del nodo — riga 658 */
-  --ec-split-bg: var(--isa-split-bg);
-  /* fetta vuota: fondo e icona — riga 665 */
-  --ec-split-empty: var(--isa-split-empty);
-  --ec-split-empty-ink: var(--isa-split-empty-ink);
-  /* separatore tra le fette — riga 666 */
-  --ec-split-line: var(--isa-split-line);
-  /* indicatore ambra e suo bordo — riga 185 */
-  --ec-warn: var(--isa-warning);
-  --ec-warn-ring: var(--isa-warning-ring);
-  /* contorno di selezione — riga 508 */
-  --ec-select: var(--isa-select);
-  --ec-select-ring: var(--isa-ring-select);
-  /* contorno interno del nodo lavorazione (colore: --ec-node-op-border) */
-  --ec-node-op-outline: var(--isa-outline-node-op);
-  /* cavo e suoi capi — righe 1404, 1047 */
-  --ec-link: var(--isa-link);
-  --ec-link-dot-fill: var(--isa-accent);
-  --ec-link-dot-op: var(--isa-link-dot-tint);
-  /* flusso nei cavi — riga 1517 */
-  --ec-flow: var(--isa-flow);
-  /* minimappa — righe 159-161 */
-  --ec-mm-node: var(--isa-mm-node);
-  --ec-mm-node-ds: var(--isa-mm-node-ds);
-  --ec-mm-view-line: var(--isa-mm-view-line);
-  --ec-mm-view-bg: var(--isa-mm-view-bg);
-  /* raggi — righe 631 (nodo op), 634 (nodo pieno), 623 (stage), 154 (minimappa), 140 (controlli) */
-  --ec-r-op: var(--isa-radius-node-op);
-  --ec-r-fill: var(--isa-radius-node-fill);
-  /* derivati dal raggio del tema (`--radius`): nel tema predefinito 20 e 14 px, come nel prototipo */
-  --ec-r-stage: var(--isa-radius-panel);
-  --ec-r-minimap: var(--isa-radius-control);
-  --ec-r-pill: var(--isa-radius-pill);
-  /* minimappa: nodo (2 px) e riquadro visibile (4 px) */
-  --ec-r-xs: var(--isa-radius-xs);
-  --ec-r-sm: var(--isa-radius-sm);
-  /* ombra del vetro — righe 141, 155 */
-  --ec-glass-shadow: var(--isa-shadow-glass);
-  /* sfocatura del vetro — righe 140, 154 */
-  --ec-glass-blur: var(--isa-blur-glass);
-  /* carattere — riga 6 (link) e 21 (body): quello dell'app (`--font-sans`, src/styles.css) */
-  --ec-font: var(--font-sans);
-}
-
-/* gesti (Fase 5): esiti del rilascio, cavo da inserire, riquadro, cavo provvisorio, porte, conferma */
-.etl-canvas,
-.ec-workspace {
-  --ec-drop-merge: var(--isa-drop-merge);
-  --ec-drop-merge-ring: var(--isa-ring-drop-merge);
-  --ec-drop-link-ring: var(--isa-ring-drop-link);
-  --ec-drop-link: var(--isa-drop-link);
-  --ec-drop-link-reverse: var(--isa-drop-link-reverse);
-  --ec-drop-displace: var(--isa-drop-displace);
-  --ec-drop-reject: var(--isa-drop-reject);
-  --ec-link-insert: var(--isa-drop-insert);
-  --ec-doomed: var(--isa-doomed);
-  --ec-marquee-line: var(--isa-marquee-line);
-  --ec-marquee-fill: var(--isa-marquee-fill);
-  --ec-temp-link: var(--isa-temp-link);
-  --ec-temp-link-muted: var(--isa-temp-link-muted);
-  --ec-port-fill: var(--isa-port-fill);
-  --ec-port-line: var(--isa-port-line);
-  --ec-danger: var(--isa-danger);
-  --ec-text-on-danger: var(--isa-text-on-danger);
-  --ec-drag-shadow: var(--isa-shadow-drag);
-  --ec-overlay-shadow: var(--isa-shadow-overlay);
-}
-
-/*
- * Famiglie di operazioni: il nodo lavorazione prende il colore della propria
- * famiglia (filtra-ordina, trasforma, merge-union, output). Nel tema
- * predefinito le quattro famiglie coincidono con la tinta unica del prototipo.
- */
-.etl-canvas [data-family="filter"],
-.ec-workspace [data-family="filter"] {
-  --ec-node-op: var(--isa-op-filter-soft);
-  --ec-node-op-ink: var(--isa-op-filter);
-}
-.etl-canvas [data-family="transform"],
-.ec-workspace [data-family="transform"] {
-  --ec-node-op: var(--isa-op-transform-soft);
-  --ec-node-op-ink: var(--isa-op-transform);
-}
-.etl-canvas [data-family="merge"],
-.ec-workspace [data-family="merge"] {
-  --ec-node-op: var(--isa-op-merge-soft);
-  --ec-node-op-ink: var(--isa-op-merge);
-}
-.etl-canvas [data-family="output"],
-.ec-workspace [data-family="output"] {
-  --ec-node-op: var(--isa-op-output-soft);
-  --ec-node-op-ink: var(--isa-op-output);
-}
-```
-
-### `src/etl-canvas/transitions.ts`
-
-109 righe
-
-```ts
-/**
- * Transizione morbida quando il percorso di un cavo cambia in modo
- * discreto: calcolo puro. Non ricalcola percorsi: interpola o dissolve
- * percorsi già calcolati da etl-layout.
- */
-
-export interface Pt {
-  readonly x: number;
-  readonly y: number;
-}
-
-/**
- * Durata della transizione: 380 ms, la stessa di `.world.easing`
- * (prototipo, riga 136). Andamento lineare nel tempo, per avere
- * interpolazioni esatte e verificabili.
- */
-export const TRANSITION_MS = 380;
-/** Due percorsi con punti a meno di questa distanza sono lo stesso percorso. */
-export const SAME_EPS = 0.01;
-
-export function samePoints(a: readonly Pt[], b: readonly Pt[], eps = SAME_EPS): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    const p = a[i] as Pt;
-    const q = b[i] as Pt;
-    if (Math.abs(p.x - q.x) > eps || Math.abs(p.y - q.y) > eps) return false;
-  }
-  return true;
-}
-
-/** Avanzamento lineare 0..1. Con durata 0 la transizione è già finita. */
-export function progress(elapsedMs: number, durationMs = TRANSITION_MS): number {
-  if (!(durationMs > 0)) return 1;
-  return Math.max(0, Math.min(1, elapsedMs / durationMs));
-}
-
-/** Punto per punto: `from + (to - from) * t`. I due percorsi devono avere lo stesso numero di punti. */
-export function interpolatePoints(from: readonly Pt[], to: readonly Pt[], t: number): Pt[] {
-  if (from.length !== to.length) {
-    throw new Error(`interpolatePoints: ${from.length} punti contro ${to.length}`);
-  }
-  const k = Math.max(0, Math.min(1, t));
-  if (k === 1) return to.map((p) => ({ x: p.x, y: p.y }));
-  return from.map((p, i) => {
-    const q = to[i] as Pt;
-    return { x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k };
-  });
-}
-
-/** Dissolvenza incrociata lineare: le due opacità sommano sempre a 1. */
-export function crossfade(t: number): { readonly old: number; readonly next: number } {
-  const k = Math.max(0, Math.min(1, t));
-  return { old: 1 - k, next: k };
-}
-
-export type Plan =
-  | { readonly kind: "none" }
-  | { readonly kind: "morph"; readonly from: readonly Pt[]; readonly to: readonly Pt[] }
-  | { readonly kind: "fade"; readonly from: readonly Pt[]; readonly to: readonly Pt[] };
-
-export interface PlanInput {
-  /** Percorso attualmente mostrato, o null se il cavo è nuovo. */
-  readonly prev: readonly Pt[] | null;
-  readonly next: readonly Pt[];
-  /** Un gesto di trascinamento è in corso: già continuo, niente transizione. */
-  readonly gesturing: boolean;
-  /** Preferenza di movimento ridotto: transizioni istantanee. */
-  readonly reduced: boolean;
-}
-
-/**
- * Cosa fare quando il percorso di un cavo passa da `prev` a `next`:
- * niente (cavo nuovo, identico, durante un gesto o con movimento ridotto),
- * interpolare (stesso numero di punti) o dissolvere (numero diverso).
- */
-export function planTransition(input: PlanInput): Plan {
-  const { prev, next, gesturing, reduced } = input;
-  if (!prev || gesturing || reduced) return { kind: "none" };
-  if (samePoints(prev, next)) return { kind: "none" };
-  return prev.length === next.length
-    ? { kind: "morph", from: prev, to: next }
-    : { kind: "fade", from: prev, to: next };
-}
-
-/** Stato visivo di una transizione a `elapsedMs` dal suo inizio. */
-export type Visual =
-  | { readonly kind: "points"; readonly pts: readonly Pt[]; readonly done: boolean }
-  | {
-      readonly kind: "fade";
-      readonly old: number;
-      readonly next: number;
-      readonly done: boolean;
-    };
-
-export function sampleTransition(
-  plan: Plan,
-  elapsedMs: number,
-  durationMs = TRANSITION_MS,
-): Visual | null {
-  if (plan.kind === "none") return null;
-  const t = progress(elapsedMs, durationMs);
-  const done = t >= 1;
-  if (plan.kind === "morph") {
-    return { kind: "points", pts: interpolatePoints(plan.from, plan.to, t), done };
-  }
-  const f = crossfade(t);
-  return { kind: "fade", old: f.old, next: f.next, done };
-}
-```
-
-### `src/etl-canvas/view.ts`
-
-140 righe
-
-```ts
-/**
- * Geometria della vista (pan, zoom, Adatta, minimappa): funzioni pure, con
- * i numeri del prototipo (docs/prototype/isa-fusion-prototype.html).
- */
-import type { Card } from "../etl-core";
-import { CARD, LABEL_H } from "../etl-layout";
-import type { Point, Size } from "../etl-layout";
-import { ZOOM_MAX, ZOOM_MIN } from "../etl-store";
-import type { View } from "../etl-store";
-
-/** Fattore dei pulsanti + e − (prototipo, righe 4113-4114). */
-export const ZOOM_STEP = 1.2;
-/** Sensibilità della rotella con Cmd/Ctrl (riga 4093). */
-export const WHEEL_ZOOM_RATE = 0.0022;
-/** Margine di "Adatta" (riga 4127) e zoom massimo che può raggiungere (riga 4130). */
-export const FIT_PAD = 48;
-export const FIT_ZOOM_MAX = 1.25;
-/** Minimappa: dimensioni e margine (righe 152-156, 4144-4145). */
-export const MM_W = 168;
-export const MM_H = 104;
-export const MM_PAD = 20;
-/** Lato minimo di un nodo nella minimappa (riga 4148). */
-export const MM_NODE_MIN = 3;
-
-export function clampZoom(z: number): number {
-  return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
-}
-
-/** Zoom a `z` mantenendo fermo il punto dello schermo (`px`, `py`). Prototipo `zoomAt`, righe 4104-4110. */
-export function zoomAt(view: View, px: number, py: number, z: number): View {
-  const zoom = clampZoom(z);
-  return {
-    x: px - (px - view.x) * (zoom / view.zoom),
-    y: py - (py - view.y) * (zoom / view.zoom),
-    zoom,
-  };
-}
-
-/** Zoom attorno al centro dell'area visibile. */
-export function zoomCentered(view: View, size: Size, z: number): View {
-  return zoomAt(view, size.w / 2, size.h / 2, z);
-}
-
-/** Punto dello schermo (relativo all'area) → coordinate del mondo. Riga 943. */
-export function toWorld(view: View, sx: number, sy: number): Point {
-  return { x: (sx - view.x) / view.zoom, y: (sy - view.y) / view.zoom };
-}
-
-/** Ingombro di un insieme di nodi (quadrato + etichetta), o null se vuoto. */
-export function bounds(
-  cards: readonly Pick<Card, "x" | "y">[],
-): { x1: number; y1: number; x2: number; y2: number } | null {
-  if (cards.length === 0) return null;
-  let x1 = Infinity;
-  let y1 = Infinity;
-  let x2 = -Infinity;
-  let y2 = -Infinity;
-  for (const c of cards) {
-    x1 = Math.min(x1, c.x);
-    y1 = Math.min(y1, c.y);
-    x2 = Math.max(x2, c.x + CARD);
-    y2 = Math.max(y2, c.y + CARD + LABEL_H);
-  }
-  return { x1, y1, x2, y2 };
-}
-
-/** "Adatta": inquadra tutti i nodi con il margine del prototipo (righe 4111-4131). */
-export function fitView(cards: readonly Pick<Card, "x" | "y">[], size: Size): View {
-  const b = bounds(cards);
-  if (!b) return { x: 0, y: 0, zoom: 1 };
-  const zoom = Math.max(
-    ZOOM_MIN,
-    Math.min(
-      FIT_ZOOM_MAX,
-      Math.min(size.w / (b.x2 - b.x1 + FIT_PAD * 2), size.h / (b.y2 - b.y1 + FIT_PAD * 2)),
-    ),
-  );
-  return {
-    zoom,
-    x: (size.w - (b.x2 - b.x1) * zoom) / 2 - b.x1 * zoom,
-    y: (size.h - (b.y2 - b.y1) * zoom) / 2 - b.y1 * zoom,
-  };
-}
-
-/** Rettangolo del mondo visibile nell'area di dimensioni `size`. */
-export function visibleWorld(
-  view: View,
-  size: Size,
-): { x1: number; y1: number; x2: number; y2: number } {
-  const x1 = -view.x / view.zoom;
-  const y1 = -view.y / view.zoom;
-  return { x1, y1, x2: x1 + size.w / view.zoom, y2: y1 + size.h / view.zoom };
-}
-
-export interface MinimapFrame {
-  readonly x1: number;
-  readonly y1: number;
-  readonly k: number;
-  readonly ox: number;
-  readonly oy: number;
-}
-
-/** Riquadro della minimappa: la scala e l'origine (prototipo `renderMinimap`, righe 4133-4151). */
-export function minimapFrame(
-  cards: readonly Pick<Card, "x" | "y">[],
-  view: View,
-  size: Size,
-): MinimapFrame {
-  const v = visibleWorld(view, size);
-  let x1 = v.x1;
-  let y1 = v.y1;
-  let x2 = v.x2;
-  let y2 = v.y2;
-  for (const c of cards) {
-    x1 = Math.min(x1, c.x);
-    y1 = Math.min(y1, c.y);
-    x2 = Math.max(x2, c.x + CARD);
-    y2 = Math.max(y2, c.y + CARD);
-  }
-  x1 -= MM_PAD;
-  y1 -= MM_PAD;
-  x2 += MM_PAD;
-  y2 += MM_PAD;
-  const k = Math.min(MM_W / (x2 - x1), MM_H / (y2 - y1));
-  return { x1, y1, k, ox: (MM_W - (x2 - x1) * k) / 2, oy: (MM_H - (y2 - y1) * k) / 2 };
-}
-
-/** Vista che porta al centro dell'area il punto (`mx`, `my`) della minimappa (righe 4152-4165). */
-export function viewFromMinimap(
-  frame: MinimapFrame,
-  view: View,
-  size: Size,
-  mx: number,
-  my: number,
-): View {
-  const wx = frame.x1 + (mx - frame.ox) / frame.k;
-  const wy = frame.y1 + (my - frame.oy) / frame.k;
-  return { zoom: view.zoom, x: size.w / 2 - wx * view.zoom, y: size.h / 2 - wy * view.zoom };
 }
 ```
 

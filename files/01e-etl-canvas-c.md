@@ -2,36 +2,504 @@
 
 File in questo blocco:
 
+- `src/etl-canvas/__tests__/loop.test.ts`
+- `src/etl-canvas/__tests__/no-reroute.test.ts`
+- `src/etl-canvas/__tests__/overlay-layout.test.ts`
 - `src/etl-canvas/__tests__/panels-actions.test.ts`
 - `src/etl-canvas/__tests__/panels-layout.test.ts`
 - `src/etl-canvas/__tests__/render.test.ts`
 - `src/etl-canvas/__tests__/ssr.test.tsx`
 - `src/etl-canvas/__tests__/tokens.test.ts`
 - `src/etl-canvas/__tests__/toolbox-drop.test.ts`
-- `src/etl-canvas/__tests__/toolbox.test.tsx`
-- `src/etl-canvas/__tests__/transitions.test.ts`
-- `src/etl-canvas/__tests__/view.test.ts`
-- `src/etl-canvas/actions.ts`
 
 ---
 
+### `src/etl-canvas/__tests__/loop.test.ts`
+
+165 righe
+
+```ts
+import { describe, expect, it, vi } from "vitest";
+import { createLoop } from "../loop";
+import type { Task } from "../loop";
+import { fakeEnv } from "./fake-env";
+
+function task(busy: () => boolean): Task & { frames: number[]; settled: number } {
+  const t = {
+    frames: [] as number[],
+    settled: 0,
+    frame(now: number) {
+      t.frames.push(now);
+      return busy();
+    },
+    settle() {
+      t.settled++;
+    },
+  };
+  return t;
+}
+
+describe("ciclo condiviso", () => {
+  it("un solo rAF alla volta, con qualunque numero di compiti", () => {
+    const f = fakeEnv();
+    const loop = createLoop(f.env);
+    const a = task(() => true);
+    const b = task(() => true);
+    loop.add(a);
+    loop.add(b);
+    expect(f.pending()).toBe(1);
+    f.step();
+    expect(f.pending()).toBe(1);
+    expect(a.frames).toHaveLength(1);
+    expect(b.frames).toHaveLength(1);
+    loop.dispose();
+  });
+
+  it("si ferma da solo quando nessun compito ha nulla da animare, e riparte con wake", () => {
+    const f = fakeEnv();
+    let busy = true;
+    const loop = createLoop(f.env);
+    loop.add(task(() => busy));
+    f.step();
+    f.step();
+    expect(loop.running()).toBe(true);
+    busy = false;
+    f.step();
+    expect(loop.running()).toBe(false);
+    expect(f.pending()).toBe(0);
+    const calls = f.rafCalls();
+    f.step();
+    expect(f.rafCalls()).toBe(calls);
+    busy = true;
+    loop.wake();
+    expect(loop.running()).toBe(true);
+    loop.dispose();
+  });
+
+  it("senza compiti non parte", () => {
+    const f = fakeEnv();
+    const loop = createLoop(f.env);
+    loop.wake();
+    expect(f.rafCalls()).toBe(0);
+    const off = loop.add(task(() => true));
+    off();
+    expect(f.pending()).toBe(0);
+    loop.dispose();
+  });
+
+  it("si ferma quando la scheda è nascosta e riparte quando torna visibile", () => {
+    const f = fakeEnv();
+    const t = task(() => true);
+    const loop = createLoop(f.env);
+    loop.add(t);
+    f.step();
+    expect(loop.running()).toBe(true);
+    f.setHidden(true);
+    expect(loop.running()).toBe(false);
+    expect(f.pending()).toBe(0);
+    const frames = t.frames.length;
+    f.step();
+    f.step();
+    expect(t.frames).toHaveLength(frames);
+    f.setHidden(false);
+    expect(loop.running()).toBe(true);
+    f.step();
+    expect(t.frames.length).toBe(frames + 1);
+    loop.dispose();
+  });
+
+  it("con la scheda già nascosta non parte affatto", () => {
+    const f = fakeEnv();
+    f.setHidden(true);
+    const loop = createLoop(f.env);
+    loop.add(task(() => true));
+    expect(f.rafCalls()).toBe(0);
+    loop.dispose();
+  });
+
+  it("non riprogramma un frame se la scheda si nasconde durante il frame", () => {
+    const f = fakeEnv();
+    const loop = createLoop(f.env);
+    loop.add({
+      frame: () => {
+        f.setHidden(true);
+        return true;
+      },
+      settle: () => {},
+    });
+    f.step();
+    expect(loop.running()).toBe(false);
+    loop.dispose();
+  });
+
+  it("movimento ridotto: il ciclo non parte mai, i compiti mostrano lo stato finale", () => {
+    const f = fakeEnv();
+    f.setReduced(true);
+    const t = task(() => true);
+    const loop = createLoop(f.env);
+    loop.add(t);
+    loop.wake();
+    expect(f.rafCalls()).toBe(0);
+    expect(loop.running()).toBe(false);
+    expect(t.frames).toHaveLength(0);
+    expect(t.settled).toBeGreaterThanOrEqual(1);
+    loop.dispose();
+  });
+
+  it("se il movimento ridotto si attiva mentre gira, si ferma e mostra lo stato finale; se si disattiva, riparte", () => {
+    const f = fakeEnv();
+    const t = task(() => true);
+    const loop = createLoop(f.env);
+    loop.add(t);
+    f.step();
+    expect(loop.running()).toBe(true);
+    f.setReduced(true);
+    expect(loop.running()).toBe(false);
+    expect(t.settled).toBe(1);
+    f.setReduced(false);
+    expect(loop.running()).toBe(true);
+    loop.dispose();
+  });
+
+  it("dispose ferma il ciclo e toglie gli ascoltatori", () => {
+    const f = fakeEnv();
+    const loop = createLoop(f.env);
+    loop.add(task(() => true));
+    expect(f.listeners()).toBe(2);
+    loop.dispose();
+    expect(f.pending()).toBe(0);
+    expect(f.listeners()).toBe(0);
+  });
+
+  it("i frame ricevono l'orologio dell'ambiente", () => {
+    const f = fakeEnv();
+    const t = task(() => true);
+    const loop = createLoop(f.env);
+    loop.add(t);
+    f.step(100);
+    f.step(50);
+    expect(t.frames).toEqual([100, 150]);
+    loop.dispose();
+    void vi;
+  });
+});
+```
+
+### `src/etl-canvas/__tests__/no-reroute.test.ts`
+
+129 righe
+
+```ts
+/**
+ * Vincolo della Fase 4b: le animazioni sono un effetto visivo sopra
+ * percorsi già calcolati. Nessuna animazione richiama settleLinks (né alcuna
+ * funzione di etl-layout che instradi) e nessuna altera i percorsi di
+ * getRoutes.
+ */
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../../etl-layout", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../etl-layout")>();
+  return {
+    ...actual,
+    settleLinks: vi.fn(actual.settleLinks),
+    layoutLinks: vi.fn(actual.layoutLinks),
+    chooseRoute: vi.fn(actual.chooseRoute),
+    buildRoute: vi.fn(actual.buildRoute),
+    routeCandidates: vi.fn(actual.routeCandidates),
+    shapeCandidates: vi.fn(actual.shapeCandidates),
+    autoLayout: vi.fn(actual.autoLayout),
+  };
+});
+
+import * as layout from "../../etl-layout";
+import { linkKey } from "../../etl-layout";
+import { createMotionEngine } from "../engine";
+import type { LinkInput } from "../engine";
+import { fakeEnv } from "./fake-env";
+import { storeWith } from "./helpers";
+
+const ROUTING = [
+  "settleLinks",
+  "layoutLinks",
+  "chooseRoute",
+  "buildRoute",
+  "routeCandidates",
+  "shapeCandidates",
+  "autoLayout",
+] as const;
+
+function el() {
+  const attrs: Record<string, string> = {};
+  return {
+    attrs,
+    style: { opacity: "" },
+    setAttribute: (n: string, v: string) => void (attrs[n] = v),
+    getTotalLength: () => 300,
+    getPointAtLength: (s: number) => ({ x: s, y: 0 }),
+  };
+}
+
+function inputs(store: ReturnType<typeof storeWith>): LinkInput[] {
+  const routes = store.getRoutes();
+  return store.getState().graph.links.flatMap((l) => {
+    const r = routes[linkKey(l)];
+    return r ? [{ key: linkKey(l), live: true, pts: r.pts, d: r.d, pa: r.pa, pb: r.pb }] : [];
+  });
+}
+
+describe("le animazioni non ricalcolano né alterano i percorsi", () => {
+  it("nessuna funzione di instradamento viene chiamata mentre girano flusso, attesa e transizioni", () => {
+    const store = storeWith();
+    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
+    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-filter" } });
+    const before = inputs(store);
+    expect(before.length).toBeGreaterThan(1);
+    const routesBefore = JSON.stringify(store.getRoutes());
+
+    // da qui in poi il calcolo dei percorsi è già avvenuto: si azzerano i contatori
+    for (const name of ROUTING) (layout[name] as unknown as ReturnType<typeof vi.fn>).mockClear();
+
+    const f = fakeEnv();
+    const engine = createMotionEngine();
+    const groups = new Map<string, ReturnType<typeof el>[]>();
+    for (const l of before) {
+      const els = [el(), el(), el(), el(), el()];
+      groups.set(l.key, els);
+      const map: Record<string, unknown> = {
+        ".ec-link": els[0],
+        ".ec-link-ghost": els[1],
+        ".ec-flow": els[2],
+        '[data-dot="a"]': els[3],
+        '[data-dot="b"]': els[4],
+      };
+      engine.registerLink(l.key, { querySelector: (s) => map[s] ?? null });
+    }
+    engine.registerSlice("out-0:1", el());
+    engine.start(f.env);
+    engine.update({ links: before, gesturing: false });
+    for (let i = 0; i < 40; i++) f.step(16);
+
+    // un cambio discreto dei percorsi (spostato a mano per simulare autoLayout): si anima
+    const moved = before.map((l) => {
+      const pts = l.pts.map((p) => ({ x: p.x + 30, y: p.y + 10 }));
+      return { ...l, pts, pa: pts[0]!, pb: pts[pts.length - 1]! };
+    });
+    engine.update({ links: moved, gesturing: false });
+    for (let i = 0; i < 40; i++) f.step(16);
+    engine.update({ links: before, gesturing: true });
+    for (let i = 0; i < 10; i++) f.step(16);
+    engine.update({ links: before, gesturing: false });
+    for (let i = 0; i < 40; i++) f.step(16);
+
+    for (const name of ROUTING) {
+      expect(layout[name], name).not.toHaveBeenCalled();
+    }
+    // e i percorsi restituiti da getRoutes sono rimasti identici
+    expect(JSON.stringify(store.getRoutes())).toBe(routesBefore);
+    expect(JSON.stringify(inputs(store))).toBe(JSON.stringify(before));
+  });
+
+  it("con lo store reale: una modifica del grafo ricalcola i percorsi solo tramite lo store, non le animazioni", () => {
+    const store = storeWith();
+    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-filter" } });
+    store.getRoutes();
+    (layout.settleLinks as unknown as ReturnType<typeof vi.fn>).mockClear();
+    const f = fakeEnv();
+    const engine = createMotionEngine();
+    engine.start(f.env);
+    engine.update({ links: inputs(store), gesturing: false });
+    for (let i = 0; i < 30; i++) f.step(16);
+    // le animazioni hanno girato e settleLinks non è stato invocato da loro
+    expect(layout.settleLinks).not.toHaveBeenCalled();
+    // lo store invece ricalcola quando cambia il grafo (controllo di sanità dello spy)
+    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-sort" } });
+    store.getRoutes();
+    expect(layout.settleLinks).toHaveBeenCalled();
+  });
+});
+```
+
+### `src/etl-canvas/__tests__/overlay-layout.test.ts`
+
+158 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import type { PanelKey, Side } from "../../etl-store";
+import {
+  HINT_HEIGHT,
+  MINIMAP_COMPACT,
+  MINIMAP_SIZE,
+  ZOOM_SIZE,
+  intersects,
+  overlayLayout,
+} from "../panels/overlayLayout";
+import type { OverlayInput, OverlayLayout, Rect } from "../panels/overlayLayout";
+
+const SIDES: readonly Side[] = ["left", "right", "top", "bottom"];
+/** Aree del canvas di finestre 1440×900, 1280×720 e 1280×600 con un pannello o la barra, più aree strette. */
+const AREAS = [
+  { w: 1384, h: 690 },
+  { w: 1384, h: 516 },
+  { w: 1384, h: 246 },
+  { w: 1232, h: 510 },
+  { w: 1232, h: 288 },
+  { w: 1232, h: 168 },
+  { w: 720, h: 516 },
+  { w: 560, h: 300 },
+  { w: 420, h: 260 },
+  { w: 300, h: 200 },
+];
+
+function scenario(
+  area: { w: number; h: number },
+  open: PanelKey | null,
+  tools: Side,
+  insp: Side,
+): OverlayInput {
+  const sideOf = (k: PanelKey) => (k === "tools" ? tools : insp);
+  return {
+    area,
+    openSide: open ? sideOf(open) : null,
+    notches: (["tools", "insp"] as const).map((key) => ({
+      key,
+      side: sideOf(key),
+      offset: tools === insp ? (key === "tools" ? -40 : 40) : 0,
+      visible: key !== open && !(open && tools === insp),
+    })),
+  };
+}
+
+/** Tutti gli ingombri non nulli: minimappa, zoom, suggerimento e tacche visibili. */
+function rectsOf(input: OverlayInput, l: OverlayLayout): { name: string; r: Rect }[] {
+  const out: { name: string; r: Rect }[] = [{ name: "zoom", r: l.zoom }];
+  if (l.minimap.rect) out.push({ name: "minimappa", r: l.minimap.rect });
+  if (l.hint) out.push({ name: "suggerimento", r: l.hint });
+  for (const n of input.notches)
+    if (n.visible) out.push({ name: `tacca ${n.key}`, r: l.notches[n.key] });
+  return out;
+}
+
+describe("overlayLayout: matrice bordi × misure", () => {
+  it("nessun widget interseca un altro widget o una tacca, e stanno tutti dentro l'area", () => {
+    let cases = 0;
+    for (const area of AREAS) {
+      for (const open of [null, "tools", "insp"] as const) {
+        for (const tools of SIDES) {
+          for (const insp of SIDES) {
+            const input = scenario(area, open, tools, insp);
+            const l = overlayLayout(input);
+            const rects = rectsOf(input, l);
+            const label = `${area.w}×${area.h} aperto=${open} cassetta=${tools} inspector=${insp}`;
+            for (const { name, r } of rects) {
+              if (name.startsWith("tacca")) continue;
+              expect(
+                r.x >= 0 && r.y >= 0 && r.x + r.w <= area.w && r.y + r.h <= area.h,
+                `${label}: ${name} fuori dall'area`,
+              ).toBe(true);
+            }
+            for (let i = 0; i < rects.length; i++) {
+              for (let j = i + 1; j < rects.length; j++) {
+                expect(
+                  intersects(rects[i]!.r, rects[j]!.r),
+                  `${label}: ${rects[i]!.name} tocca ${rects[j]!.name}`,
+                ).toBe(false);
+              }
+            }
+            cases++;
+          }
+        }
+      }
+    }
+    expect(cases).toBe(AREAS.length * 3 * 16);
+  });
+});
+
+describe("overlayLayout: regole di posizione", () => {
+  const roomy = { w: 1384, h: 690 };
+
+  it("senza pannello aperto: minimappa in basso a sinistra, zoom in basso a destra", () => {
+    const l = overlayLayout(scenario(roomy, null, "left", "right"));
+    expect(l.minimap.corner).toBe("bl");
+    expect(l.minimap.compact).toBe(false);
+    expect(l.minimap.rect).toMatchObject({ w: MINIMAP_SIZE.w, h: MINIMAP_SIZE.h });
+    expect(l.minimap.rect!.y + l.minimap.rect!.h).toBeLessThan(roomy.h);
+    expect(l.zoom).toMatchObject({ w: ZOOM_SIZE.w, h: ZOOM_SIZE.h });
+    expect(l.zoom.x + l.zoom.w).toBeLessThan(roomy.w);
+    expect(l.zoom.y).toBeGreaterThan(roomy.h / 2);
+  });
+
+  it("con il pannello in basso la minimappa va in alto a sinistra; con il pannello in alto resta in basso a sinistra", () => {
+    const bottom = overlayLayout(scenario(roomy, "tools", "bottom", "right"));
+    expect(bottom.minimap.corner).toBe("tl");
+    expect(bottom.minimap.rect!.y).toBeLessThan(roomy.h / 2);
+    const top = overlayLayout(scenario(roomy, "tools", "top", "right"));
+    expect(top.minimap.corner).toBe("bl");
+    for (const side of ["left", "right"] as const) {
+      expect(overlayLayout(scenario(roomy, "tools", side, "right")).minimap.corner).toBe("bl");
+    }
+  });
+
+  it("i controlli di zoom restano in basso a destra con ogni pannello", () => {
+    for (const side of SIDES) {
+      const l = overlayLayout(scenario(roomy, "tools", side, "right"));
+      expect(l.zoom.x + l.zoom.w).toBeGreaterThan(roomy.w - 40);
+      expect(l.zoom.y + l.zoom.h).toBeGreaterThan(roomy.h - 40);
+    }
+  });
+
+  it("area troppo piccola: la minimappa passa all'angolo opposto, poi diventa un pulsante compatto", () => {
+    // con le due tacche sul bordo inferiore e lo zoom, la minimappa in basso a sinistra non ci sta
+    const tight = { w: 330, h: 150 };
+    const l = overlayLayout(scenario(tight, null, "bottom", "bottom"));
+    expect(l.minimap.compact || l.minimap.corner !== "bl").toBe(true);
+    // area minuscola: compatta
+    const tiny = overlayLayout(scenario({ w: 260, h: 200 }, null, "left", "right"));
+    expect(tiny.minimap.compact || tiny.minimap.rect === null).toBe(true);
+    if (tiny.minimap.rect) {
+      expect(tiny.minimap.rect.w).toBe(MINIMAP_COMPACT);
+      expect(tiny.minimap.expanded).toMatchObject({ w: MINIMAP_SIZE.w, h: MINIMAP_SIZE.h });
+    }
+  });
+
+  it("il suggerimento sta al centro, in basso o in alto, e non tocca nulla", () => {
+    for (const area of AREAS) {
+      const input = scenario(area, null, "bottom", "top");
+      const l = overlayLayout(input);
+      if (!l.hint) continue;
+      expect(l.hint.h).toBe(HINT_HEIGHT);
+      expect(Math.abs(l.hint.x + l.hint.w / 2 - area.w / 2)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("gli ingombri dei widget diventano margini di sicurezza dell'area visibile", () => {
+    const l = overlayLayout(scenario(roomy, null, "left", "right"));
+    const total = l.insets.top + l.insets.right + l.insets.bottom + l.insets.left;
+    expect(total).toBeGreaterThan(0);
+    // i margini non portano via più di metà dell'area in nessuna direzione
+    expect(l.insets.left + l.insets.right).toBeLessThan(roomy.w / 2);
+    expect(l.insets.top + l.insets.bottom).toBeLessThan(roomy.h / 2);
+  });
+});
+```
+
 ### `src/etl-canvas/__tests__/panels-actions.test.ts`
 
-162 righe
+242 righe
 
 ```ts
 import { describe, expect, it } from "vitest";
 import { createEtlStore, fromSaved, initialState, parseSaved, toSaved } from "../../etl-store";
 import type { EtlStore } from "../../etl-store";
 import { createInteractionController } from "../interaction";
+import type { InteractionController } from "../interaction";
 import { createPanelActions, followInspector } from "../panels/actions";
-import { PANEL_SIZE, EXTENT_PAD } from "../panels/layout";
 import { storeWith } from "./helpers";
 
-const TOOLS_H_EXT = PANEL_SIZE.tools.h + EXTENT_PAD;
-const TOOLS_EXT = PANEL_SIZE.tools.w + EXTENT_PAD;
 const panels = (s: EtlStore) => s.getState().panels;
 const view = (s: EtlStore) => s.getState().view;
+const open = (s: EtlStore) => [panels(s).tools.open, panels(s).insp.open];
 
 describe("aprire, chiudere, spostare un pannello", () => {
   it("lo stato iniziale è quello del prototipo: cassetta aperta a sinistra, Inspector chiuso a destra", () => {
@@ -42,23 +510,15 @@ describe("aprire, chiudere, spostare un pannello", () => {
     });
   });
 
-  it("chiudere e riaprire la cassetta a sinistra: la vista compensa, i nodi restano fermi sullo schermo", () => {
+  it("le azioni sui pannelli non toccano mai la vista (la tiene visibile keepVisible, a parte)", () => {
     const s = createEtlStore();
     const a = createPanelActions(s);
-    expect(a.close("tools").ok).toBe(true);
-    expect(panels(s).tools.open).toBe(false);
-    expect(view(s).x).toBe(TOOLS_EXT);
+    a.close("tools");
     a.open("tools");
-    expect(panels(s).tools.open).toBe(true);
-    expect(view(s).x).toBe(0);
-  });
-
-  it("l'Inspector a destra si apre e si chiude senza toccare la vista", () => {
-    const s = createEtlStore();
-    const a = createPanelActions(s);
+    a.moveTo("tools", "top");
+    a.moveTo("tools", "bottom");
+    a.moveTo("insp", "left");
     a.open("insp");
-    expect(panels(s).insp.open).toBe(true);
-    a.close("insp");
     expect(view(s)).toEqual({ x: 0, y: 0, zoom: 1 });
   });
 
@@ -73,21 +533,6 @@ describe("aprire, chiudere, spostare un pannello", () => {
     }
   });
 
-  it("dal bordo sinistro a uno non sinistro la vista restituisce la larghezza; il bordo alto compensa y, il basso no", () => {
-    const s = createEtlStore();
-    const a = createPanelActions(s);
-    a.moveTo("tools", "top");
-    expect(panels(s).tools).toEqual({ side: "top", open: true });
-    expect(view(s).x).toBe(TOOLS_EXT); // il canvas non cede più larghezza a sinistra
-    expect(view(s).y).toBe(-TOOLS_H_EXT); // cede altezza in alto: l'origine scende
-    a.moveTo("tools", "bottom");
-    expect(view(s).x).toBe(TOOLS_EXT);
-    expect(view(s).y).toBe(0); // il basso non sposta l'origine
-    a.moveTo("tools", "left");
-    expect(view(s).x).toBe(0);
-    expect(view(s).y).toBe(0);
-  });
-
   it("due pannelli sullo stesso bordo diventano schede: se ne apre uno alla volta; separati, tornano due pannelli", () => {
     const s = createEtlStore();
     const a = createPanelActions(s);
@@ -95,21 +540,28 @@ describe("aprire, chiudere, spostare un pannello", () => {
     expect(panels(s).insp).toEqual({ side: "left", open: true });
     expect(panels(s).tools).toEqual({ side: "left", open: false }); // l'altra scheda si chiude
     a.open("tools");
-    expect(panels(s).tools.open).toBe(true);
-    expect(panels(s).insp.open).toBe(false);
+    expect(open(s)).toEqual([true, false]);
     a.moveTo("insp", "right");
     expect(panels(s).insp.side).toBe("right");
     expect(panels(s).tools.side).toBe("left");
   });
 
-  it("cambiare scheda a sinistra non sposta il canvas", () => {
-    const s = createEtlStore();
-    const a = createPanelActions(s);
-    a.moveTo("insp", "left");
-    const x = view(s).x;
-    a.open("tools");
-    a.open("insp");
-    expect(view(s).x).toBe(x);
+  it("un solo pannello aperto alla volta anche su bordi diversi, per ogni combinazione di bordi", () => {
+    const sides = ["left", "right", "top", "bottom"] as const;
+    for (const a of sides) {
+      for (const b of sides) {
+        const s = createEtlStore();
+        const act = createPanelActions(s);
+        act.moveTo("tools", a);
+        act.moveTo("insp", b);
+        act.open("insp"); // sullo stesso bordo di prima il solo spostamento non apre: come il clic sulla tacca
+        expect(open(s)).toEqual([false, true]);
+        act.open("tools");
+        expect(open(s)).toEqual([true, false]);
+        act.open("insp");
+        expect(open(s)).toEqual([false, true]);
+      }
+    }
   });
 });
 
@@ -140,62 +592,159 @@ describe("persistenza", () => {
   });
 });
 
-describe("l'Inspector segue la selezione", () => {
-  it("selezionare un nodo lo apre, deselezionare lo chiude", () => {
-    const store = storeWith();
-    const actions = createPanelActions(store);
-    const c = createInteractionController(store);
-    const stop = followInspector(store, actions);
-    expect(panels(store).insp.open).toBe(false);
-    c.down({ kind: "node", id: "op-join" }, { x: 304, y: 226 });
-    c.up({ x: 304, y: 226 });
+/** Un clic: pressione e rilascio nello stesso punto. */
+function click(c: InteractionController, id: string, shiftKey = false): void {
+  c.down({ kind: "node", id }, { x: 304, y: 226, shiftKey });
+  c.up({ x: 304, y: 226, shiftKey });
+}
+
+function setup() {
+  const store = storeWith();
+  const actions = createPanelActions(store);
+  const controller = createInteractionController(store);
+  const stop = followInspector(store, controller, actions);
+  return { store, actions, controller, stop };
+}
+
+describe("l'Inspector segue la selezione: apertura solo al clic", () => {
+  it("un clic su un nodo apre l'Inspector con il suo nome e chiude la cassetta; deselezionare chiude l'Inspector e riapre la cassetta", () => {
+    const { store, controller, stop } = setup();
+    expect(open(store)).toEqual([true, false]);
+    click(controller, "op-join");
     expect(store.getState().inspector.nodeId).toBe("op-join");
-    expect(panels(store).insp.open).toBe(true);
-    c.key({ key: "Escape" });
+    expect(open(store)).toEqual([false, true]);
+    controller.key({ key: "Escape" });
     expect(store.getState().inspector.nodeId).toBeNull();
-    expect(panels(store).insp.open).toBe(false);
+    expect(open(store)).toEqual([true, false]); // memoria di sostituzione
     stop();
   });
 
-  it("se l'utente lo chiude con un nodo selezionato, resta chiuso finché la selezione non cambia stato", () => {
-    const store = storeWith();
-    const actions = createPanelActions(store);
-    const stop = followInspector(store, actions);
-    store.dispatch({ type: "select", payload: { ids: ["op-join"] } });
-    store.dispatch({ type: "inspect", payload: { node: "op-join" } });
-    expect(panels(store).insp.open).toBe(true);
+  it("non apre alla sola pressione", () => {
+    const { store, controller, stop } = setup();
+    controller.down({ kind: "node", id: "op-join" }, { x: 304, y: 226 });
+    expect(open(store)).toEqual([true, false]);
+    controller.up({ x: 304, y: 226 });
+    expect(open(store)).toEqual([false, true]);
+    stop();
+  });
+
+  it("non apre durante né dopo un trascinamento", () => {
+    const { store, controller, stop } = setup();
+    controller.down({ kind: "node", id: "op-join" }, { x: 304, y: 226 });
+    controller.move({ x: 340, y: 260 });
+    expect(open(store)).toEqual([true, false]);
+    controller.up({ x: 340, y: 260 });
+    expect(open(store)).toEqual([true, false]);
+    stop();
+  });
+
+  it("non apre con un riquadro di selezione", () => {
+    const { store, controller, stop } = setup();
+    controller.down({ kind: "background" }, { x: 2, y: 2 });
+    controller.move({ x: 2000, y: 2000 });
+    controller.up({ x: 2000, y: 2000 });
+    expect(store.getState().selection.length).toBeGreaterThan(1);
+    expect(open(store)).toEqual([true, false]);
+    stop();
+  });
+
+  it("non apre con una selezione multipla (Maiusc+clic)", () => {
+    const { store, controller, stop } = setup();
+    click(controller, "op-join", true);
+    expect(open(store)).toEqual([true, false]);
+    click(controller, "op-sort", true);
+    expect(store.getState().selection).toHaveLength(2);
+    expect(open(store)).toEqual([true, false]);
+    stop();
+  });
+
+  it("non apre dopo un rilascio dalla cassetta: creare nodi in serie non fa sparire la cassetta", () => {
+    const { store, controller, stop } = setup();
+    for (let i = 0; i < 3; i++) {
+      controller.hoverExternal({ component: "filter" }, { x: 900 + i * 30, y: 500 });
+      controller.dropExternal({ component: "filter" }, { x: 900 + i * 30, y: 500 });
+      expect(open(store)).toEqual([true, false]);
+    }
+    stop();
+  });
+
+  it("se l'utente lo chiude con un nodo selezionato, resta chiuso finché non si clicca di nuovo", () => {
+    const { store, actions, controller, stop } = setup();
+    click(controller, "op-join");
+    expect(open(store)).toEqual([false, true]);
     actions.close("insp");
-    store.dispatch({ type: "inspect", payload: { node: "op-sort" } });
-    expect(panels(store).insp.open).toBe(false);
-    store.dispatch({ type: "inspect", payload: { node: null } });
-    store.dispatch({ type: "inspect", payload: { node: "op-sort" } });
-    expect(panels(store).insp.open).toBe(true);
+    expect(open(store)).toEqual([false, false]);
+    click(controller, "op-sort");
+    expect(open(store)).toEqual([false, true]);
     stop();
   });
 
   it("smettere di ascoltare lascia i pannelli come sono", () => {
-    const store = storeWith();
-    const stop = followInspector(store, createPanelActions(store));
+    const { store, controller, stop } = setup();
     stop();
-    store.dispatch({ type: "inspect", payload: { node: "op-join" } });
-    expect(panels(store).insp.open).toBe(false);
+    click(controller, "op-join");
+    expect(open(store)).toEqual([true, false]);
+  });
+});
+
+describe("memoria di sostituzione", () => {
+  it("se la cassetta era chiusa, la chiusura automatica dell'Inspector non la apre", () => {
+    const { store, actions, controller, stop } = setup();
+    actions.close("tools");
+    click(controller, "op-join");
+    expect(open(store)).toEqual([false, true]);
+    controller.key({ key: "Escape" });
+    expect(open(store)).toEqual([false, false]);
+    stop();
+  });
+
+  it("qualunque azione esplicita sui pannelli azzera la memoria", () => {
+    const explicit: [string, (a: ReturnType<typeof createPanelActions>) => void][] = [
+      ["chiusura dell'Inspector", (a) => a.close("insp")],
+      ["tacca o scheda: apertura dell'Inspector", (a) => a.open("insp")],
+      ["tacca o scheda: apertura della cassetta", (a) => a.open("tools")],
+      ["trascinamento della tacca", (a) => a.moveTo("insp", "top")],
+    ];
+    for (const [name, act] of explicit) {
+      const { store, actions, controller, stop } = setup();
+      click(controller, "op-join"); // la cassetta è stata sostituita: memoria attiva
+      act(actions);
+      const before = open(store);
+      // un Inspector chiuso da deselezione non deve riaprire la cassetta se la memoria è azzerata
+      actions.close("tools");
+      controller.key({ key: "Escape" });
+      expect(open(store), name).toEqual([false, false]);
+      void before;
+      stop();
+    }
+  });
+
+  it("senza azioni esplicite la memoria resta: cassetta → Inspector → cassetta più volte", () => {
+    const { store, controller, stop } = setup();
+    for (let i = 0; i < 3; i++) {
+      click(controller, "op-join");
+      expect(open(store)).toEqual([false, true]);
+      controller.key({ key: "Escape" });
+      expect(open(store)).toEqual([true, false]);
+    }
+    stop();
   });
 });
 ```
 
 ### `src/etl-canvas/__tests__/panels-layout.test.ts`
 
-182 righe
+234 righe
 
 ```ts
 import { describe, expect, it } from "vitest";
-import type { Panels } from "../../etl-store";
+import type { Card } from "../../etl-core";
+import type { Panels, View } from "../../etl-store";
 import {
   EXTENT_PAD,
   MIN_CANVAS_HEIGHT,
   PANEL_SIZE,
   activeTab,
-  compensate,
   isGrouped,
   nearestSide,
   notchHidden,
@@ -203,8 +752,11 @@ import {
   openExtent,
   panelExtent,
   panelSize,
-  viewCompensation,
+  keepVisible,
+  visibleIds,
 } from "../panels/layout";
+import { createPanelActions } from "../panels/actions";
+import { storeWith } from "./helpers";
 
 const P = (tools: Panels["tools"], insp: Panels["insp"]): Panels => ({ tools, insp });
 const closedSplit = P({ side: "left", open: false }, { side: "right", open: false });
@@ -252,85 +804,134 @@ describe("misure dei pannelli", () => {
   });
 });
 
-describe("compensazione della vista", () => {
-  const open = (side: "left" | "right" | "top" | "bottom"): Panels =>
-    P({ side, open: true }, { side: "right", open: false });
+describe("spinta e visibilità dei nodi (keepVisible)", () => {
+  const card = (id: string, x: number, y: number): Card => ({ id, x, y }) as Card;
+  const view0 = { x: 0, y: 0, zoom: 1 };
+  const NOINS = { top: 0, right: 0, bottom: 0, left: 0 };
+  const vis = (w: number, h: number, insets = NOINS) => ({ size: { w, h }, insets });
+  /** Nodi sparsi su tutta un'area di 1000 × 600. */
+  const cards = [
+    card("a", 20, 20),
+    card("b", 400, 20),
+    card("c", 880, 20),
+    card("d", 20, 480),
+    card("e", 880, 480),
+    card("m", 450, 250),
+  ];
+  const fullyIn = (ids: readonly string[], v: View, area: ReturnType<typeof vis>) =>
+    ids.every((id) => visibleIds(cards, v, area).includes(id));
 
-  it("aprendo a sinistra l'origine si sposta indietro, chiudendo avanti: i nodi restano fermi sullo schermo", () => {
-    const ext = PANEL_SIZE.tools.w + EXTENT_PAD;
-    expect(viewCompensation(closedSplit, open("left"))).toEqual({ dx: -ext, dy: 0 });
-    expect(viewCompensation(open("left"), closedSplit)).toEqual({ dx: ext, dy: 0 });
-    expect(compensate({ x: 10, y: 5, zoom: 2 }, closedSplit, open("left"))).toEqual({
-      x: 10 - ext,
-      y: 5,
-      zoom: 2,
-    });
+  it("se tutto resta visibile la vista non cambia (stessa istanza)", () => {
+    const v = keepVisible(cards, view0, vis(1000, 600), vis(1000, 600));
+    expect(v).toBe(view0);
+    expect(keepVisible(cards, view0, vis(1000, 600), vis(1200, 800))).toBe(view0);
   });
 
-  it("aprendo in alto l'origine scende: view.y si compensa, x no", () => {
-    const ext = PANEL_SIZE.tools.h + EXTENT_PAD;
-    expect(viewCompensation(closedSplit, open("top"))).toEqual({ dx: 0, dy: -ext });
-    expect(viewCompensation(open("top"), closedSplit)).toEqual({ dx: 0, dy: ext });
-    expect(compensate({ x: 10, y: 5, zoom: 2 }, closedSplit, open("top"))).toEqual({
-      x: 10,
-      y: 5 - ext,
-      zoom: 2,
-    });
-  });
-
-  it("a destra e in basso la vista non cambia", () => {
-    for (const side of ["right", "bottom"] as const) {
-      expect(viewCompensation(closedSplit, open(side))).toEqual({ dx: 0, dy: 0 });
-      expect(viewCompensation(open(side), closedSplit)).toEqual({ dx: 0, dy: 0 });
+  it("per ogni bordo i nodi prima interamente visibili restano interamente visibili: nessuno è coperto dal pannello", () => {
+    const prev = vis(1000, 600);
+    // a ciascun bordo il pannello toglie spazio da un lato dell'area
+    const shrink: Record<string, { w: number; h: number }> = {
+      left: { w: 1000 - (PANEL_SIZE.tools.w + EXTENT_PAD), h: 600 },
+      right: { w: 1000 - (PANEL_SIZE.tools.w + EXTENT_PAD), h: 600 },
+      top: { w: 1000, h: 600 - (PANEL_SIZE.tools.h + EXTENT_PAD) },
+      bottom: { w: 1000, h: 600 - (PANEL_SIZE.tools.h + EXTENT_PAD) },
+    };
+    const before = visibleIds(cards, view0, prev);
+    expect(before).toHaveLength(cards.length);
+    for (const side of ["left", "right", "top", "bottom"]) {
+      const next = vis(shrink[side]!.w, shrink[side]!.h);
+      const v = keepVisible(cards, view0, prev, next);
+      expect(v.zoom, side).toBe(1);
+      // l'insieme entra: tutti dentro la nuova area
+      const bbox = { w: 880 + 88 - 20, h: 480 + 88 + 26 - 20 };
+      if (bbox.w <= next.size.w && bbox.h <= next.size.h)
+        expect(fullyIn(before, v, next), side).toBe(true);
     }
-    const view = { x: 3, y: 4, zoom: 1 };
-    expect(compensate(view, closedSplit, open("bottom"))).toBe(view);
-    expect(compensate(view, closedSplit, open("right"))).toBe(view);
   });
 
-  it("sinistra e destra non toccano y; alto e basso non toccano x (basso nemmeno y)", () => {
-    for (const side of ["left", "right"] as const) {
-      expect(viewCompensation(closedSplit, open(side)).dy).toBe(0);
+  it("lo scorrimento è il minimo necessario, solo sull'asse che serve", () => {
+    // il bordo destro avanza di 300: il nodo più a destra (x2 = 968) deve rientrare in 700
+    const v = keepVisible(cards, view0, vis(1000, 600), vis(700, 600));
+    expect(v.y).toBe(0);
+    // l'insieme dei nodi è largo 948 (20→968): non entra in 700, si allinea a sinistra (bordo di partenza)
+    expect(v.x).toBe(-20 + 0); // x1 minimo = 20 → 0
+  });
+
+  it("insieme che entra: scorre del minimo", () => {
+    const few = [card("p", 20, 20), card("q", 440, 20)]; // da x = 20 a x = 528
+    const next = vis(520, 600);
+    const v = keepVisible(few, view0, vis(1000, 600), next);
+    expect(v.x).toBe(-8); // 528 - 520: solo quanto serve
+    expect(v.y).toBe(0);
+    expect(visibleIds(few as Card[], v, next)).toEqual(["p", "q"]);
+  });
+
+  it("insieme troppo largo: si allinea al bordo di partenza (sinistra e alto) e il resto resta raggiungibile", () => {
+    const next = vis(300, 200, { top: 10, right: 0, bottom: 0, left: 30 });
+    const v = keepVisible(cards, view0, vis(1000, 600), next);
+    const boxes = cards.map((c) => ({ x: c.x + v.x, y: c.y + v.y }));
+    expect(Math.min(...boxes.map((b) => b.x))).toBe(30); // inizia dal margine sinistro sicuro
+    expect(Math.min(...boxes.map((b) => b.y))).toBe(10); // e da quello superiore
+    expect(v.zoom).toBe(1);
+  });
+
+  it("il margine di sicurezza tiene fuori i nodi dagli ingombri dei widget", () => {
+    const insets = { top: 0, right: 0, bottom: 100, left: 0 };
+    const near = [card("n", 100, 460)]; // y1 = 460, y2 = 460 + 88 + 26 = 574: dentro 600, fuori da 500
+    expect(visibleIds(near, view0, vis(1000, 600))).toEqual(["n"]);
+    expect(visibleIds(near, view0, vis(1000, 600, insets))).toEqual([]);
+  });
+
+  it("i nodi non interamente visibili prima non fanno scorrere la vista", () => {
+    const off = [card("x", 1500, 100), card("y", 100, 100)];
+    const v = keepVisible(off, view0, vis(1000, 600), vis(800, 600));
+    expect(v).toBe(view0); // y resta dentro; x non contava
+  });
+
+  it("lo zoom non cambia mai", () => {
+    const z = { x: 10, y: 20, zoom: 1.7 };
+    for (const [w, h] of [
+      [300, 300],
+      [700, 400],
+      [1200, 900],
+    ] as const) {
+      expect(keepVisible(cards, z, vis(1000, 600), vis(w, h)).zoom).toBe(1.7);
     }
-    for (const side of ["top", "bottom"] as const) {
-      expect(viewCompensation(closedSplit, open(side)).dx).toBe(0);
-    }
-    expect(viewCompensation(closedSplit, open("bottom")).dy).toBe(0);
-  });
-
-  it("spostare un pannello aperto da sinistra a destra restituisce lo spazio", () => {
-    expect(viewCompensation(open("left"), open("right"))).toEqual({
-      dx: PANEL_SIZE.tools.w + EXTENT_PAD,
-      dy: 0,
-    });
-  });
-
-  it("cambiare scheda in un gruppo a sinistra non sposta il canvas (stessa misura)", () => {
-    const a = P({ side: "left", open: true }, { side: "left", open: false });
-    const b = P({ side: "left", open: false }, { side: "left", open: true });
-    expect(viewCompensation(a, b)).toEqual({ dx: 0, dy: 0 });
-  });
-
-  it("un pannello aperto a sinistra che si unisce all'altro cambia misura e la vista compensa la differenza", () => {
-    const alone = P({ side: "left", open: true }, { side: "right", open: false });
-    const joined = P({ side: "left", open: true }, { side: "left", open: false });
-    const grow = Math.max(PANEL_SIZE.tools.w, PANEL_SIZE.insp.w) - PANEL_SIZE.tools.w;
-    expect(viewCompensation(alone, joined)).toEqual({ dx: -grow, dy: 0 });
   });
 });
 
-describe("schede in alto: la compensazione segue la differenza di altezza", () => {
-  it("un pannello aperto in alto che si unisce all'altro cambia altezza e view.y compensa la differenza", () => {
-    const alone = P({ side: "top", open: true }, { side: "right", open: false });
-    const joined = P({ side: "top", open: true }, { side: "top", open: false });
-    const grow = Math.max(PANEL_SIZE.tools.h, PANEL_SIZE.insp.h) - PANEL_SIZE.tools.h;
-    expect(viewCompensation(alone, joined)).toEqual({ dx: 0, dy: -grow });
-  });
+describe("le posizioni nel mondo non cambiano mai (Libero e Organizzato)", () => {
+  for (const mode of ["free", "grid"] as const) {
+    it(`modalità ${mode}: aprire, chiudere e spostare i pannelli e tenere visibili i nodi non tocca il grafo`, () => {
+      const store = storeWith();
+      store.dispatch({ type: "setMode", payload: { mode } });
+      const graph = store.getState().graph;
+      const actions = createPanelActions(store);
+      const prev = { size: { w: 1000, h: 600 }, insets: { top: 0, right: 0, bottom: 0, left: 0 } };
+      for (const side of ["right", "top", "bottom", "left"] as const) {
+        actions.moveTo("tools", side);
+        const st = store.getState();
+        const v = keepVisible(Object.values(st.graph.cards), st.view, prev, {
+          size: { w: 700, h: 300 },
+          insets: prev.insets,
+        });
+        store.dispatch({ type: "setView", payload: { x: v.x, y: v.y } });
+        actions.close("tools");
+      }
+      expect(store.getState().graph).toBe(graph); // stessa istanza: nessun nodo si è mosso
+      expect(store.getState().view.zoom).toBe(1);
+    });
+  }
+});
 
-  it("cambiare scheda in un gruppo in alto non sposta il canvas", () => {
-    const a = P({ side: "top", open: true }, { side: "top", open: false });
-    const b = P({ side: "top", open: false }, { side: "top", open: true });
-    expect(viewCompensation(a, b)).toEqual({ dx: 0, dy: 0 });
+describe("schede in alto e in basso", () => {
+  it("due pannelli come schede usano l'altezza maggiore dei due, anche per la spinta", () => {
+    for (const side of ["top", "bottom"] as const) {
+      const grouped = P({ side, open: false }, { side, open: true });
+      const h = Math.max(PANEL_SIZE.tools.h, PANEL_SIZE.insp.h);
+      expect(panelSize(grouped, "tools").h).toBe(h);
+      expect(openExtent(grouped, side)).toBe(h + EXTENT_PAD);
+    }
   });
 });
 
@@ -900,549 +1501,5 @@ describe("trascinamento dalla cassetta al canvas (un nodo esterno)", () => {
     c.cancel();
   });
 });
-```
-
-### `src/etl-canvas/__tests__/toolbox.test.tsx`
-
-189 righe
-
-```tsx
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { META, SECTIONS } from "../../etl-core";
-import { createEtlStore } from "../../etl-store";
-import { createPanelActions } from "../panels/actions";
-import { DockLayout } from "../panels/Dock";
-import { InspectorShell } from "../panels/InspectorShell";
-import { Toolbox } from "../panels/Toolbox";
-import { loadCsvText } from "../panels/csv";
-import { storeWith } from "./helpers";
-
-const noop = () => {};
-const render = (store = createEtlStore(), side: "left" | "top" = "left") =>
-  renderToStaticMarkup(
-    createElement(Toolbox, { store, side, onClose: noop, onItemPointerDown: noop }),
-  );
-
-/** Le sezioni nel markup, nell'ordine: id e voci (tipo). */
-function parse(markup: string): { id: string; types: string[]; labels: string[] }[] {
-  return markup
-    .split(/<div class="ec-tb-sec(?: ec-open)?" data-sec/)
-    .slice(1)
-    .map((chunk) => ({
-      id: /^="([^"]+)"/.exec(chunk)![1]!,
-      types: [...chunk.matchAll(/data-type="([^"]+)"/g)].map((m) => m[1]!),
-      labels: [...chunk.matchAll(/class="ec-pal-label">([^<]*)</g)].map((m) => m[1]!),
-    }));
-}
-
-describe("la cassetta deriva dal catalogo di etl-core", () => {
-  it("le sezioni e le voci corrispondono uno a uno a SECTIONS e META, nello stesso ordine", () => {
-    const rendered = parse(render());
-    // il catalogo, non una lista scritta nel test
-    const expected = SECTIONS.map((s) => ({
-      id: s.id,
-      types: s.items ? [...s.items] : [],
-      labels: s.items ? s.items.map((t) => META[t].label) : [],
-    }));
-    expect(rendered).toEqual(expected);
-  });
-
-  it("ogni operazione del catalogo compare in una sezione (e nessuna è inventata)", () => {
-    const inToolbox = parse(render()).flatMap((s) => s.types);
-    const catalog = (Object.keys(META) as (keyof typeof META)[]).filter((k) => k !== "dataset");
-    expect(inToolbox.slice().sort()).toEqual(catalog.slice().sort());
-  });
-
-  it("ogni sezione ha il suo nome del catalogo ed è comprimibile", () => {
-    const markup = render();
-    for (const s of SECTIONS) expect(markup).toContain(`>${s.name}<`);
-    expect(markup.match(/aria-expanded="true"/g)).toHaveLength(SECTIONS.length);
-    expect(markup.match(/class="ec-tb-sec-head"/g)).toHaveLength(SECTIONS.length);
-  });
-
-  it("le voci delle operazioni hanno la famiglia di colore della loro sezione", () => {
-    const markup = render();
-    expect(markup).toMatch(/data-type="filter"[^>]*data-family="filter"/);
-    expect(markup).toMatch(/data-type="join"[^>]*data-family="merge"/);
-    expect(markup).toMatch(/data-type="exportOp"[^>]*data-family="output"/);
-  });
-});
-
-describe("sezione Dataset e libreria", () => {
-  it("senza dataset caricati: il pulsante di caricamento e il messaggio", () => {
-    const markup = render();
-    expect(markup).toContain("Carica dataset");
-    expect(markup).toContain("Nessun dataset caricato");
-    expect(markup).toContain('accept=".csv,.tsv,.txt"');
-  });
-
-  it("un CSV di prova produce le colonne e i tipi attesi e compare nella libreria e nella cassetta", () => {
-    const store = createEtlStore();
-    const csv = [
-      "id;cliente;importo;data;peso",
-      "1;Acme;10,5;2026-01-03;1.5",
-      "2;Borealis;20;2026-01-04;2",
-      "3;Acme;30,25;2026-02-01;3",
-    ].join("\n");
-    const out = loadCsvText(store, "vendite.csv", csv);
-    expect(out.ok).toBe(true);
-    expect(out.message).toBe("vendite.csv caricato: 5 colonne, 3 righe. Trascinalo sul canvas.");
-    const lib = store.getState().library;
-    expect(lib).toHaveLength(1);
-    expect(lib[0]).toMatchObject({ id: "lib-1", name: "vendite", path: "vendite.csv", rows: 3 });
-    expect(lib[0]!.columns.map((c) => [c.name, c.type])).toEqual([
-      ["id", "integer"],
-      ["cliente", "stringa"],
-      ["importo", "numerico"],
-      ["data", "data"],
-      ["peso", "numerico"],
-    ]);
-    expect(lib[0]!.columns[1]!.values).toEqual(["Acme", "Borealis"]);
-    // compare come voce trascinabile nella sezione Dataset
-    const markup = render(store);
-    expect(markup).toContain('data-lib="lib-1"');
-    expect(markup).toContain(">vendite<");
-    expect(markup).toContain("5 col · 3 righe");
-    expect(markup).not.toContain("Nessun dataset caricato");
-  });
-
-  it("un file senza colonne leggibili non entra nella libreria e dà il messaggio del prototipo", () => {
-    const store = createEtlStore();
-    const out = loadCsvText(store, "vuoto.csv", "\n\n");
-    expect(out).toEqual({ ok: false, message: "Il file non contiene colonne leggibili" });
-    expect(store.getState().library).toEqual([]);
-  });
-
-  it("la libreria non conserva il contenuto del file, solo metadati", () => {
-    const store = createEtlStore();
-    loadCsvText(store, "a.csv", "x,y\n1,2\n3,4");
-    const item = store.getState().library[0]!;
-    expect(Object.keys(item).sort()).toEqual(["columns", "id", "name", "path", "rows"]);
-  });
-});
-
-describe("orientamento e schede", () => {
-  const content = {
-    tools: () => createElement("div", { "data-x": "tools" }),
-    insp: () => createElement("div", { "data-x": "insp" }),
-  };
-  const layout = (store: ReturnType<typeof createEtlStore>) =>
-    renderToStaticMarkup(
-      createElement(DockLayout, {
-        store,
-        actions: createPanelActions(store),
-        canvas: createElement("div", { "data-x": "canvas" }),
-        content,
-      }),
-    );
-
-  it("a sinistra la cassetta è una colonna aperta; l'Inspector, chiuso a destra, ha la tacca visibile", () => {
-    const markup = layout(createEtlStore());
-    expect(markup).toMatch(/class="ec-panel ec-side-left ec-open"/);
-    expect(markup).toMatch(/class="ec-panel ec-side-right"/);
-    expect(markup).not.toContain("ec-horiz");
-    expect(markup).not.toContain("ec-dock-tabs");
-    // tacca della cassetta nascosta (aperta), quella dell'Inspector no
-    expect(markup).toMatch(/ec-notch ec-notch-left ec-hidden/);
-    expect(markup).toMatch(/ec-notch ec-notch-right"/);
-  });
-
-  it("sui bordi orizzontali il pannello è una fascia (ec-horiz) e l'area di lavoro non cresce", () => {
-    const store = createEtlStore();
-    createPanelActions(store).moveTo("tools", "bottom");
-    const markup = layout(store);
-    expect(markup).toMatch(/class="ec-panel ec-side-bottom ec-open ec-horiz"/);
-    // l'area di lavoro ha l'altezza del contenitore: il pannello sottrae altezza al canvas
-    expect(markup).not.toContain("calc(100% +");
-    expect(markup).toContain("--ec-canvas-min-h:");
-  });
-
-  it("due pannelli sullo stesso bordo mostrano le schede, con quella attiva evidenziata", () => {
-    const store = createEtlStore();
-    createPanelActions(store).moveTo("insp", "left");
-    const markup = layout(store);
-    expect(markup).toContain("ec-dock-tabs");
-    expect(markup.match(/class="ec-dock-tab( ec-on)?"/g)).toHaveLength(4); // due schede in ciascuno dei due pannelli
-    expect(markup).toMatch(/class="ec-dock-tab ec-on"[^>]*aria-pressed="true"/);
-    expect(markup).toContain("ec-grouped");
-  });
-
-  it("un pannello chiuso non è raggiungibile da tastiera (inert)", () => {
-    const markup = layout(createEtlStore());
-    expect(markup).toMatch(/<aside[^>]*data-panel="insp"[^>]*inert/);
-    expect(markup).not.toMatch(/<aside[^>]*data-panel="tools"[^>]*inert/);
-  });
-});
-
-describe("guscio dell'Inspector", () => {
-  it("mostra il nome del nodo selezionato, nient'altro", () => {
-    const store = storeWith();
-    store.dispatch({ type: "inspect", payload: { node: "op-join" } });
-    const markup = renderToStaticMarkup(
-      createElement(InspectorShell, { store, side: "right", onClose: noop }),
-    );
-    expect(markup).toContain(">Unisci (Join)<");
-    expect(markup).not.toContain("<input");
-    expect(markup).not.toContain("<select");
-  });
-
-  it("senza selezione dice che non c'è nessun nodo", () => {
-    const markup = renderToStaticMarkup(
-      createElement(InspectorShell, { store: storeWith(), side: "right", onClose: noop }),
-    );
-    expect(markup).toContain("Nessun nodo selezionato");
-  });
-});
-```
-
-### `src/etl-canvas/__tests__/transitions.test.ts`
-
-142 righe
-
-```ts
-import { describe, expect, it } from "vitest";
-import {
-  TRANSITION_MS,
-  crossfade,
-  interpolatePoints,
-  planTransition,
-  progress,
-  sampleTransition,
-  samePoints,
-} from "../transitions";
-import type { Pt } from "../transitions";
-
-const A: Pt[] = [
-  { x: 0, y: 0 },
-  { x: 100, y: 0 },
-  { x: 100, y: 60 },
-];
-const B: Pt[] = [
-  { x: 10, y: 20 },
-  { x: 120, y: 40 },
-  { x: 100, y: 200 },
-];
-const STRAIGHT: Pt[] = [
-  { x: 0, y: 0 },
-  { x: 100, y: 60 },
-];
-
-describe("interpolazione dei punti", () => {
-  it("a metà transizione ogni punto è la media; all'inizio è il vecchio; alla fine il nuovo", () => {
-    const mid = interpolatePoints(A, B, 0.5);
-    A.forEach((p, i) => {
-      const q = B[i] as Pt;
-      expect(mid[i]).toEqual({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
-    });
-    expect(interpolatePoints(A, B, 0)).toEqual(A);
-    expect(interpolatePoints(A, B, 1)).toEqual(B);
-  });
-
-  it("alla fine coincide esattamente con il nuovo percorso, anche con decimali", () => {
-    const from = [
-      { x: 0.1, y: 0.7 },
-      { x: 33.3, y: 9.9 },
-    ];
-    const to = [
-      { x: 0.3, y: 0.2 },
-      { x: 33.34, y: 9.91 },
-    ];
-    expect(interpolatePoints(from, to, 1)).toEqual(to);
-  });
-
-  it("un numero diverso di punti non si interpola", () => {
-    expect(() => interpolatePoints(A, STRAIGHT, 0.5)).toThrow();
-  });
-
-  it("non modifica i percorsi di partenza", () => {
-    const a = JSON.stringify(A);
-    const b = JSON.stringify(B);
-    interpolatePoints(A, B, 0.3);
-    expect(JSON.stringify(A)).toBe(a);
-    expect(JSON.stringify(B)).toBe(b);
-  });
-});
-
-describe("dissolvenza incrociata", () => {
-  it("le opacità sommano a 1 a ogni istante; a metà valgono 0,5 e 0,5", () => {
-    for (let i = 0; i <= 20; i++) {
-      const f = crossfade(i / 20);
-      expect(f.old + f.next).toBeCloseTo(1, 12);
-    }
-    expect(crossfade(0.5)).toEqual({ old: 0.5, next: 0.5 });
-    expect(crossfade(0)).toEqual({ old: 1, next: 0 });
-    expect(crossfade(1)).toEqual({ old: 0, next: 1 });
-  });
-});
-
-describe("avanzamento", () => {
-  it("è lineare, limitato a 0..1, e dura 380 ms", () => {
-    expect(TRANSITION_MS).toBe(380);
-    expect(progress(0)).toBe(0);
-    expect(progress(190)).toBe(0.5);
-    expect(progress(380)).toBe(1);
-    expect(progress(9999)).toBe(1);
-    expect(progress(-5)).toBe(0);
-    expect(progress(10, 0)).toBe(1);
-  });
-});
-
-describe("quando c'è una transizione", () => {
-  const base = { gesturing: false, reduced: false };
-
-  it("cavo nuovo o percorso identico: nessuna", () => {
-    expect(planTransition({ ...base, prev: null, next: A }).kind).toBe("none");
-    expect(planTransition({ ...base, prev: A, next: A.map((p) => ({ ...p })) }).kind).toBe("none");
-    expect(samePoints(A, B)).toBe(false);
-  });
-
-  it("stesso numero di punti: si interpola; numero diverso: dissolvenza", () => {
-    expect(planTransition({ ...base, prev: A, next: B }).kind).toBe("morph");
-    expect(planTransition({ ...base, prev: A, next: STRAIGHT }).kind).toBe("fade");
-  });
-
-  it("durante un gesto di trascinamento: nessuna, anche se il percorso cambia", () => {
-    expect(planTransition({ prev: A, next: B, gesturing: true, reduced: false }).kind).toBe("none");
-    expect(planTransition({ prev: A, next: STRAIGHT, gesturing: true, reduced: false }).kind).toBe(
-      "none",
-    );
-  });
-
-  it("con movimento ridotto: istantanea", () => {
-    expect(planTransition({ prev: A, next: B, gesturing: false, reduced: true }).kind).toBe("none");
-  });
-});
-
-describe("stato visivo nel tempo", () => {
-  it("interpolazione: a metà tempo la media, a fine tempo il nuovo e `done`", () => {
-    const plan = planTransition({ prev: A, next: B, gesturing: false, reduced: false });
-    const mid = sampleTransition(plan, TRANSITION_MS / 2)!;
-    expect(mid).toMatchObject({ kind: "points", done: false });
-    if (mid.kind === "points") expect(mid.pts[0]).toEqual({ x: 5, y: 10 });
-    const end = sampleTransition(plan, TRANSITION_MS)!;
-    expect(end).toMatchObject({ kind: "points", done: true });
-    if (end.kind === "points") expect(end.pts).toEqual(B);
-    expect(sampleTransition(plan, TRANSITION_MS * 5)).toMatchObject({ done: true });
-  });
-
-  it("dissolvenza: a metà tempo 0,5 + 0,5, a fine tempo solo il nuovo", () => {
-    const plan = planTransition({ prev: A, next: STRAIGHT, gesturing: false, reduced: false });
-    const mid = sampleTransition(plan, TRANSITION_MS / 2)!;
-    expect(mid).toMatchObject({ kind: "fade", old: 0.5, next: 0.5, done: false });
-    expect(sampleTransition(plan, TRANSITION_MS)).toMatchObject({
-      kind: "fade",
-      old: 0,
-      next: 1,
-      done: true,
-    });
-  });
-
-  it("nessuna transizione: nessuno stato", () => {
-    expect(sampleTransition({ kind: "none" }, 100)).toBeNull();
-  });
-});
-```
-
-### `src/etl-canvas/__tests__/view.test.ts`
-
-148 righe
-
-```ts
-import { describe, expect, it } from "vitest";
-import { CARD, LABEL_H } from "../../etl-layout";
-import { ZOOM_MAX, ZOOM_MIN } from "../../etl-store";
-import { fit, zoomAtPoint, zoomIn, zoomOut, zoomReset } from "../actions";
-import { prototypeScene } from "../seed";
-import { bounds, fitView, minimapFrame, toWorld, viewFromMinimap, zoomAt } from "../view";
-import { SIZE, storeWith } from "./helpers";
-
-function allInside(store: ReturnType<typeof storeWith>, size = SIZE): void {
-  const { view, graph } = store.getState();
-  for (const c of Object.values(graph.cards)) {
-    const x1 = c.x * view.zoom + view.x;
-    const y1 = c.y * view.zoom + view.y;
-    const x2 = (c.x + CARD) * view.zoom + view.x;
-    const y2 = (c.y + CARD + LABEL_H) * view.zoom + view.y;
-    expect(x1, c.id).toBeGreaterThanOrEqual(0);
-    expect(y1, c.id).toBeGreaterThanOrEqual(0);
-    expect(x2, c.id).toBeLessThanOrEqual(size.w);
-    expect(y2, c.id).toBeLessThanOrEqual(size.h);
-  }
-}
-
-describe("Adatta", () => {
-  it("dopo la chiamata tutti i nodi rientrano nell'area visibile", () => {
-    const store = storeWith();
-    store.dispatch({ type: "setView", payload: { x: -900, y: 400, zoom: 2 } });
-    fit(store, SIZE);
-    allInside(store);
-  });
-
-  it("vale per finestre piccole e grandi", () => {
-    for (const size of [
-      { w: 320, h: 240 },
-      { w: 1440, h: 900 },
-      { w: 600, h: 1200 },
-    ]) {
-      const store = storeWith();
-      fit(store, size);
-      allInside(store, size);
-    }
-  });
-
-  it("vale anche per una scena sparsa su tutto il mondo", () => {
-    const size = { w: 1200, h: 800 };
-    const store = storeWith();
-    const s = prototypeScene();
-    const far = { ...s.graph.cards["op-export"]!, x: 2400, y: 1400 };
-    store.replaceState({
-      ...s,
-      graph: { ...s.graph, cards: { ...s.graph.cards, "op-export": far } },
-    });
-    fit(store, size);
-    allInside(store, size);
-  });
-
-  it("oltre il limite di zoom (0,35) Adatta si ferma al limite, come nel prototipo", () => {
-    const store = storeWith();
-    const s = prototypeScene();
-    const far = { ...s.graph.cards["op-export"]!, x: 2400, y: 1400 };
-    store.replaceState({
-      ...s,
-      graph: { ...s.graph, cards: { ...s.graph.cards, "op-export": far } },
-    });
-    fit(store, { w: 320, h: 240 });
-    expect(store.getState().view.zoom).toBe(ZOOM_MIN);
-  });
-
-  it("con il margine del prototipo (48) e zoom al più 1,25", () => {
-    const one = [{ x: 100, y: 100 }];
-    const v = fitView(one, { w: 2000, h: 2000 });
-    expect(v.zoom).toBe(1.25);
-    const b = bounds(one)!;
-    // centrato
-    expect(v.x + b.x1 * v.zoom).toBeCloseTo((2000 - (b.x2 - b.x1) * v.zoom) / 2, 6);
-  });
-
-  it("canvas vuoto: vista di partenza", () => {
-    expect(fitView([], SIZE)).toEqual({ x: 0, y: 0, zoom: 1 });
-  });
-});
-
-describe("zoom", () => {
-  it("limiti del prototipo (0,35 – 2)", () => {
-    const store = storeWith();
-    for (let i = 0; i < 40; i++) zoomIn(store, SIZE);
-    expect(store.getState().view.zoom).toBe(ZOOM_MAX);
-    for (let i = 0; i < 80; i++) zoomOut(store, SIZE);
-    expect(store.getState().view.zoom).toBe(ZOOM_MIN);
-    zoomReset(store, SIZE);
-    expect(store.getState().view.zoom).toBe(1);
-  });
-
-  it("attorno al puntatore il punto del mondo sotto il puntatore non si muove", () => {
-    const store = storeWith();
-    store.dispatch({ type: "setView", payload: { x: 30, y: 50, zoom: 0.8 } });
-    const before = toWorld(store.getState().view, 400, 300);
-    zoomAtPoint(store, 400, 300, 1.7);
-    const after = toWorld(store.getState().view, 400, 300);
-    expect(after.x).toBeCloseTo(before.x, 6);
-    expect(after.y).toBeCloseTo(before.y, 6);
-    expect(store.getState().view.zoom).toBeCloseTo(1.7, 6);
-  });
-
-  it("zoomAt è puro e rispetta i limiti", () => {
-    const v = { x: 0, y: 0, zoom: 1 };
-    expect(zoomAt(v, 10, 10, 99).zoom).toBe(ZOOM_MAX);
-    expect(v).toEqual({ x: 0, y: 0, zoom: 1 });
-  });
-
-  it("la vista passa da etl-store: la modifica notifica gli ascoltatori", () => {
-    const store = storeWith();
-    let n = 0;
-    store.subscribe(() => n++);
-    zoomIn(store, SIZE);
-    expect(n).toBe(1);
-    // e non entra nel registro né nella cronologia
-    expect(store.getLog().some((e) => e.type === "setView")).toBe(false);
-    expect(store.canUndo()).toBe(false);
-  });
-});
-
-describe("minimappa", () => {
-  it("contiene tutti i nodi e la porzione visibile nel riquadro 168 × 104", () => {
-    const store = storeWith();
-    const cards = Object.values(store.getState().graph.cards);
-    const frame = minimapFrame(cards, store.getState().view, SIZE);
-    for (const c of cards) {
-      const l = frame.ox + (c.x - frame.x1) * frame.k;
-      const t = frame.oy + (c.y - frame.y1) * frame.k;
-      expect(l).toBeGreaterThanOrEqual(0);
-      expect(t).toBeGreaterThanOrEqual(0);
-      expect(l + CARD * frame.k).toBeLessThanOrEqual(168 + 1e-9);
-      expect(t + CARD * frame.k).toBeLessThanOrEqual(104 + 1e-9);
-    }
-  });
-
-  it("un clic sulla minimappa porta quel punto al centro dell'area", () => {
-    const store = storeWith();
-    const cards = Object.values(store.getState().graph.cards);
-    const view = store.getState().view;
-    const frame = minimapFrame(cards, view, SIZE);
-    const next = viewFromMinimap(frame, view, SIZE, 84, 52);
-    const center = toWorld(next, SIZE.w / 2, SIZE.h / 2);
-    expect(center.x).toBeCloseTo(frame.x1 + (84 - frame.ox) / frame.k, 6);
-    expect(center.y).toBeCloseTo(frame.y1 + (52 - frame.oy) / frame.k, 6);
-  });
-});
-```
-
-### `src/etl-canvas/actions.ts`
-
-41 righe
-
-```ts
-/** Azioni sulla vista, applicate attraverso etl-store (`setView`). */
-import type { Size } from "../etl-layout";
-import type { EtlStore } from "../etl-store";
-import { fitView, zoomAt, zoomCentered, ZOOM_STEP } from "./view";
-
-/** "Adatta": inquadra tutti i nodi. */
-export function fit(store: EtlStore, size: Size): void {
-  store.dispatch({
-    type: "setView",
-    payload: fitView(Object.values(store.getState().graph.cards), size),
-  });
-}
-
-export function zoomBy(store: EtlStore, size: Size, factor: number): void {
-  const view = store.getState().view;
-  store.dispatch({ type: "setView", payload: zoomCentered(view, size, view.zoom * factor) });
-}
-
-export function zoomIn(store: EtlStore, size: Size): void {
-  zoomBy(store, size, ZOOM_STEP);
-}
-
-export function zoomOut(store: EtlStore, size: Size): void {
-  zoomBy(store, size, 1 / ZOOM_STEP);
-}
-
-export function zoomReset(store: EtlStore, size: Size): void {
-  store.dispatch({
-    type: "setView",
-    payload: zoomCentered(store.getState().view, size, 1),
-  });
-}
-
-/** Zoom attorno al puntatore (`px`, `py` relativi all'area). */
-export function zoomAtPoint(store: EtlStore, px: number, py: number, zoom: number): void {
-  store.dispatch({
-    type: "setView",
-    payload: zoomAt(store.getState().view, px, py, zoom),
-  });
-}
 ```
 

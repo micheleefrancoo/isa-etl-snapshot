@@ -2,19 +2,613 @@
 
 File in questo blocco:
 
+- `src/etl-canvas/__tests__/toolbox.test.tsx`
+- `src/etl-canvas/__tests__/transitions.test.ts`
+- `src/etl-canvas/__tests__/view.test.ts`
+- `src/etl-canvas/actions.ts`
 - `src/etl-canvas/canvas.css`
 - `src/etl-canvas/contrast.ts`
 - `src/etl-canvas/drop.ts`
 - `src/etl-canvas/engine.ts`
-- `src/etl-canvas/flow.ts`
-- `src/etl-canvas/icons.tsx`
-- `src/etl-canvas/index.ts`
 
 ---
 
+### `src/etl-canvas/__tests__/toolbox.test.tsx`
+
+191 righe
+
+```tsx
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { META, SECTIONS } from "../../etl-core";
+import { createEtlStore } from "../../etl-store";
+import { createInteractionController } from "../interaction";
+import { createPanelActions } from "../panels/actions";
+import { DockLayout } from "../panels/Dock";
+import { InspectorShell } from "../panels/InspectorShell";
+import { Toolbox } from "../panels/Toolbox";
+import { loadCsvText } from "../panels/csv";
+import { storeWith } from "./helpers";
+
+const noop = () => {};
+const render = (store = createEtlStore(), side: "left" | "top" = "left") =>
+  renderToStaticMarkup(
+    createElement(Toolbox, { store, side, onClose: noop, onItemPointerDown: noop }),
+  );
+
+/** Le sezioni nel markup, nell'ordine: id e voci (tipo). */
+function parse(markup: string): { id: string; types: string[]; labels: string[] }[] {
+  return markup
+    .split(/<div class="ec-tb-sec(?: ec-open)?" data-sec/)
+    .slice(1)
+    .map((chunk) => ({
+      id: /^="([^"]+)"/.exec(chunk)![1]!,
+      types: [...chunk.matchAll(/data-type="([^"]+)"/g)].map((m) => m[1]!),
+      labels: [...chunk.matchAll(/class="ec-pal-label">([^<]*)</g)].map((m) => m[1]!),
+    }));
+}
+
+describe("la cassetta deriva dal catalogo di etl-core", () => {
+  it("le sezioni e le voci corrispondono uno a uno a SECTIONS e META, nello stesso ordine", () => {
+    const rendered = parse(render());
+    // il catalogo, non una lista scritta nel test
+    const expected = SECTIONS.map((s) => ({
+      id: s.id,
+      types: s.items ? [...s.items] : [],
+      labels: s.items ? s.items.map((t) => META[t].label) : [],
+    }));
+    expect(rendered).toEqual(expected);
+  });
+
+  it("ogni operazione del catalogo compare in una sezione (e nessuna è inventata)", () => {
+    const inToolbox = parse(render()).flatMap((s) => s.types);
+    const catalog = (Object.keys(META) as (keyof typeof META)[]).filter((k) => k !== "dataset");
+    expect(inToolbox.slice().sort()).toEqual(catalog.slice().sort());
+  });
+
+  it("ogni sezione ha il suo nome del catalogo ed è comprimibile", () => {
+    const markup = render();
+    for (const s of SECTIONS) expect(markup).toContain(`>${s.name}<`);
+    expect(markup.match(/aria-expanded="true"/g)).toHaveLength(SECTIONS.length);
+    expect(markup.match(/class="ec-tb-sec-head"/g)).toHaveLength(SECTIONS.length);
+  });
+
+  it("le voci delle operazioni hanno la famiglia di colore della loro sezione", () => {
+    const markup = render();
+    expect(markup).toMatch(/data-type="filter"[^>]*data-family="filter"/);
+    expect(markup).toMatch(/data-type="join"[^>]*data-family="merge"/);
+    expect(markup).toMatch(/data-type="exportOp"[^>]*data-family="output"/);
+  });
+});
+
+describe("sezione Dataset e libreria", () => {
+  it("senza dataset caricati: il pulsante di caricamento e il messaggio", () => {
+    const markup = render();
+    expect(markup).toContain("Carica dataset");
+    expect(markup).toContain("Nessun dataset caricato");
+    expect(markup).toContain('accept=".csv,.tsv,.txt"');
+  });
+
+  it("un CSV di prova produce le colonne e i tipi attesi e compare nella libreria e nella cassetta", () => {
+    const store = createEtlStore();
+    const csv = [
+      "id;cliente;importo;data;peso",
+      "1;Acme;10,5;2026-01-03;1.5",
+      "2;Borealis;20;2026-01-04;2",
+      "3;Acme;30,25;2026-02-01;3",
+    ].join("\n");
+    const out = loadCsvText(store, "vendite.csv", csv);
+    expect(out.ok).toBe(true);
+    expect(out.message).toBe("vendite.csv caricato: 5 colonne, 3 righe. Trascinalo sul canvas.");
+    const lib = store.getState().library;
+    expect(lib).toHaveLength(1);
+    expect(lib[0]).toMatchObject({ id: "lib-1", name: "vendite", path: "vendite.csv", rows: 3 });
+    expect(lib[0]!.columns.map((c) => [c.name, c.type])).toEqual([
+      ["id", "integer"],
+      ["cliente", "stringa"],
+      ["importo", "numerico"],
+      ["data", "data"],
+      ["peso", "numerico"],
+    ]);
+    expect(lib[0]!.columns[1]!.values).toEqual(["Acme", "Borealis"]);
+    // compare come voce trascinabile nella sezione Dataset
+    const markup = render(store);
+    expect(markup).toContain('data-lib="lib-1"');
+    expect(markup).toContain(">vendite<");
+    expect(markup).toContain("5 col · 3 righe");
+    expect(markup).not.toContain("Nessun dataset caricato");
+  });
+
+  it("un file senza colonne leggibili non entra nella libreria e dà il messaggio del prototipo", () => {
+    const store = createEtlStore();
+    const out = loadCsvText(store, "vuoto.csv", "\n\n");
+    expect(out).toEqual({ ok: false, message: "Il file non contiene colonne leggibili" });
+    expect(store.getState().library).toEqual([]);
+  });
+
+  it("la libreria non conserva il contenuto del file, solo metadati", () => {
+    const store = createEtlStore();
+    loadCsvText(store, "a.csv", "x,y\n1,2\n3,4");
+    const item = store.getState().library[0]!;
+    expect(Object.keys(item).sort()).toEqual(["columns", "id", "name", "path", "rows"]);
+  });
+});
+
+describe("orientamento e schede", () => {
+  const content = {
+    tools: () => createElement("div", { "data-x": "tools" }),
+    insp: () => createElement("div", { "data-x": "insp" }),
+  };
+  const layout = (store: ReturnType<typeof createEtlStore>) =>
+    renderToStaticMarkup(
+      createElement(DockLayout, {
+        store,
+        actions: createPanelActions(store),
+        controller: createInteractionController(store),
+        canvas: () => createElement("div", { "data-x": "canvas" }),
+        content,
+      }),
+    );
+
+  it("a sinistra la cassetta è una colonna aperta; l'Inspector, chiuso a destra, ha la tacca visibile", () => {
+    const markup = layout(createEtlStore());
+    expect(markup).toMatch(/class="ec-panel ec-side-left ec-open"/);
+    expect(markup).toMatch(/class="ec-panel ec-side-right"/);
+    expect(markup).not.toContain("ec-horiz");
+    expect(markup).not.toContain("ec-dock-tabs");
+    // tacca della cassetta nascosta (aperta), quella dell'Inspector no
+    expect(markup).toMatch(/ec-notch ec-notch-left ec-hidden/);
+    expect(markup).toMatch(/ec-notch ec-notch-right"/);
+  });
+
+  it("sui bordi orizzontali il pannello è una fascia (ec-horiz) e l'area di lavoro non cresce", () => {
+    const store = createEtlStore();
+    createPanelActions(store).moveTo("tools", "bottom");
+    const markup = layout(store);
+    expect(markup).toMatch(/class="ec-panel ec-side-bottom ec-open ec-horiz"/);
+    // l'area di lavoro ha l'altezza del contenitore: il pannello sottrae altezza al canvas
+    expect(markup).not.toContain("calc(100% +");
+    expect(markup).toContain("--ec-canvas-min-h:");
+  });
+
+  it("due pannelli sullo stesso bordo mostrano le schede, con quella attiva evidenziata", () => {
+    const store = createEtlStore();
+    createPanelActions(store).moveTo("insp", "left");
+    const markup = layout(store);
+    expect(markup).toContain("ec-dock-tabs");
+    expect(markup.match(/class="ec-dock-tab( ec-on)?"/g)).toHaveLength(4); // due schede in ciascuno dei due pannelli
+    expect(markup).toMatch(/class="ec-dock-tab ec-on"[^>]*aria-pressed="true"/);
+    expect(markup).toContain("ec-grouped");
+  });
+
+  it("un pannello chiuso non è raggiungibile da tastiera (inert)", () => {
+    const markup = layout(createEtlStore());
+    expect(markup).toMatch(/<aside[^>]*data-panel="insp"[^>]*inert/);
+    expect(markup).not.toMatch(/<aside[^>]*data-panel="tools"[^>]*inert/);
+  });
+});
+
+describe("guscio dell'Inspector", () => {
+  it("mostra il nome del nodo selezionato, nient'altro", () => {
+    const store = storeWith();
+    store.dispatch({ type: "inspect", payload: { node: "op-join" } });
+    const markup = renderToStaticMarkup(
+      createElement(InspectorShell, { store, side: "right", onClose: noop }),
+    );
+    expect(markup).toContain(">Unisci (Join)<");
+    expect(markup).not.toContain("<input");
+    expect(markup).not.toContain("<select");
+  });
+
+  it("senza selezione dice che non c'è nessun nodo", () => {
+    const markup = renderToStaticMarkup(
+      createElement(InspectorShell, { store: storeWith(), side: "right", onClose: noop }),
+    );
+    expect(markup).toContain("Nessun nodo selezionato");
+  });
+});
+```
+
+### `src/etl-canvas/__tests__/transitions.test.ts`
+
+142 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import {
+  TRANSITION_MS,
+  crossfade,
+  interpolatePoints,
+  planTransition,
+  progress,
+  sampleTransition,
+  samePoints,
+} from "../transitions";
+import type { Pt } from "../transitions";
+
+const A: Pt[] = [
+  { x: 0, y: 0 },
+  { x: 100, y: 0 },
+  { x: 100, y: 60 },
+];
+const B: Pt[] = [
+  { x: 10, y: 20 },
+  { x: 120, y: 40 },
+  { x: 100, y: 200 },
+];
+const STRAIGHT: Pt[] = [
+  { x: 0, y: 0 },
+  { x: 100, y: 60 },
+];
+
+describe("interpolazione dei punti", () => {
+  it("a metà transizione ogni punto è la media; all'inizio è il vecchio; alla fine il nuovo", () => {
+    const mid = interpolatePoints(A, B, 0.5);
+    A.forEach((p, i) => {
+      const q = B[i] as Pt;
+      expect(mid[i]).toEqual({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
+    });
+    expect(interpolatePoints(A, B, 0)).toEqual(A);
+    expect(interpolatePoints(A, B, 1)).toEqual(B);
+  });
+
+  it("alla fine coincide esattamente con il nuovo percorso, anche con decimali", () => {
+    const from = [
+      { x: 0.1, y: 0.7 },
+      { x: 33.3, y: 9.9 },
+    ];
+    const to = [
+      { x: 0.3, y: 0.2 },
+      { x: 33.34, y: 9.91 },
+    ];
+    expect(interpolatePoints(from, to, 1)).toEqual(to);
+  });
+
+  it("un numero diverso di punti non si interpola", () => {
+    expect(() => interpolatePoints(A, STRAIGHT, 0.5)).toThrow();
+  });
+
+  it("non modifica i percorsi di partenza", () => {
+    const a = JSON.stringify(A);
+    const b = JSON.stringify(B);
+    interpolatePoints(A, B, 0.3);
+    expect(JSON.stringify(A)).toBe(a);
+    expect(JSON.stringify(B)).toBe(b);
+  });
+});
+
+describe("dissolvenza incrociata", () => {
+  it("le opacità sommano a 1 a ogni istante; a metà valgono 0,5 e 0,5", () => {
+    for (let i = 0; i <= 20; i++) {
+      const f = crossfade(i / 20);
+      expect(f.old + f.next).toBeCloseTo(1, 12);
+    }
+    expect(crossfade(0.5)).toEqual({ old: 0.5, next: 0.5 });
+    expect(crossfade(0)).toEqual({ old: 1, next: 0 });
+    expect(crossfade(1)).toEqual({ old: 0, next: 1 });
+  });
+});
+
+describe("avanzamento", () => {
+  it("è lineare, limitato a 0..1, e dura 380 ms", () => {
+    expect(TRANSITION_MS).toBe(380);
+    expect(progress(0)).toBe(0);
+    expect(progress(190)).toBe(0.5);
+    expect(progress(380)).toBe(1);
+    expect(progress(9999)).toBe(1);
+    expect(progress(-5)).toBe(0);
+    expect(progress(10, 0)).toBe(1);
+  });
+});
+
+describe("quando c'è una transizione", () => {
+  const base = { gesturing: false, reduced: false };
+
+  it("cavo nuovo o percorso identico: nessuna", () => {
+    expect(planTransition({ ...base, prev: null, next: A }).kind).toBe("none");
+    expect(planTransition({ ...base, prev: A, next: A.map((p) => ({ ...p })) }).kind).toBe("none");
+    expect(samePoints(A, B)).toBe(false);
+  });
+
+  it("stesso numero di punti: si interpola; numero diverso: dissolvenza", () => {
+    expect(planTransition({ ...base, prev: A, next: B }).kind).toBe("morph");
+    expect(planTransition({ ...base, prev: A, next: STRAIGHT }).kind).toBe("fade");
+  });
+
+  it("durante un gesto di trascinamento: nessuna, anche se il percorso cambia", () => {
+    expect(planTransition({ prev: A, next: B, gesturing: true, reduced: false }).kind).toBe("none");
+    expect(planTransition({ prev: A, next: STRAIGHT, gesturing: true, reduced: false }).kind).toBe(
+      "none",
+    );
+  });
+
+  it("con movimento ridotto: istantanea", () => {
+    expect(planTransition({ prev: A, next: B, gesturing: false, reduced: true }).kind).toBe("none");
+  });
+});
+
+describe("stato visivo nel tempo", () => {
+  it("interpolazione: a metà tempo la media, a fine tempo il nuovo e `done`", () => {
+    const plan = planTransition({ prev: A, next: B, gesturing: false, reduced: false });
+    const mid = sampleTransition(plan, TRANSITION_MS / 2)!;
+    expect(mid).toMatchObject({ kind: "points", done: false });
+    if (mid.kind === "points") expect(mid.pts[0]).toEqual({ x: 5, y: 10 });
+    const end = sampleTransition(plan, TRANSITION_MS)!;
+    expect(end).toMatchObject({ kind: "points", done: true });
+    if (end.kind === "points") expect(end.pts).toEqual(B);
+    expect(sampleTransition(plan, TRANSITION_MS * 5)).toMatchObject({ done: true });
+  });
+
+  it("dissolvenza: a metà tempo 0,5 + 0,5, a fine tempo solo il nuovo", () => {
+    const plan = planTransition({ prev: A, next: STRAIGHT, gesturing: false, reduced: false });
+    const mid = sampleTransition(plan, TRANSITION_MS / 2)!;
+    expect(mid).toMatchObject({ kind: "fade", old: 0.5, next: 0.5, done: false });
+    expect(sampleTransition(plan, TRANSITION_MS)).toMatchObject({
+      kind: "fade",
+      old: 0,
+      next: 1,
+      done: true,
+    });
+  });
+
+  it("nessuna transizione: nessuno stato", () => {
+    expect(sampleTransition({ kind: "none" }, 100)).toBeNull();
+  });
+});
+```
+
+### `src/etl-canvas/__tests__/view.test.ts`
+
+194 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import { CARD, LABEL_H } from "../../etl-layout";
+import { ZOOM_MAX, ZOOM_MIN } from "../../etl-store";
+import { fit, zoomAtPoint, zoomIn, zoomOut, zoomReset } from "../actions";
+import { prototypeScene } from "../seed";
+import { bounds, fitView, minimapFrame, toWorld, viewFromMinimap, wheelPan, zoomAt } from "../view";
+import { SIZE, storeWith } from "./helpers";
+
+function allInside(store: ReturnType<typeof storeWith>, size = SIZE): void {
+  const { view, graph } = store.getState();
+  for (const c of Object.values(graph.cards)) {
+    const x1 = c.x * view.zoom + view.x;
+    const y1 = c.y * view.zoom + view.y;
+    const x2 = (c.x + CARD) * view.zoom + view.x;
+    const y2 = (c.y + CARD + LABEL_H) * view.zoom + view.y;
+    expect(x1, c.id).toBeGreaterThanOrEqual(0);
+    expect(y1, c.id).toBeGreaterThanOrEqual(0);
+    expect(x2, c.id).toBeLessThanOrEqual(size.w);
+    expect(y2, c.id).toBeLessThanOrEqual(size.h);
+  }
+}
+
+describe("Adatta", () => {
+  it("dopo la chiamata tutti i nodi rientrano nell'area visibile", () => {
+    const store = storeWith();
+    store.dispatch({ type: "setView", payload: { x: -900, y: 400, zoom: 2 } });
+    fit(store, SIZE);
+    allInside(store);
+  });
+
+  it("vale per finestre piccole e grandi", () => {
+    for (const size of [
+      { w: 320, h: 240 },
+      { w: 1440, h: 900 },
+      { w: 600, h: 1200 },
+    ]) {
+      const store = storeWith();
+      fit(store, size);
+      allInside(store, size);
+    }
+  });
+
+  it("vale anche per una scena sparsa su tutto il mondo", () => {
+    const size = { w: 1200, h: 800 };
+    const store = storeWith();
+    const s = prototypeScene();
+    const far = { ...s.graph.cards["op-export"]!, x: 2400, y: 1400 };
+    store.replaceState({
+      ...s,
+      graph: { ...s.graph, cards: { ...s.graph.cards, "op-export": far } },
+    });
+    fit(store, size);
+    allInside(store, size);
+  });
+
+  it("oltre il limite di zoom (0,35) Adatta si ferma al limite, come nel prototipo", () => {
+    const store = storeWith();
+    const s = prototypeScene();
+    const far = { ...s.graph.cards["op-export"]!, x: 2400, y: 1400 };
+    store.replaceState({
+      ...s,
+      graph: { ...s.graph, cards: { ...s.graph.cards, "op-export": far } },
+    });
+    fit(store, { w: 320, h: 240 });
+    expect(store.getState().view.zoom).toBe(ZOOM_MIN);
+  });
+
+  it("con il margine del prototipo (48) e zoom al più 1,25", () => {
+    const one = [{ x: 100, y: 100 }];
+    const v = fitView(one, { w: 2000, h: 2000 });
+    expect(v.zoom).toBe(1.25);
+    const b = bounds(one)!;
+    // centrato
+    expect(v.x + b.x1 * v.zoom).toBeCloseTo((2000 - (b.x2 - b.x1) * v.zoom) / 2, 6);
+  });
+
+  it("canvas vuoto: vista di partenza", () => {
+    expect(fitView([], SIZE)).toEqual({ x: 0, y: 0, zoom: 1 });
+  });
+});
+
+describe("zoom", () => {
+  it("limiti del prototipo (0,35 – 2)", () => {
+    const store = storeWith();
+    for (let i = 0; i < 40; i++) zoomIn(store, SIZE);
+    expect(store.getState().view.zoom).toBe(ZOOM_MAX);
+    for (let i = 0; i < 80; i++) zoomOut(store, SIZE);
+    expect(store.getState().view.zoom).toBe(ZOOM_MIN);
+    zoomReset(store, SIZE);
+    expect(store.getState().view.zoom).toBe(1);
+  });
+
+  it("attorno al puntatore il punto del mondo sotto il puntatore non si muove", () => {
+    const store = storeWith();
+    store.dispatch({ type: "setView", payload: { x: 30, y: 50, zoom: 0.8 } });
+    const before = toWorld(store.getState().view, 400, 300);
+    zoomAtPoint(store, 400, 300, 1.7);
+    const after = toWorld(store.getState().view, 400, 300);
+    expect(after.x).toBeCloseTo(before.x, 6);
+    expect(after.y).toBeCloseTo(before.y, 6);
+    expect(store.getState().view.zoom).toBeCloseTo(1.7, 6);
+  });
+
+  it("zoomAt è puro e rispetta i limiti", () => {
+    const v = { x: 0, y: 0, zoom: 1 };
+    expect(zoomAt(v, 10, 10, 99).zoom).toBe(ZOOM_MAX);
+    expect(v).toEqual({ x: 0, y: 0, zoom: 1 });
+  });
+
+  it("la vista passa da etl-store: la modifica notifica gli ascoltatori", () => {
+    const store = storeWith();
+    let n = 0;
+    store.subscribe(() => n++);
+    zoomIn(store, SIZE);
+    expect(n).toBe(1);
+    // e non entra nel registro né nella cronologia
+    expect(store.getLog().some((e) => e.type === "setView")).toBe(false);
+    expect(store.canUndo()).toBe(false);
+  });
+});
+
+describe("minimappa", () => {
+  it("contiene tutti i nodi e la porzione visibile nel riquadro 168 × 104", () => {
+    const store = storeWith();
+    const cards = Object.values(store.getState().graph.cards);
+    const frame = minimapFrame(cards, store.getState().view, SIZE);
+    for (const c of cards) {
+      const l = frame.ox + (c.x - frame.x1) * frame.k;
+      const t = frame.oy + (c.y - frame.y1) * frame.k;
+      expect(l).toBeGreaterThanOrEqual(0);
+      expect(t).toBeGreaterThanOrEqual(0);
+      expect(l + CARD * frame.k).toBeLessThanOrEqual(168 + 1e-9);
+      expect(t + CARD * frame.k).toBeLessThanOrEqual(104 + 1e-9);
+    }
+  });
+
+  it("un clic sulla minimappa porta quel punto al centro dell'area", () => {
+    const store = storeWith();
+    const cards = Object.values(store.getState().graph.cards);
+    const view = store.getState().view;
+    const frame = minimapFrame(cards, view, SIZE);
+    const next = viewFromMinimap(frame, view, SIZE, 84, 52);
+    const center = toWorld(next, SIZE.w / 2, SIZE.h / 2);
+    expect(center.x).toBeCloseTo(frame.x1 + (84 - frame.ox) / frame.k, 6);
+    expect(center.y).toBeCloseTo(frame.y1 + (52 - frame.oy) / frame.k, 6);
+  });
+});
+
+describe("«Adatta» con i margini dei widget e rotella", () => {
+  it("con i margini l'insieme sta nell'area meno i widget", () => {
+    const cards = [
+      { x: 0, y: 0 },
+      { x: 600, y: 300 },
+    ];
+    const size = { w: 1000, h: 600 };
+    const insets = { top: 0, right: 0, bottom: 120, left: 200 };
+    const v = fitView(cards, size, insets);
+    const b = bounds(cards)!;
+    expect(b.x1 * v.zoom + v.x).toBeGreaterThanOrEqual(insets.left - 0.001);
+    expect(b.x2 * v.zoom + v.x).toBeLessThanOrEqual(size.w - insets.right + 0.001);
+    expect(b.y1 * v.zoom + v.y).toBeGreaterThanOrEqual(insets.top - 0.001);
+    expect(b.y2 * v.zoom + v.y).toBeLessThanOrEqual(size.h - insets.bottom + 0.001);
+    // senza margini il risultato è quello di sempre
+    expect(fitView(cards, size)).toEqual(
+      fitView(cards, size, { top: 0, right: 0, bottom: 0, left: 0 }),
+    );
+  });
+
+  it("rotella semplice: pan in verticale (e in orizzontale col trackpad); Maiusc: orizzontale; zoom resta a Cmd/Ctrl", () => {
+    const view = { x: 10, y: 20, zoom: 1.5 };
+    expect(wheelPan(view, { deltaX: 0, deltaY: 30, shiftKey: false })).toEqual({
+      x: 10,
+      y: -10,
+      zoom: 1.5,
+    });
+    expect(wheelPan(view, { deltaX: 8, deltaY: 30, shiftKey: false })).toEqual({
+      x: 2,
+      y: -10,
+      zoom: 1.5,
+    });
+    expect(wheelPan(view, { deltaX: 0, deltaY: 30, shiftKey: true })).toEqual({
+      x: -20,
+      y: 20,
+      zoom: 1.5,
+    });
+    // Maiusc con un trackpad che già invia deltaX: si usa deltaX
+    expect(wheelPan(view, { deltaX: 12, deltaY: 5, shiftKey: true })).toEqual({
+      x: -2,
+      y: 15,
+      zoom: 1.5,
+    });
+  });
+});
+```
+
+### `src/etl-canvas/actions.ts`
+
+42 righe
+
+```ts
+/** Azioni sulla vista, applicate attraverso etl-store (`setView`). */
+import type { Size } from "../etl-layout";
+import type { EtlStore } from "../etl-store";
+import { fitView, zoomAt, zoomCentered, ZOOM_STEP } from "./view";
+import type { Insets } from "./view";
+
+/** "Adatta": inquadra tutti i nodi, evitando lo spazio dei widget in sovrimpressione. */
+export function fit(store: EtlStore, size: Size, insets?: Insets): void {
+  store.dispatch({
+    type: "setView",
+    payload: fitView(Object.values(store.getState().graph.cards), size, insets),
+  });
+}
+
+export function zoomBy(store: EtlStore, size: Size, factor: number): void {
+  const view = store.getState().view;
+  store.dispatch({ type: "setView", payload: zoomCentered(view, size, view.zoom * factor) });
+}
+
+export function zoomIn(store: EtlStore, size: Size): void {
+  zoomBy(store, size, ZOOM_STEP);
+}
+
+export function zoomOut(store: EtlStore, size: Size): void {
+  zoomBy(store, size, 1 / ZOOM_STEP);
+}
+
+export function zoomReset(store: EtlStore, size: Size): void {
+  store.dispatch({
+    type: "setView",
+    payload: zoomCentered(store.getState().view, size, 1),
+  });
+}
+
+/** Zoom attorno al puntatore (`px`, `py` relativi all'area). */
+export function zoomAtPoint(store: EtlStore, px: number, py: number, zoom: number): void {
+  store.dispatch({
+    type: "setView",
+    payload: zoomAt(store.getState().view, px, py, zoom),
+  });
+}
+```
+
 ### `src/etl-canvas/canvas.css`
 
-542 righe
+585 righe
 
 ```css
 /*
@@ -253,11 +847,12 @@ File in questo blocco:
 /* controlli di zoom — righe 138-150 */
 .etl-canvas .ec-zoom {
   position: absolute;
-  right: 12px;
-  bottom: 12px;
+  /* posizione e misura: inline, da panels/overlayLayout.ts */
+  box-sizing: border-box;
   z-index: 15;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 2px;
   padding: 4px;
   border-radius: var(--ec-r-pill);
@@ -297,10 +892,8 @@ File in questo blocco:
 /* minimappa — righe 152-161 */
 .etl-canvas .ec-minimap {
   position: absolute;
-  left: 12px;
-  bottom: 12px;
-  width: 168px;
-  height: 104px;
+  /* posizione e misura: inline, da panels/overlayLayout.ts */
+  box-sizing: border-box;
   z-index: 15;
   border-radius: var(--ec-r-minimap);
   background: var(--ec-surface-strong);
@@ -486,12 +1079,15 @@ File in questo blocco:
 /* suggerimento durante un gesto (prototipo: `hint`) */
 .etl-canvas .ec-hint {
   position: absolute;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
+  /* posizione e misura: inline, da panels/overlayLayout.ts */
+  box-sizing: border-box;
   z-index: 16;
-  max-width: 70%;
-  padding: 7px 14px;
+  padding: 0 14px;
+  line-height: 28px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   border-radius: var(--ec-r-pill);
   background: var(--ec-surface-strong);
   border: 1px solid var(--ec-panel-border);
@@ -557,6 +1153,47 @@ File in questo blocco:
 .etl-canvas .ec-confirm-actions .ec-confirm-ok {
   background: var(--ec-danger);
   color: var(--ec-text-on-danger);
+}
+
+/* minimappa ridotta a un pulsante, quando l'area è troppo piccola per ospitarla (Fase 6a.2) */
+.etl-canvas .ec-minimap-toggle {
+  all: unset;
+  cursor: pointer;
+  position: absolute;
+  box-sizing: border-box;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ec-r-minimap);
+  background: var(--ec-surface-strong);
+  backdrop-filter: blur(var(--ec-glass-blur));
+  border: 1px solid var(--ec-panel-border);
+  box-shadow: var(--ec-glass-shadow);
+  color: var(--ec-accent-text);
+}
+.etl-canvas .ec-minimap-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+.etl-canvas .ec-minimap-toggle:focus-visible {
+  outline: 2px solid var(--ec-select);
+  outline-offset: 2px;
+}
+.etl-canvas .ec-mm-close {
+  all: unset;
+  cursor: pointer;
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  z-index: 1;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  color: var(--ec-empty-ink);
+}
+.etl-canvas .ec-mm-close:focus-visible {
+  outline: 2px solid var(--ec-select);
 }
 ```
 
@@ -1098,248 +1735,5 @@ export function createMotionEngine(): MotionEngine {
     }),
   };
 }
-```
-
-### `src/etl-canvas/flow.ts`
-
-180 righe
-
-```ts
-/**
- * Flusso nei cavi ("tubo elastico") e attesa delle fette vuote: calcolo puro.
- * Nessun React, nessun timer, nessun DOM: il tempo trascorso è un argomento.
- * Semantica del prototipo (docs/prototype/isa-fusion-prototype.html):
- * righe 1415-1424 (costanti e profilo), 1478 (smooth01), 1480-1521
- * (`animateBubbles`), 669-670 (attesa).
- */
-
-/** Spessore del cavo, coincide con il tubo a riposo (riga 1415). */
-export const BASE_W = 2.1;
-/** px al millisecondo: stessa andatura su cavi lunghi e corti (riga 1416). */
-export const SPEED = 0.16;
-/** Rigonfiamento massimo per lato (riga 1417). */
-export const BALL = 4.4;
-/** Apertura rapida davanti, richiusura più lenta dietro (riga 1418). */
-export const FRONT = 7.5;
-export const BACK = 19;
-/** Il tubo emerge dalla porta e vi rientra su questo tratto (riga 1510: `/ 22`). */
-export const EDGE_FADE = 22;
-/** Sotto questa lunghezza il tratto non si disegna (riga 1497: `s1 - s0 < 2`). */
-export const MIN_VISIBLE = 2;
-/** Campionamento del contorno: un punto ogni 1,6 px, almeno 10 (riga 1500). */
-export const SAMPLE_STEP = 1.6;
-export const MIN_SAMPLES = 10;
-
-/** Riga 1478. */
-export function smooth01(x: number): number {
-  const c = Math.max(0, Math.min(1, x));
-  return c * c * (3 - 2 * c);
-}
-
-/** Profilo gaussiano asimmetrico attorno al punto che avanza (righe 1419-1422). */
-export function tubeProfile(u: number): number {
-  const sg = u >= 0 ? FRONT : BACK;
-  return Math.exp(-(u * u) / (sg * sg));
-}
-
-/** Tratto del cavo occupato dal tubo: `sb` è il punto che avanza (riga 1489-1495). */
-export interface FlowWindow {
-  readonly cycle: number;
-  readonly sb: number;
-  readonly s0: number;
-  readonly s1: number;
-}
-
-/**
- * Finestra del tubo a `elapsedMs` dall'inizio del cavo (`now - st.t0`), su
- * un cavo lungo `len`. `null` se non c'è nulla da disegnare (righe 1488,
- * 1497). Il ciclo è `len + BACK * 3.2`: la pallina entra dalla porta di
- * uscita, sparisce oltre quella di ingresso e riparte.
- */
-export function flowWindow(len: number, elapsedMs: number): FlowWindow | null {
-  if (!(len > 0)) return null;
-  const cycle = len + BACK * 3.2;
-  const sb = ((elapsedMs * SPEED) % cycle) - BACK * 1.1;
-  const s0 = Math.max(0, sb - BACK * 3);
-  const s1 = Math.min(len, sb + FRONT * 3.2);
-  if (s1 - s0 < MIN_VISIBLE) return null;
-  return { cycle, sb, s0, s1 };
-}
-
-/**
- * Indicazione statica per chi preferisce meno movimento: lo stesso tubo,
- * fermo a metà cavo. Non esiste nel prototipo (NOTE_DIVERGENZE.md).
- */
-export function staticFlowWindow(len: number): FlowWindow | null {
-  if (!(len > 0)) return null;
-  const sb = len / 2;
-  return {
-    cycle: len + BACK * 3.2,
-    sb,
-    s0: Math.max(0, sb - BACK * 3),
-    s1: Math.min(len, sb + FRONT * 3.2),
-  };
-}
-
-/** Finestra da mostrare: quella animata, o quella statica con movimento ridotto. */
-export function flowWindowFor(len: number, elapsedMs: number, reduced: boolean): FlowWindow | null {
-  return reduced ? staticFlowWindow(len) : flowWindow(len, elapsedMs);
-}
-
-export type Sampler = (s: number) => { readonly x: number; readonly y: number };
-
-/**
- * Contorno chiuso del tubo (righe 1500-1516): campiona il percorso `d`
- * già calcolato con `sample` (in un browser `path.getPointAtLength`) e
- * allarga il tratto secondo `tubeProfile`. Non tocca mai il percorso.
- */
-export function tubeOutline(sample: Sampler, len: number, win: FlowWindow): string {
-  const n = Math.max(MIN_SAMPLES, Math.ceil((win.s1 - win.s0) / SAMPLE_STEP));
-  const pts: { x: number; y: number; s: number }[] = [];
-  for (let k = 0; k <= n; k++) {
-    const s = win.s0 + ((win.s1 - win.s0) * k) / n;
-    const q = sample(s);
-    pts.push({ x: q.x, y: q.y, s });
-  }
-  const left: string[] = [];
-  const right: string[] = [];
-  for (let k = 0; k <= n; k++) {
-    const a = pts[Math.max(0, k - 1)] as { x: number; y: number; s: number };
-    const b = pts[Math.min(n, k + 1)] as { x: number; y: number; s: number };
-    const p = pts[k] as { x: number; y: number; s: number };
-    let tx = b.x - a.x;
-    let ty = b.y - a.y;
-    const tl = Math.hypot(tx, ty) || 1;
-    tx /= tl;
-    ty /= tl;
-    const edge = smooth01(Math.min(p.s, len - p.s) / EDGE_FADE);
-    const w = BASE_W / 2 + BALL * tubeProfile(p.s - win.sb) * edge;
-    left.push((p.x - ty * w).toFixed(2) + " " + (p.y + tx * w).toFixed(2));
-    right.push((p.x + ty * w).toFixed(2) + " " + (p.y - tx * w).toFixed(2));
-  }
-  return "M " + left.concat(right.reverse()).join(" L ") + " Z";
-}
-
-// --- Attesa delle fette vuote --------------------------------------------------
-
-/** `animation: waiting 1.9s ease-in-out infinite` (riga 669). */
-export const WAIT_PERIOD = 1900;
-/** `@keyframes waiting { 0%,100% {opacity:.45} 50% {opacity:.95} }` (riga 670). */
-export const WAIT_LOW = 0.45;
-export const WAIT_HIGH = 0.95;
-/** Opacità a riposo del simbolo (riga 669: `opacity:.85`), anche con movimento ridotto. */
-export const WAIT_REST = 0.85;
-
-/** Funzione di temporizzazione CSS `cubic-bezier(x1, y1, x2, y2)`. */
-export function cubicBezier(x1: number, y1: number, x2: number, y2: number): (x: number) => number {
-  const cx = 3 * x1;
-  const bx = 3 * (x2 - x1) - cx;
-  const ax = 1 - cx - bx;
-  const cy = 3 * y1;
-  const by = 3 * (y2 - y1) - cy;
-  const ay = 1 - cy - by;
-  const bx_ = (t: number) => ((ax * t + bx) * t + cx) * t;
-  const by_ = (t: number) => ((ay * t + by) * t + cy) * t;
-  const dx_ = (t: number) => (3 * ax * t + 2 * bx) * t + cx;
-  return (x) => {
-    if (x <= 0) return 0;
-    if (x >= 1) return 1;
-    let t = x;
-    for (let i = 0; i < 8; i++) {
-      const err = bx_(t) - x;
-      if (Math.abs(err) < 1e-7) return by_(t);
-      const d = dx_(t);
-      if (Math.abs(d) < 1e-6) break;
-      t -= err / d;
-    }
-    let lo = 0;
-    let hi = 1;
-    t = x;
-    for (let i = 0; i < 40; i++) {
-      const v = bx_(t);
-      if (Math.abs(v - x) < 1e-7) break;
-      if (v < x) lo = t;
-      else hi = t;
-      t = (lo + hi) / 2;
-    }
-    return by_(t);
-  };
-}
-
-/** `ease-in-out` di CSS. */
-export const easeInOut = cubicBezier(0.42, 0, 0.58, 1);
-
-/**
- * Opacità del simbolo `<>` di una fetta vuota a `elapsedMs`: dal basso
- * (0,45) all'alto (0,95) a metà periodo e ritorno, con `ease-in-out` su
- * ciascuna metà, come i `@keyframes` del prototipo.
- */
-export function waitingOpacity(elapsedMs: number): number {
-  const phase = (((elapsedMs % WAIT_PERIOD) + WAIT_PERIOD) % WAIT_PERIOD) / WAIT_PERIOD;
-  const u = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
-  return WAIT_LOW + (WAIT_HIGH - WAIT_LOW) * easeInOut(u);
-}
-
-/** Opacità da mostrare: animata, o ferma a riposo con movimento ridotto. */
-export function waitingOpacityFor(elapsedMs: number, reduced: boolean): number {
-  return reduced ? WAIT_REST : waitingOpacity(elapsedMs);
-}
-```
-
-### `src/etl-canvas/icons.tsx`
-
-24 righe
-
-```tsx
-import { EMPTY_SLOT_ICON, ICONS } from "../etl-core";
-import type { ComponentId } from "../etl-core";
-
-/** Icona del catalogo di etl-core (prototipo `svgTag`, righe 979-981). I tracciati sono costanti del catalogo, mai dati dell'utente. */
-export function Icon(props: {
-  id: ComponentId | "empty";
-  svgRef?: (el: SVGSVGElement | null) => void;
-}) {
-  const inner = props.id === "empty" ? EMPTY_SLOT_ICON : ICONS[props.id];
-  return (
-    <svg
-      ref={props.svgRef}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      dangerouslySetInnerHTML={{ __html: inner }}
-    />
-  );
-}
-```
-
-### `src/etl-canvas/index.ts`
-
-21 righe
-
-```ts
-/**
- * etl-canvas — Fase 4a: resa visiva del canvas ETL. Importa da etl-core,
- * etl-layout ed etl-store; nessuno di questi importa da qui.
- */
-export { EtlCanvas, CanvasSurface } from "./EtlCanvas";
-export type { CanvasSurfaceProps } from "./EtlCanvas";
-export { prototypeScene } from "./seed";
-export { fit, zoomIn, zoomOut, zoomReset, zoomAtPoint } from "./actions";
-export { fitView, zoomAt, minimapFrame, bounds } from "./view";
-export { nodeView, countClass, isPartial, slicesOf } from "./model";
-export { createInteractionController } from "./interaction";
-export type {
-  InteractionController,
-  InteractionUi,
-  DownTarget,
-  PointerInput,
-  KeyInput,
-} from "./interaction";
-export { handleCanvasDrop, previewCanvasDrop } from "./drop";
-export type { CanvasDropPayload, DropPreview } from "./drop";
 ```
 

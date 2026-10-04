@@ -12,7 +12,7 @@ File in questo blocco:
 
 ### `src/etl-store/reduce.ts`
 
-826 righe
+842 righe
 
 ```ts
 /**
@@ -26,6 +26,7 @@ import {
   boxCapacity,
   cardById,
   connect as coreConnect,
+  createGraph,
   defaultParams,
   deleteLink as coreDeleteLink,
   deleteNodes as coreDeleteNodes,
@@ -580,6 +581,17 @@ function deleteNodesCmd(
   return done(withGraph(state, settleCreated(state.graph, next, state.mode), ids));
 }
 
+/** Svuota il canvas (Fase 6a.2): nessun nodo, nessun collegamento; libreria, contatori e modalità restano. */
+function clearAllCmd(state: EtlState): ReduceOutcome {
+  if (Object.keys(state.graph.cards).length === 0) return refuse(state, "Il canvas è già vuoto");
+  return done({
+    ...state,
+    graph: createGraph(),
+    selection: [],
+    inspector: { nodeId: null, step: 0 },
+  });
+}
+
 /** Prototipo, righe 4565-4573 (`deleteLink`). */
 function deleteLinkCmd(
   state: EtlState,
@@ -752,10 +764,12 @@ function setPanelCmd(
     open = open ?? true;
   }
   if (open === true) {
-    // sullo stesso bordo si apre un pannello alla volta
-    if (panels[other].side === panels[p.panel].side)
-      panels = { ...panels, [other]: { ...panels[other], open: false } };
-    panels = { ...panels, [p.panel]: { ...panels[p.panel], open: true } };
+    // un solo pannello aperto alla volta, su qualunque bordo: aprirne uno chiude l'altro nello stesso aggiornamento
+    panels = {
+      ...panels,
+      [other]: { ...panels[other], open: false },
+      [p.panel]: { ...panels[p.panel], open: true },
+    };
   } else if (open === false) {
     panels = { ...panels, [p.panel]: { ...panels[p.panel], open: false } };
   }
@@ -810,6 +824,8 @@ export function reduce(state: EtlState, command: Command): ReduceOutcome {
       return reorderCmd(state, command.payload);
     case "deleteNodes":
       return deleteNodesCmd(state, command.payload);
+    case "clearAll":
+      return clearAllCmd(state);
     case "deleteLink":
       return deleteLinkCmd(state, command.payload);
     case "duplicate":
@@ -844,7 +860,7 @@ export function reduce(state: EtlState, command: Command): ReduceOutcome {
 
 ### `src/etl-store/serialize.ts`
 
-184 righe
+188 righe
 
 ```ts
 /**
@@ -996,7 +1012,11 @@ export function fromSaved(raw: unknown): EtlState | null {
       },
       mode,
       library: [...library],
-      panels: { tools: { ...panels["tools"] }, insp: { ...panels["insp"] } } as Panels,
+      // un solo pannello aperto alla volta: con entrambi aperti resta aperta solo la cassetta
+      panels: {
+        tools: { ...panels["tools"] },
+        insp: { ...panels["insp"], open: panels["insp"].open && !panels["tools"].open },
+      } as Panels,
       options: { ...DEFAULT_OPTIONS, ...options },
       counters: {
         uid: maxSuffix(Object.keys(graph.cards), /^(?:ds|op|out)-(\d+)$/) + 1,
@@ -1083,7 +1103,7 @@ export function initialState(): EtlState {
 
 ### `src/etl-store/store.ts`
 
-434 righe
+435 righe
 
 ```ts
 /**
@@ -1130,6 +1150,7 @@ export const HISTORY_COMMANDS: ReadonlySet<CommandType> = new Set<CommandType>([
   "reorderSteps",
   "deleteNodes",
   "deleteLink",
+  "clearAll",
   "duplicate",
   "setParams",
   "renameNode",
@@ -1523,7 +1544,7 @@ export function createEtlStore(opts: StoreOptions = {}): EtlStore {
 
 ### `src/etl-store/types.ts`
 
-196 righe
+198 righe
 
 ```ts
 /** Tipi dello stato dell'applicazione (Fase 3). */
@@ -1651,6 +1672,8 @@ export type Command =
     }
   | { readonly type: "deleteNodes"; readonly payload: { readonly ids: readonly string[] } }
   | { readonly type: "deleteLink"; readonly payload: { readonly link: Link } }
+  /** Svuota il canvas: tutti i nodi e i collegamenti. La libreria dei dataset caricati non si tocca. */
+  | { readonly type: "clearAll"; readonly payload: Record<string, never> }
   | { readonly type: "duplicate"; readonly payload: { readonly ids: readonly string[] } }
   | {
       readonly type: "setParams";

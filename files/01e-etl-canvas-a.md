@@ -8,17 +8,16 @@ File in questo blocco:
 - `src/etl-canvas/NOTE_DIVERGENZE.md`
 - `src/etl-canvas/Node.tsx`
 - `src/etl-canvas/README.md`
-- `src/etl-canvas/__tests__/drop.test.ts`
 
 ---
 
 ### `src/etl-canvas/EtlCanvas.tsx`
 
-441 righe
+541 righe
 
 ```tsx
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { CARD, WORLD_H, WORLD_W } from "../etl-layout";
 import type { Size } from "../etl-layout";
 import { linkKey } from "../etl-layout";
@@ -38,7 +37,9 @@ import { Links } from "./Links";
 import { Minimap } from "./Minimap";
 import { nodeView } from "./model";
 import { Node } from "./Node";
-import { WHEEL_ZOOM_RATE } from "./view";
+import { overlayLayout } from "./panels/overlayLayout";
+import type { OverlayLayout } from "./panels/overlayLayout";
+import { WHEEL_ZOOM_RATE, wheelPan } from "./view";
 
 const PORT_SIDES: readonly string[] = ["r", "b", "l", "t"];
 
@@ -70,6 +71,8 @@ export interface CanvasSurfaceProps {
   readonly env?: LoopEnv;
   /** Controller dei gesti condiviso con chi sta fuori dal canvas (la cassetta); se manca, ne nasce uno. */
   readonly controller?: InteractionController | undefined;
+  /** Posizione dei widget in sovrimpressione, decisa da `overlayLayout`; se manca, quella senza pannelli. */
+  readonly overlay?: OverlayLayout | undefined;
 }
 
 /**
@@ -90,6 +93,17 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
   const controller = props.controller ?? ownController;
   const ui = useSyncExternalStore(controller.subscribe, controller.getUi, controller.getUi);
   const stageRef = useRef<HTMLDivElement>(null);
+  const layout = useMemo(
+    () => props.overlay ?? overlayLayout({ area: size, openSide: null, notches: [] }),
+    [props.overlay, size],
+  );
+  const [mmOpen, setMmOpen] = useState(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const confirmOpen = ui.confirm !== null;
+  // la finestra di conferma si apre con il focus su «Annulla» (Esc annulla)
+  useEffect(() => {
+    if (confirmOpen) cancelRef.current?.focus();
+  }, [confirmOpen]);
   const [spaceDown, setSpaceDown] = useState(false);
   const [panning, setPanning] = useState(false);
   const spaceRef = useRef(false);
@@ -213,7 +227,8 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
           v.zoom * Math.exp(-e.deltaY * WHEEL_ZOOM_RATE),
         );
       } else {
-        store.dispatch({ type: "setView", payload: { x: v.x - e.deltaX, y: v.y - e.deltaY } });
+        const next = wheelPan(v, e);
+        store.dispatch({ type: "setView", payload: { x: next.x, y: next.y } });
       }
     };
     el.addEventListener("wheel", wheel, { passive: false });
@@ -317,8 +332,8 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
               }}
             />
           ) : null}
-          {ui.hint ? (
-            <div className="ec-hint" role="status">
+          {ui.hint && layout.hint ? (
+            <div className="ec-hint" role="status" style={rectStyle(layout.hint)}>
               {ui.hint}
             </div>
           ) : null}
@@ -329,8 +344,29 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
               aria-labelledby="ec-confirm-title"
               aria-describedby="ec-confirm-text"
               data-testid="ec-confirm"
-              style={confirmPosition(graph.cards[ui.confirm.ids[0] ?? ""], view, size)}
+              aria-modal={ui.confirm.kind === "clear" || undefined}
+              data-kind={ui.confirm.kind ?? "delete"}
+              style={
+                ui.confirm.kind === "clear"
+                  ? confirmCentered(size)
+                  : confirmPosition(graph.cards[ui.confirm.ids[0] ?? ""], view, size)
+              }
               onPointerDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                // Tab resta tra i due pulsanti; il resto dei tasti non arriva ai comandi del canvas
+                if (e.key === "Tab") {
+                  const btns = e.currentTarget.querySelectorAll("button");
+                  const first = btns[0];
+                  const last = btns[btns.length - 1];
+                  if (e.shiftKey && document.activeElement === first) {
+                    e.preventDefault();
+                    last?.focus();
+                  } else if (!e.shiftKey && document.activeElement === last) {
+                    e.preventDefault();
+                    first?.focus();
+                  }
+                }
+              }}
             >
               <div>
                 <div className="ec-confirm-title" id="ec-confirm-title">
@@ -342,6 +378,7 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
               </div>
               <div className="ec-confirm-actions">
                 <button
+                  ref={cancelRef}
                   type="button"
                   className="ec-confirm-cancel"
                   onClick={controller.cancelConfirm}
@@ -349,7 +386,7 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
                   Annulla
                 </button>
                 <button type="button" className="ec-confirm-ok" onClick={controller.confirmDelete}>
-                  Elimina
+                  {ui.confirm.kind === "clear" ? "Svuota" : "Elimina"}
                 </button>
               </div>
             </div>
@@ -360,13 +397,51 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
               <div className="ec-empty-text">Aggiungi un dataset per iniziare.</div>
             </div>
           ) : null}
-          <Minimap
-            cards={cards}
-            view={view}
-            size={size}
-            onView={(v) => store.dispatch({ type: "setView", payload: v })}
-          />
-          <div className="ec-zoom" data-testid="ec-zoom" onPointerDown={(e) => e.stopPropagation()}>
+          {layout.minimap.rect && (!layout.minimap.compact || mmOpen) ? (
+            <Minimap
+              cards={cards}
+              view={view}
+              size={size}
+              rect={
+                layout.minimap.compact
+                  ? (layout.minimap.expanded ?? layout.minimap.rect)
+                  : layout.minimap.rect
+              }
+              onView={(v) => store.dispatch({ type: "setView", payload: v })}
+              {...(layout.minimap.compact ? { onClose: () => setMmOpen(false) } : {})}
+            />
+          ) : null}
+          {layout.minimap.rect && layout.minimap.compact && !mmOpen ? (
+            <button
+              type="button"
+              className="ec-minimap-toggle"
+              data-testid="minimap-toggle"
+              aria-label="Apri la minimappa"
+              style={rectStyle(layout.minimap.rect)}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => setMmOpen(true)}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="5" width="18" height="14" rx="2.5" />
+                <rect x="7" y="9" width="4" height="4" rx="1" />
+                <rect x="13" y="12" width="4" height="3" rx="1" />
+              </svg>
+            </button>
+          ) : null}
+          <div
+            className="ec-zoom"
+            data-testid="ec-zoom"
+            style={rectStyle(layout.zoom)}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
             <button type="button" aria-label="Riduci" onClick={() => zoomOut(store, size)}>
               −
             </button>
@@ -376,7 +451,11 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
             <button type="button" aria-label="Ingrandisci" onClick={() => zoomIn(store, size)}>
               +
             </button>
-            <button type="button" className="ec-fit" onClick={() => fit(store, size)}>
+            <button
+              type="button"
+              className="ec-fit"
+              onClick={() => fit(store, size, layout.insets)}
+            >
               Adatta
             </button>
           </div>
@@ -386,8 +465,21 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
   );
 }
 
+/** Posizione e misura di un widget, decise da `overlayLayout`. */
+function rectStyle(r: { x: number; y: number; w: number; h: number }): CSSProperties {
+  return { left: r.x, top: r.y, width: r.w, height: r.h, right: "auto", bottom: "auto" };
+}
+
 const CONFIRM_W = 246;
 const CONFIRM_H = 168;
+
+/** Svuota: la conferma sta al centro dell'area. */
+function confirmCentered(size: Size): { left: number; top: number } {
+  return {
+    left: Math.max(8, (size.w - CONFIRM_W) / 2),
+    top: Math.max(8, (size.h - CONFIRM_H) / 2),
+  };
+}
 
 /** La conferma sta sopra il nodo (o sotto, se non c'è posto), dentro l'area: prototipo, righe 4515-4522. */
 function confirmPosition(
@@ -417,6 +509,8 @@ export function EtlCanvas(props: {
   controller?: InteractionController;
   /** Altezza minima del contenitore (px). Nello spazio di lavoro è la riga centrale a fissarla (0). */
   minHeight?: number;
+  /** Posizione dei widget in sovrimpressione (vedi `overlayLayout`). */
+  overlay?: OverlayLayout | undefined;
 }) {
   const isClient = useSyncExternalStore(
     noopSubscribe,
@@ -452,7 +546,12 @@ export function EtlCanvas(props: {
       }}
     >
       {isClient && size ? (
-        <CanvasSurface store={props.store} size={size} controller={props.controller} />
+        <CanvasSurface
+          store={props.store}
+          size={size}
+          controller={props.controller}
+          overlay={props.overlay}
+        />
       ) : null}
     </div>
   );
@@ -546,7 +645,7 @@ export const Links = memo(function Links(props: {
 
 ### `src/etl-canvas/Minimap.tsx`
 
-72 righe
+88 righe
 
 ```tsx
 import { useRef } from "react";
@@ -562,9 +661,13 @@ export function Minimap(props: {
   cards: readonly Card[];
   view: View;
   size: Size;
+  /** Posizione e misura decise da `overlayLayout`. */
+  rect: { x: number; y: number; w: number; h: number };
   onView: (view: View) => void;
+  /** Presente quando la minimappa è stata espansa da un pulsante compatto. */
+  onClose?: () => void;
 }) {
-  const { cards, view, size, onView } = props;
+  const { cards, view, size, rect, onView, onClose } = props;
   const ref = useRef<HTMLDivElement>(null);
   const frame = minimapFrame(cards, view, size);
   const v = visibleWorld(view, size);
@@ -593,9 +696,21 @@ export function Minimap(props: {
       ref={ref}
       className="ec-minimap"
       data-testid="minimap"
-      aria-hidden="true"
+      aria-hidden={onClose ? undefined : true}
       onPointerDown={onPointerDown}
+      style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, bottom: "auto" }}
     >
+      {onClose ? (
+        <button
+          type="button"
+          className="ec-mm-close"
+          aria-label="Chiudi la minimappa"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={onClose}
+        >
+          ×
+        </button>
+      ) : null}
       {cards.map((c) => (
         <div
           key={c.id}
@@ -624,7 +739,7 @@ export function Minimap(props: {
 
 ### `src/etl-canvas/NOTE_DIVERGENZE.md`
 
-96 righe
+146 righe
 
 ```md
 # Note di divergenza — etl-canvas (Fase 4b)
@@ -716,12 +831,62 @@ sottraggono altezza al canvas, come i laterali sottraggono larghezza:
 
 - l'area di lavoro mantiene l'altezza del suo contenitore e il canvas (riga
   centrale della griglia) si restringe;
-- il bordo alto sposta l'origine del canvas, quindi `view.y` si compensa come
-  `view.x` per il bordo sinistro (nodi fermi sullo schermo); basso e destro non
-  compensano;
+- la vista segue la regola del § 9 (spinta senza sovrapposizioni), non una
+  compensazione;
 - il canvas ha un'altezza minima (`MIN_CANVAS_HEIGHT` in `panels/layout.ts`):
   sotto quella soglia scorre il contenitore dello spazio di lavoro;
 - due pannelli come schede in alto o in basso usano l'altezza maggiore dei due.
+
+## 9. Pannelli: spinta senza sovrapposizioni, un pannello alla volta (Fase 6a.2)
+
+**Prototipo.** Aprendo o chiudendo un pannello a sinistra la vista si
+compensa (`compensate`, righe 4815-4818: `view.x` ± l'ingombro del pannello)
+così i nodi restano fermi sullo schermo; sugli altri bordi non si fa nulla,
+perché la pagina scorre. Cassetta e Inspector possono essere aperti insieme
+(uno per bordo); solo sullo stesso bordo si escludono (righe 4826-4833).
+
+**Qui.** Il prodotto ha un canvas a tutta altezza e un pannello non deve mai
+coprire un nodo. La regola è un'altra:
+
+- un pannello aperto occupa spazio e riduce l'area del canvas, senza mai
+  sovrapporsi;
+- le posizioni dei nodi nel mondo non cambiano mai (Libero e Organizzato) e lo
+  zoom nemmeno: cambia solo la vista;
+- nessuna compensazione: i nodi si spostano con il bordo del canvas (a sinistra
+  e in alto con il bordo che avanza; a destra e in basso restano dove sono
+  rispetto all'origine);
+- dopo ogni cambio (apertura, chiusura, scheda, tacca su un altro bordo,
+  ridimensionamento) `keepVisible` (`panels/layout.ts`) riporta dentro i nodi
+  che erano interamente visibili, con lo scorrimento minimo; se l'insieme non
+  entra si allinea al bordo di partenza (sinistra, alto) e il resto resta
+  raggiungibile con scorrimento e minimappa;
+- il margine di sicurezza dell'area visibile esclude lo spazio dei widget in
+  sovrimpressione (`overlayLayout`), anche per «Adatta»;
+- un solo pannello è aperto alla volta, su qualunque bordo (il comando
+  `setPanel` chiude l'altro nello stesso aggiornamento); un caricamento con
+  entrambi aperti lascia aperta la cassetta;
+- l'Inspector si apre solo al clic su un nodo (non alla pressione, né durante
+  un trascinamento, un riquadro, una selezione multipla o dopo un rilascio
+  dalla cassetta); se ha sostituito la cassetta, la deselezione la riapre, e
+  qualunque azione esplicita sui pannelli azzera questa memoria.
+
+## 10. Minimappa e widget: posizione decisa da `overlayLayout`
+
+Il prototipo ha la minimappa in basso a sinistra e i controlli di zoom in
+basso a destra (righe 152-161, 138-150) con posizioni scritte nel CSS. Qui le
+posizioni le decide `panels/overlayLayout.ts` a partire dal bordo del pannello
+aperto e dalla misura dell'area: con il pannello in basso la minimappa va in
+alto a sinistra; se l'area è troppo piccola passa all'angolo opposto e poi
+diventa un pulsante compatto che si espande al clic. Due widget non si
+sovrappongono mai.
+
+## 11. Barra dei controlli
+
+Il prototipo ha una barra con il pulsante «Funzionalità» e «Reimposta». Qui la
+barra (`panels/ControlBar.tsx`) ha Libero/Organizzato, Riordina, Annulla,
+Ripristina e Svuota; «Funzionalità» e «Reimposta» non ci sono. Svuota è il
+comando `clearAll` (un passo di cronologia, nel registro; la libreria non si
+tocca) e chiede sempre conferma.
 ```
 
 ### `src/etl-canvas/Node.tsx`
@@ -789,7 +954,7 @@ export const Node = memo(function Node(props: { node: NodeView }) {
 
 ### `src/etl-canvas/README.md`
 
-226 righe
+228 righe
 
 ```md
 # etl-canvas — Fasi 4a, 4b, 5 e 6a: il canvas, le sue animazioni, i gesti e i pannelli
@@ -911,21 +1076,23 @@ Codice in `panels/` (`Dock.tsx`, `Toolbox.tsx`, `InspectorShell.tsx`,
 (`panels`) e si salva con il resto. Prototipo:
 `docs/prototype/isa-fusion-prototype.html`.
 
-| Elemento                                                                            | Prototipo (righe)                                                                                  | Qui                                                                                                                        |
-| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Struttura, griglia dei quattro bordi, colonna o fascia                              | CSS 211-346 (`#dock-*` 216-219), HTML 808-838                                                      | `Dock.tsx`, `panels.css`, `layout.ts`                                                                                      |
-| Apertura e chiusura, tacca visibile solo da chiuso                                  | `setPanelOpen` 4835-4860, `layoutNotches` 4847-4858, CSS `.notch` 272-295                          | comando `setPanel`; `layout.ts` (la tacca si nasconde se il pannello è aperto o raggiungibile da una scheda)               |
-| Trascinare la tacca su un altro bordo (soglia, un clic apre)                        | 4881-4905 (soglia 4884, «un click apre soltanto» 4899)                                             | `Dock.tsx` (gesto della tacca), `actions.ts` (`setSide`: chiude, sposta, riapre)                                           |
-| Due pannelli sullo stesso bordo: schede, contenuto sul posto                        | `dock-tabs` CSS 306-327, `switchTab` 4787-4806; nessuna animazione di apertura                     | `Dock.tsx`, `layout.ts` (`grouped`, scheda attiva); la larghezza non cambia al cambio di scheda                            |
-| Compensazione della vista sui bordi verticali                                       | 4780-4784, 4818-4821                                                                               | `layout.ts` (spostamento della vista) → comando di vista di etl-store; su bordo orizzontale cresce l'area di lavoro        |
-| Sezioni della cassetta (Dataset, Filtra e ordina, Trasforma, Merge e union, Output) | `buildPalette` 4727-4752, `SECTIONS`, `palItem` 4727-4733                                          | `Toolbox.tsx`, `families.ts`: sezioni e voci derivano da `etl-core/catalog/operations.ts`, non da una lista a mano         |
-| Sezione comprimibile                                                                | `.tb-sec-head` 246-250, clic 4914-4919 (senza ridisegno)                                           | stato locale di `Toolbox.tsx` per sezione                                                                                  |
-| Caricamento CSV e deduzione dei tipi                                                | `parseCSV` 4672-4725 (tipo: integer, numerico, data, stringa: righe 4696-4699), `change` 4921-4937 | `panels/csv.ts` → `store.loadCsv` (`parseCSV` di etl-core, comando `loadDataset`); voce trascinabile nella sezione Dataset |
-| Trascinare una voce dalla cassetta al canvas                                        | `paletteEl` `pointerdown` 4939-5067, `paletteRelation` 4711                                        | `EtlWorkspace.tsx` → `handleCanvasDrop` / `previewCanvasDrop` (`drop.ts`)                                                  |
-| Inspector (guscio): si apre con la selezione, si chiude senza                       | `selectCard` / `deselect` 2692-2727, `openInspector` 2692                                          | `InspectorShell.tsx` (solo il nome del nodo), `actions.ts` (segue la selezione)                                            |
+| Elemento                                                                            | Prototipo (righe)                                                                                                | Qui                                                                                                                            |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Struttura, griglia dei quattro bordi, colonna o fascia                              | CSS 211-346 (`#dock-*` 216-219), HTML 808-838                                                                    | `Dock.tsx`, `panels.css`, `layout.ts`                                                                                          |
+| Apertura e chiusura, tacca visibile solo da chiuso                                  | `setPanelOpen` 4835-4860, `layoutNotches` 4847-4858, CSS `.notch` 272-295                                        | comando `setPanel`; `layout.ts` (la tacca si nasconde se il pannello è aperto o raggiungibile da una scheda)                   |
+| Trascinare la tacca su un altro bordo (soglia, un clic apre)                        | 4881-4905 (soglia 4884, «un click apre soltanto» 4899)                                                           | `Dock.tsx` (gesto della tacca), `actions.ts` (`setSide`: chiude, sposta, riapre)                                               |
+| Due pannelli sullo stesso bordo: schede, contenuto sul posto                        | `dock-tabs` CSS 306-327, `switchTab` 4787-4806; nessuna animazione di apertura                                   | `Dock.tsx`, `layout.ts` (`grouped`, scheda attiva); la larghezza non cambia al cambio di scheda                                |
+| Posizione della vista dopo un cambio dei pannelli                                   | 4780-4784, 4815-4824 (nel prototipo: compensazione a sinistra; qui spinta senza sovrapposizioni, § 9 delle note) | `layout.ts` (`keepVisible`), applicata da `Dock.tsx` dopo ogni cambio di area                                                  |
+| Posizione di minimappa, zoom, suggerimento e tacche                                 | 138-161, 272-295 (CSS; qui decisa dal bordo del pannello aperto, § 10 delle note)                                | `overlayLayout.ts` (funzione pura), usata da `Dock.tsx` e `EtlCanvas.tsx`                                                      |
+| Barra dei controlli (Libero/Organizzato, Riordina, Annulla, Ripristina, Svuota)     | barra del prototipo senza «Funzionalità» né «Reimposta» (§ 11 delle note)                                        | `ControlBar.tsx`; comando `clearAll` di etl-store, conferma nel controller (`requestClearAll`)                                 |
+| Sezioni della cassetta (Dataset, Filtra e ordina, Trasforma, Merge e union, Output) | `buildPalette` 4727-4752, `SECTIONS`, `palItem` 4727-4733                                                        | `Toolbox.tsx`, `families.ts`: sezioni e voci derivano da `etl-core/catalog/operations.ts`, non da una lista a mano             |
+| Sezione comprimibile                                                                | `.tb-sec-head` 246-250, clic 4914-4919 (senza ridisegno)                                                         | stato locale di `Toolbox.tsx` per sezione                                                                                      |
+| Caricamento CSV e deduzione dei tipi                                                | `parseCSV` 4672-4725 (tipo: integer, numerico, data, stringa: righe 4696-4699), `change` 4921-4937               | `panels/csv.ts` → `store.loadCsv` (`parseCSV` di etl-core, comando `loadDataset`); voce trascinabile nella sezione Dataset     |
+| Trascinare una voce dalla cassetta al canvas                                        | `paletteEl` `pointerdown` 4939-5067, `paletteRelation` 4711                                                      | `EtlWorkspace.tsx` → `handleCanvasDrop` / `previewCanvasDrop` (`drop.ts`)                                                      |
+| Inspector (guscio): si apre al clic su un nodo, si chiude senza                     | `selectCard` / `deselect` 2692-2727, `openInspector` 2692                                                        | `InspectorShell.tsx` (solo il nome del nodo), `actions.ts` (`followInspector`: apertura solo al clic, memoria di sostituzione) |
 
-Non portati: il pulsante «Funzionalità» (tutte le funzionalità sono sempre
-attive, Fase T). Prova nel browser: `scripts/e2e-fase6a.mjs` (36 prove,
+Non portati: i pulsanti «Funzionalità» e «Reimposta» (tutte le funzionalità sono sempre
+attive, Fase T). Prova nel browser: `scripts/e2e-fase6a.mjs` (92 prove,
 schermate in `docs/visual/fase6a/`).
 
 ## Rendering lato server
@@ -1017,95 +1184,5 @@ periodo. Le differenze e le scelte nuove sono in `NOTE_DIVERGENZE.md`.
   riparte.
 - Nel rendering non si toccano `requestAnimationFrame`, `matchMedia`,
   `document`: il motore si avvia in un effetto, con l'ambiente del browser.
-```
-
-### `src/etl-canvas/__tests__/drop.test.ts`
-
-84 righe
-
-```ts
-import { describe, expect, it } from "vitest";
-import { nodeCenter } from "../../etl-layout";
-import type { EtlStore } from "../../etl-store";
-import { createInteractionController } from "../interaction";
-import { handleCanvasDrop, previewCanvasDrop } from "../drop";
-import { storeWith } from "./helpers";
-
-const cardCount = (s: EtlStore) => Object.keys(s.getState().graph.cards).length;
-
-describe("handleCanvasDrop (rilascio dalla cassetta, per la Fase 6)", () => {
-  it("nel vuoto crea il nodo, un solo passo di cronologia", () => {
-    const store = storeWith();
-    const n = cardCount(store);
-    const r = handleCanvasDrop(store, { component: "filter" }, { x: 1000, y: 700 });
-    expect(r.ok).toBe(true);
-    expect(cardCount(store)).toBe(n + 1);
-    expect(store.historySize().past).toBe(1);
-    expect(
-      previewCanvasDrop(store, { component: "filter" }, { x: 1500, y: 900 }).outcome,
-    ).toBeNull();
-  });
-
-  it("una lavorazione su una lavorazione si fonde", () => {
-    const store = storeWith();
-    const p = nodeCenter(store.getState().graph.cards["op-sort"]!);
-    expect(previewCanvasDrop(store, { component: "filter" }, p)).toMatchObject({
-      outcome: "merge",
-      nodeId: "op-sort",
-    });
-    const n = cardCount(store);
-    expect(handleCanvasDrop(store, { component: "filter" }, p).ok).toBe(true);
-    expect(cardCount(store)).toBe(n); // assorbita: non compare da sola
-    expect(store.getState().graph.cards["op-sort"]!.components).toHaveLength(2);
-    expect(store.historySize().past).toBe(1);
-  });
-
-  it("un dataset su una lavorazione si collega; una lavorazione su un dataset si collega al contrario", () => {
-    const a = storeWith();
-    const onOp = nodeCenter(a.getState().graph.cards["op-join"]!);
-    expect(previewCanvasDrop(a, { component: "dataset" }, onOp).outcome).toBe("link");
-    handleCanvasDrop(a, { component: "dataset" }, onOp);
-    expect(a.getState().graph.links.some((l) => l.to === "op-join")).toBe(true);
-
-    const b = storeWith();
-    const onDs = nodeCenter(b.getState().graph.cards["ds1"]!);
-    expect(previewCanvasDrop(b, { component: "sort" }, onDs).outcome).toBe("link-reverse");
-    handleCanvasDrop(b, { component: "sort" }, onDs);
-    expect(b.getState().graph.links.some((l) => l.from === "ds1")).toBe(true);
-  });
-
-  it("una lavorazione su un cavo dataset→lavorazione vi si inserisce; un dataset no", () => {
-    const store = storeWith();
-    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
-    const key = "ds1|op-join";
-    const pts = store.getRoutes()[key]!.pts;
-    const p = { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 };
-    expect(previewCanvasDrop(store, { component: "sort" }, p)).toMatchObject({
-      outcome: "insert",
-      linkKey: key,
-    });
-    expect(previewCanvasDrop(store, { component: "dataset" }, p).outcome).toBeNull();
-    expect(handleCanvasDrop(store, { component: "sort" }, p).ok).toBe(true);
-    expect(store.getState().graph.links).not.toContainEqual({ from: "ds1", to: "op-join" });
-  });
-
-  it("su un cavo lavorazione→output non si inserisce: cade nel vuoto", () => {
-    const store = storeWith();
-    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
-    const pts = store.getRoutes()["op-join|out-0"]!.pts;
-    const p = { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 };
-    expect(previewCanvasDrop(store, { component: "sort" }, p).outcome).toBeNull();
-  });
-
-  it("è raggiungibile dal controller, con il punto dell'area convertito in mondo", () => {
-    const store = storeWith();
-    store.dispatch({ type: "setView", payload: { x: 50, y: 20, zoom: 2 } });
-    const c = createInteractionController(store);
-    expect(c.toWorld(250, 220)).toEqual({ x: 100, y: 100 });
-    const n = cardCount(store);
-    expect(c.handleCanvasDrop({ component: "limit" }, c.toWorld(1200, 900)).ok).toBe(true);
-    expect(cardCount(store)).toBe(n + 1);
-  });
-});
 ```
 

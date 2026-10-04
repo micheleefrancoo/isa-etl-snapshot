@@ -2,23 +2,264 @@
 
 File in questo blocco:
 
+- `src/etl-canvas/flow.ts`
+- `src/etl-canvas/icons.tsx`
+- `src/etl-canvas/index.ts`
 - `src/etl-canvas/interaction.ts`
 - `src/etl-canvas/loop.ts`
 - `src/etl-canvas/model.ts`
 - `src/etl-canvas/motion.tsx`
+- `src/etl-canvas/panels/ControlBar.tsx`
 - `src/etl-canvas/panels/Dock.tsx`
-- `src/etl-canvas/panels/EtlWorkspace.tsx`
-- `src/etl-canvas/panels/InspectorShell.tsx`
-- `src/etl-canvas/panels/Toolbox.tsx`
-- `src/etl-canvas/panels/actions.ts`
-- `src/etl-canvas/panels/csv.ts`
-- `src/etl-canvas/panels/families.ts`
 
 ---
 
+### `src/etl-canvas/flow.ts`
+
+180 righe
+
+```ts
+/**
+ * Flusso nei cavi ("tubo elastico") e attesa delle fette vuote: calcolo puro.
+ * Nessun React, nessun timer, nessun DOM: il tempo trascorso è un argomento.
+ * Semantica del prototipo (docs/prototype/isa-fusion-prototype.html):
+ * righe 1415-1424 (costanti e profilo), 1478 (smooth01), 1480-1521
+ * (`animateBubbles`), 669-670 (attesa).
+ */
+
+/** Spessore del cavo, coincide con il tubo a riposo (riga 1415). */
+export const BASE_W = 2.1;
+/** px al millisecondo: stessa andatura su cavi lunghi e corti (riga 1416). */
+export const SPEED = 0.16;
+/** Rigonfiamento massimo per lato (riga 1417). */
+export const BALL = 4.4;
+/** Apertura rapida davanti, richiusura più lenta dietro (riga 1418). */
+export const FRONT = 7.5;
+export const BACK = 19;
+/** Il tubo emerge dalla porta e vi rientra su questo tratto (riga 1510: `/ 22`). */
+export const EDGE_FADE = 22;
+/** Sotto questa lunghezza il tratto non si disegna (riga 1497: `s1 - s0 < 2`). */
+export const MIN_VISIBLE = 2;
+/** Campionamento del contorno: un punto ogni 1,6 px, almeno 10 (riga 1500). */
+export const SAMPLE_STEP = 1.6;
+export const MIN_SAMPLES = 10;
+
+/** Riga 1478. */
+export function smooth01(x: number): number {
+  const c = Math.max(0, Math.min(1, x));
+  return c * c * (3 - 2 * c);
+}
+
+/** Profilo gaussiano asimmetrico attorno al punto che avanza (righe 1419-1422). */
+export function tubeProfile(u: number): number {
+  const sg = u >= 0 ? FRONT : BACK;
+  return Math.exp(-(u * u) / (sg * sg));
+}
+
+/** Tratto del cavo occupato dal tubo: `sb` è il punto che avanza (riga 1489-1495). */
+export interface FlowWindow {
+  readonly cycle: number;
+  readonly sb: number;
+  readonly s0: number;
+  readonly s1: number;
+}
+
+/**
+ * Finestra del tubo a `elapsedMs` dall'inizio del cavo (`now - st.t0`), su
+ * un cavo lungo `len`. `null` se non c'è nulla da disegnare (righe 1488,
+ * 1497). Il ciclo è `len + BACK * 3.2`: la pallina entra dalla porta di
+ * uscita, sparisce oltre quella di ingresso e riparte.
+ */
+export function flowWindow(len: number, elapsedMs: number): FlowWindow | null {
+  if (!(len > 0)) return null;
+  const cycle = len + BACK * 3.2;
+  const sb = ((elapsedMs * SPEED) % cycle) - BACK * 1.1;
+  const s0 = Math.max(0, sb - BACK * 3);
+  const s1 = Math.min(len, sb + FRONT * 3.2);
+  if (s1 - s0 < MIN_VISIBLE) return null;
+  return { cycle, sb, s0, s1 };
+}
+
+/**
+ * Indicazione statica per chi preferisce meno movimento: lo stesso tubo,
+ * fermo a metà cavo. Non esiste nel prototipo (NOTE_DIVERGENZE.md).
+ */
+export function staticFlowWindow(len: number): FlowWindow | null {
+  if (!(len > 0)) return null;
+  const sb = len / 2;
+  return {
+    cycle: len + BACK * 3.2,
+    sb,
+    s0: Math.max(0, sb - BACK * 3),
+    s1: Math.min(len, sb + FRONT * 3.2),
+  };
+}
+
+/** Finestra da mostrare: quella animata, o quella statica con movimento ridotto. */
+export function flowWindowFor(len: number, elapsedMs: number, reduced: boolean): FlowWindow | null {
+  return reduced ? staticFlowWindow(len) : flowWindow(len, elapsedMs);
+}
+
+export type Sampler = (s: number) => { readonly x: number; readonly y: number };
+
+/**
+ * Contorno chiuso del tubo (righe 1500-1516): campiona il percorso `d`
+ * già calcolato con `sample` (in un browser `path.getPointAtLength`) e
+ * allarga il tratto secondo `tubeProfile`. Non tocca mai il percorso.
+ */
+export function tubeOutline(sample: Sampler, len: number, win: FlowWindow): string {
+  const n = Math.max(MIN_SAMPLES, Math.ceil((win.s1 - win.s0) / SAMPLE_STEP));
+  const pts: { x: number; y: number; s: number }[] = [];
+  for (let k = 0; k <= n; k++) {
+    const s = win.s0 + ((win.s1 - win.s0) * k) / n;
+    const q = sample(s);
+    pts.push({ x: q.x, y: q.y, s });
+  }
+  const left: string[] = [];
+  const right: string[] = [];
+  for (let k = 0; k <= n; k++) {
+    const a = pts[Math.max(0, k - 1)] as { x: number; y: number; s: number };
+    const b = pts[Math.min(n, k + 1)] as { x: number; y: number; s: number };
+    const p = pts[k] as { x: number; y: number; s: number };
+    let tx = b.x - a.x;
+    let ty = b.y - a.y;
+    const tl = Math.hypot(tx, ty) || 1;
+    tx /= tl;
+    ty /= tl;
+    const edge = smooth01(Math.min(p.s, len - p.s) / EDGE_FADE);
+    const w = BASE_W / 2 + BALL * tubeProfile(p.s - win.sb) * edge;
+    left.push((p.x - ty * w).toFixed(2) + " " + (p.y + tx * w).toFixed(2));
+    right.push((p.x + ty * w).toFixed(2) + " " + (p.y - tx * w).toFixed(2));
+  }
+  return "M " + left.concat(right.reverse()).join(" L ") + " Z";
+}
+
+// --- Attesa delle fette vuote --------------------------------------------------
+
+/** `animation: waiting 1.9s ease-in-out infinite` (riga 669). */
+export const WAIT_PERIOD = 1900;
+/** `@keyframes waiting { 0%,100% {opacity:.45} 50% {opacity:.95} }` (riga 670). */
+export const WAIT_LOW = 0.45;
+export const WAIT_HIGH = 0.95;
+/** Opacità a riposo del simbolo (riga 669: `opacity:.85`), anche con movimento ridotto. */
+export const WAIT_REST = 0.85;
+
+/** Funzione di temporizzazione CSS `cubic-bezier(x1, y1, x2, y2)`. */
+export function cubicBezier(x1: number, y1: number, x2: number, y2: number): (x: number) => number {
+  const cx = 3 * x1;
+  const bx = 3 * (x2 - x1) - cx;
+  const ax = 1 - cx - bx;
+  const cy = 3 * y1;
+  const by = 3 * (y2 - y1) - cy;
+  const ay = 1 - cy - by;
+  const bx_ = (t: number) => ((ax * t + bx) * t + cx) * t;
+  const by_ = (t: number) => ((ay * t + by) * t + cy) * t;
+  const dx_ = (t: number) => (3 * ax * t + 2 * bx) * t + cx;
+  return (x) => {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    let t = x;
+    for (let i = 0; i < 8; i++) {
+      const err = bx_(t) - x;
+      if (Math.abs(err) < 1e-7) return by_(t);
+      const d = dx_(t);
+      if (Math.abs(d) < 1e-6) break;
+      t -= err / d;
+    }
+    let lo = 0;
+    let hi = 1;
+    t = x;
+    for (let i = 0; i < 40; i++) {
+      const v = bx_(t);
+      if (Math.abs(v - x) < 1e-7) break;
+      if (v < x) lo = t;
+      else hi = t;
+      t = (lo + hi) / 2;
+    }
+    return by_(t);
+  };
+}
+
+/** `ease-in-out` di CSS. */
+export const easeInOut = cubicBezier(0.42, 0, 0.58, 1);
+
+/**
+ * Opacità del simbolo `<>` di una fetta vuota a `elapsedMs`: dal basso
+ * (0,45) all'alto (0,95) a metà periodo e ritorno, con `ease-in-out` su
+ * ciascuna metà, come i `@keyframes` del prototipo.
+ */
+export function waitingOpacity(elapsedMs: number): number {
+  const phase = (((elapsedMs % WAIT_PERIOD) + WAIT_PERIOD) % WAIT_PERIOD) / WAIT_PERIOD;
+  const u = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+  return WAIT_LOW + (WAIT_HIGH - WAIT_LOW) * easeInOut(u);
+}
+
+/** Opacità da mostrare: animata, o ferma a riposo con movimento ridotto. */
+export function waitingOpacityFor(elapsedMs: number, reduced: boolean): number {
+  return reduced ? WAIT_REST : waitingOpacity(elapsedMs);
+}
+```
+
+### `src/etl-canvas/icons.tsx`
+
+24 righe
+
+```tsx
+import { EMPTY_SLOT_ICON, ICONS } from "../etl-core";
+import type { ComponentId } from "../etl-core";
+
+/** Icona del catalogo di etl-core (prototipo `svgTag`, righe 979-981). I tracciati sono costanti del catalogo, mai dati dell'utente. */
+export function Icon(props: {
+  id: ComponentId | "empty";
+  svgRef?: (el: SVGSVGElement | null) => void;
+}) {
+  const inner = props.id === "empty" ? EMPTY_SLOT_ICON : ICONS[props.id];
+  return (
+    <svg
+      ref={props.svgRef}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: inner }}
+    />
+  );
+}
+```
+
+### `src/etl-canvas/index.ts`
+
+21 righe
+
+```ts
+/**
+ * etl-canvas — Fase 4a: resa visiva del canvas ETL. Importa da etl-core,
+ * etl-layout ed etl-store; nessuno di questi importa da qui.
+ */
+export { EtlCanvas, CanvasSurface } from "./EtlCanvas";
+export type { CanvasSurfaceProps } from "./EtlCanvas";
+export { prototypeScene } from "./seed";
+export { fit, zoomIn, zoomOut, zoomReset, zoomAtPoint } from "./actions";
+export { fitView, zoomAt, minimapFrame, bounds } from "./view";
+export { nodeView, countClass, isPartial, slicesOf } from "./model";
+export { createInteractionController } from "./interaction";
+export type {
+  InteractionController,
+  InteractionUi,
+  DownTarget,
+  PointerInput,
+  KeyInput,
+} from "./interaction";
+export { handleCanvasDrop, previewCanvasDrop } from "./drop";
+export type { CanvasDropPayload, DropPreview } from "./drop";
+```
+
 ### `src/etl-canvas/interaction.ts`
 
-631 righe
+667 righe
 
 ```ts
 /**
@@ -91,6 +332,8 @@ export interface KeyInput {
 }
 
 export interface ConfirmState {
+  /** «delete» (Canc, Fase 5) o «clear» (Svuota, Fase 6a.2: `ids` è vuoto, tutto il canvas sparisce). */
+  readonly kind?: "delete" | "clear";
   readonly ids: readonly string[];
   /** Tutto ciò che sparirebbe: i nodi scelti e gli output a valle (etl-core `nodesRemovedBy`). */
   readonly removed: readonly string[];
@@ -175,6 +418,13 @@ export interface InteractionController {
   key(input: KeyInput): boolean;
   confirmDelete(): CommandResult | null;
   cancelConfirm(): void;
+  /** Chiede conferma per svuotare il canvas (comando `clearAll`); non fa nulla se è già vuoto. */
+  requestClearAll(): void;
+  /**
+   * Un clic su un nodo (rilascio senza trascinamento) che lascia selezionato
+   * solo quel nodo: è l'unico evento che apre l'Inspector. `id` è il nodo.
+   */
+  subscribeClick(listener: (id: string) => void): () => void;
   /** Punto dell'area → coordinate del mondo (per chi rilascia dalla cassetta). */
   toWorld(x: number, y: number): Point;
   /** Rilascio di un nuovo elemento: vedi drop.ts. */
@@ -225,6 +475,7 @@ export function createInteractionController(store: EtlStore): InteractionControl
   let active: Active | null = null;
   let space = false;
   const listeners = new Set<() => void>();
+  const clickListeners = new Set<(id: string) => void>();
 
   const setUi = (patch: Partial<InteractionUi>): void => {
     const next = { ...ui, ...patch };
@@ -329,6 +580,9 @@ export function createInteractionController(store: EtlStore): InteractionControl
         const sel = store.getState().selection;
         applySelection(sel.includes(a.id) ? sel.filter((x) => x !== a.id) : [...sel, a.id]);
       } else applySelection([a.id]);
+      const sel = store.getState().selection;
+      if (!a.shift && !input.shiftKey && sel.length === 1 && sel[0] === a.id)
+        for (const l of [...clickListeners]) l(a.id);
       return;
     }
     const outcome = a.drop?.outcome;
@@ -404,6 +658,20 @@ export function createInteractionController(store: EtlStore): InteractionControl
     }
     const removed = [...nodesRemovedBy(graph(), ids)];
     setUi({ confirm: { ids, removed, ...confirmCopy(ids, removed.length) } });
+  };
+
+  const requestClearAll = (): void => {
+    const removed = Object.keys(graph().cards);
+    if (!removed.length) return;
+    setUi({
+      confirm: {
+        kind: "clear",
+        ids: [],
+        removed,
+        title: "Svuotare il canvas?",
+        text: "Eliminare tutti i nodi e i collegamenti? Puoi annullare con Cmd/Ctrl+Z.",
+      },
+    });
   };
 
   const nudge = (dx: number, dy: number): void => {
@@ -546,6 +814,8 @@ export function createInteractionController(store: EtlStore): InteractionControl
       if (e.typing) return false;
       const mod = !!(e.metaKey || e.ctrlKey);
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      // con una conferma aperta restano attivi solo Esc (annulla) e il normale uso da tastiera della finestra
+      if (ui.confirm && k !== "Escape") return false;
       if (!mod) {
         if (k === "Delete" || k === "Backspace") {
           if (!store.getState().selection.length) return false;
@@ -609,11 +879,13 @@ export function createInteractionController(store: EtlStore): InteractionControl
       const c = ui.confirm;
       if (!c) return null;
       setUi({ confirm: null });
+      if (c.kind === "clear") return store.dispatch({ type: "clearAll", payload: {} });
       return store.dispatch({ type: "deleteNodes", payload: { ids: c.ids } });
     },
     cancelConfirm() {
       setUi({ confirm: null });
     },
+    requestClearAll,
 
     hoverExternal(payload, point) {
       if (active) return;
@@ -643,6 +915,11 @@ export function createInteractionController(store: EtlStore): InteractionControl
     dropExternal(payload, point) {
       setUi({ drop: null, insertLink: null, hint: null });
       return point ? handleCanvasDrop(store, payload, worldOf(point)) : null;
+    },
+
+    subscribeClick(l) {
+      clickListeners.add(l);
+      return () => clickListeners.delete(l);
     },
 
     toWorld: (x, y) => toWorld(store.getState().view, x, y),
@@ -911,9 +1188,112 @@ export function useMotion(): MotionEngine | null {
 }
 ```
 
+### `src/etl-canvas/panels/ControlBar.tsx`
+
+97 righe
+
+```tsx
+/**
+ * La barra dei controlli: una riga fissa sopra l'area del canvas, dentro lo
+ * spazio di lavoro (non in sovrimpressione ai nodi). Interruttore
+ * Libero/Organizzato (`setMode`), Riordina (`autoLayout`), Annulla e
+ * Ripristina (disabilitati senza cronologia), Svuota (`clearAll`, sempre con
+ * conferma). Nel prototipo i pulsanti «Funzionalità» e «Reimposta» non sono
+ * portati: tutte le funzionalità sono sempre attive.
+ */
+import type { Size } from "../../etl-layout";
+import type { EtlStore } from "../../etl-store";
+import { useEtlState } from "../../etl-store/react";
+import type { InteractionController } from "../interaction";
+import { RedoIcon, ReorderIcon, TrashIcon, UndoIcon } from "./ui-icons";
+
+export function ControlBar(props: {
+  store: EtlStore;
+  controller: InteractionController;
+  /** Area del canvas: serve a «Riordina»; `null` finché non è misurata. */
+  area: Size | null;
+}) {
+  const { store, controller, area } = props;
+  // ogni cambio di stato (anche annulla e ripristina) ridisegna la barra
+  const state = useEtlState((s) => s, store);
+  const hasNodes = Object.keys(state.graph.cards).length > 0;
+  const canUndo = store.canUndo();
+  const canRedo = store.canRedo();
+
+  return (
+    <div className="ec-bar" role="toolbar" aria-label="Controlli del canvas" data-testid="ec-bar">
+      <div className="ec-seg" role="group" aria-label="Disposizione dei nodi">
+        <button
+          type="button"
+          className={"ec-seg-btn" + (state.mode === "free" ? " ec-on" : "")}
+          aria-pressed={state.mode === "free"}
+          title="Libero: i nodi stanno dove li lasci"
+          onClick={() => store.dispatch({ type: "setMode", payload: { mode: "free" } })}
+        >
+          Libero
+        </button>
+        <button
+          type="button"
+          className={"ec-seg-btn" + (state.mode === "grid" ? " ec-on" : "")}
+          aria-pressed={state.mode === "grid"}
+          title="Organizzato: i nodi si allineano alla griglia"
+          onClick={() => store.dispatch({ type: "setMode", payload: { mode: "grid" } })}
+        >
+          Organizzato
+        </button>
+      </div>
+      <button
+        type="button"
+        className="ec-bar-btn"
+        title="Riordina i nodi"
+        disabled={!hasNodes || !area}
+        onClick={() => {
+          if (area) store.dispatch({ type: "autoLayout", payload: { viewport: area } });
+        }}
+      >
+        <ReorderIcon />
+        <span>Riordina</span>
+      </button>
+      <span className="ec-bar-sep" aria-hidden="true" />
+      <button
+        type="button"
+        className="ec-bar-btn ec-bar-icon"
+        aria-label="Annulla"
+        title="Annulla (Cmd/Ctrl+Z)"
+        disabled={!canUndo}
+        onClick={() => store.undo()}
+      >
+        <UndoIcon />
+      </button>
+      <button
+        type="button"
+        className="ec-bar-btn ec-bar-icon"
+        aria-label="Ripristina"
+        title="Ripristina (Cmd/Ctrl+Maiusc+Z)"
+        disabled={!canRedo}
+        onClick={() => store.redo()}
+      >
+        <RedoIcon />
+      </button>
+      <span className="ec-bar-sep" aria-hidden="true" />
+      <button
+        type="button"
+        className="ec-bar-btn ec-bar-icon ec-bar-danger"
+        aria-label="Svuota il canvas"
+        title="Svuota il canvas: elimina tutti i nodi e i collegamenti"
+        disabled={!hasNodes}
+        onClick={() => controller.requestClearAll()}
+      >
+        <TrashIcon />
+      </button>
+    </div>
+  );
+}
+```
+
 ### `src/etl-canvas/panels/Dock.tsx`
 
-260 righe
+325 righe
 
 ```tsx
 /**
@@ -927,11 +1307,14 @@ export function useMotion(): MotionEngine | null {
  * `setPanel`/`setView` (vedi actions.ts). Niente accesso a window/document
  * durante il rendering: gli ascoltatori nascono nei gestori degli eventi.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type { Size } from "../../etl-layout";
 import type { EtlStore, PanelKey, Panels, Side } from "../../etl-store";
 import { useEtlState } from "../../etl-store/react";
+import type { InteractionController } from "../interaction";
 import type { PanelActions } from "./actions";
+import { ControlBar } from "./ControlBar";
 import {
   MIN_CANVAS_HEIGHT,
   PANEL_KEYS,
@@ -941,11 +1324,14 @@ import {
   SIDE_NAME,
   isGrouped,
   isVertical,
+  keepVisible,
   nearestSide,
   notchHidden,
   notchOffset,
   panelSize,
 } from "./layout";
+import { overlayLayout } from "./overlayLayout";
+import type { OverlayLayout } from "./overlayLayout";
 import "./panels.css";
 import { InspectorIcon, ToolsIcon } from "./ui-icons";
 
@@ -962,8 +1348,10 @@ const TAB_ICON: Record<PanelKey, () => ReactNode> = {
 export interface DockLayoutProps {
   readonly store: EtlStore;
   readonly actions: PanelActions;
-  /** Il canvas, al centro. */
-  readonly canvas: ReactNode;
+  /** Controller dei gesti: la barra dei controlli chiede la conferma di «Svuota» al canvas. */
+  readonly controller: InteractionController;
+  /** Il canvas, al centro; riceve la disposizione dei widget in sovrimpressione, quando l'area è misurata. */
+  readonly canvas: (overlay: OverlayLayout | undefined) => ReactNode;
   /** Contenuto di ciascun pannello; `side` è il bordo corrente, `horiz` l'orientamento. */
   readonly content: Readonly<Record<PanelKey, (ctx: { side: Side; horiz: boolean }) => ReactNode>>;
   /** Altro da disegnare sopra lo spazio di lavoro (per esempio l'anteprima del trascinamento). */
@@ -978,9 +1366,54 @@ interface NotchDrag {
 }
 
 export function DockLayout(props: DockLayoutProps) {
-  const { store, actions, canvas, content, overlay } = props;
+  const { store, actions, controller, canvas, content, overlay } = props;
   const panels = useEtlState((s) => s.panels, store);
   const centerRef = useRef<HTMLDivElement>(null);
+  // misura dell'area del canvas (la riga centrale): da qui la disposizione dei widget e la visibilità dei nodi
+  const [area, setArea] = useState<Size | null>(null);
+  useEffect(() => {
+    const el = centerRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      setArea((prev) => (prev && prev.w === w && prev.h === h ? prev : { w, h }));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const openSide =
+    PANEL_KEYS.map((k) => (panels[k].open ? panels[k].side : null)).find(Boolean) ?? null;
+  const layout = useMemo(
+    () =>
+      area
+        ? overlayLayout({
+            area,
+            openSide,
+            notches: PANEL_KEYS.map((k) => ({
+              key: k,
+              side: panels[k].side,
+              offset: notchOffset(panels, k),
+              visible: !notchHidden(panels, k),
+            })),
+          })
+        : undefined,
+    [area, openSide, panels],
+  );
+  // dopo ogni cambio (apertura, chiusura, scheda, bordo, finestra) i nodi che erano interamente visibili lo restano
+  const lastVisibility = useRef<{ size: Size; insets: OverlayLayout["insets"] } | null>(null);
+  useEffect(() => {
+    if (!area || !layout) return;
+    const next = { size: area, insets: layout.insets };
+    const prev = lastVisibility.current;
+    lastVisibility.current = next;
+    if (!prev) return;
+    const st = store.getState();
+    const view = keepVisible(Object.values(st.graph.cards), st.view, prev, next);
+    if (view !== st.view) store.dispatch({ type: "setView", payload: { x: view.x, y: view.y } });
+  }, [area, layout, store]);
   const [drag, setDrag] = useState<NotchDrag | null>(null);
   // cambiare scheda sostituisce il contenuto sul posto: niente animazione di larghezza, solo una dissolvenza
   const [instant, setInstant] = useState(false);
@@ -1069,8 +1502,11 @@ export function DockLayout(props: DockLayoutProps) {
           ))}
         </div>
       ))}
+      <div className="ec-bar-row">
+        <ControlBar store={store} controller={controller} area={area} />
+      </div>
       <div className="ec-center" ref={centerRef}>
-        {canvas}
+        {canvas(layout)}
         <div
           className={"ec-edge-hint" + (drag ? ` ec-on ec-e-${drag.side}` : "")}
           data-testid="ec-edge-hint"
@@ -1079,12 +1515,12 @@ export function DockLayout(props: DockLayoutProps) {
           const dragging = drag?.key === k;
           const hidden = !dragging && notchHidden(panels, k);
           const side = panels[k].side;
-          const off = notchOffset(panels, k);
+          const rect = layout?.notches[k];
           const pos: CSSProperties = dragging
             ? { left: (drag?.x ?? 0) - 17, top: (drag?.y ?? 0) - 17 }
-            : isVertical(side)
-              ? { top: `calc(50% - 33px + ${off}px)` }
-              : { left: `calc(50% - 33px + ${off}px)` };
+            : rect
+              ? { left: rect.x, top: rect.y }
+              : {};
           return (
             <button
               key={k}
@@ -1110,8 +1546,17 @@ export function DockLayout(props: DockLayoutProps) {
             </button>
           );
         })}
-        {drag ? (
-          <div className="ec-hint" role="status">
+        {drag && layout?.hint ? (
+          <div
+            className="ec-hint"
+            role="status"
+            style={{
+              left: layout.hint.x,
+              top: layout.hint.y,
+              width: layout.hint.w,
+              height: layout.hint.h,
+            }}
+          >
             Rilascia per agganciare {PANEL_NAME[drag.key]} al bordo {SIDE_NAME[drag.side]}
           </div>
         ) : null}
@@ -1174,476 +1619,6 @@ function PanelShell(props: {
       <div className="ec-panel-body">{props.children}</div>
     </aside>
   );
-}
-```
-
-### `src/etl-canvas/panels/EtlWorkspace.tsx`
-
-122 righe
-
-```tsx
-/**
- * Lo spazio di lavoro: il canvas al centro, i pannelli (cassetta e Inspector)
- * agganciati ai bordi. È ciò che la rotta ETL monta al posto del solo canvas.
- *
- * Come il canvas, si monta solo nel browser: sul server e nel primo rendering
- * di idratazione produce lo stesso segnaposto (i pannelli dipendono dallo
- * stato salvato nel browser).
- */
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
-import type { EtlStore } from "../../etl-store";
-import { EtlCanvas } from "../EtlCanvas";
-import { Icon } from "../icons";
-import type { CanvasDropPayload } from "../drop";
-import { createInteractionController } from "../interaction";
-import { createPanelActions, followInspector } from "./actions";
-import { DockLayout } from "./Dock";
-import { familyOfType } from "./families";
-import { InspectorShell } from "./InspectorShell";
-import { Toolbox } from "./Toolbox";
-
-const noopSubscribe = () => () => {};
-
-interface Ghost {
-  readonly x: number;
-  readonly y: number;
-  readonly payload: CanvasDropPayload;
-}
-
-export function EtlWorkspace(props: { store: EtlStore }) {
-  const { store } = props;
-  const isClient = useSyncExternalStore(
-    noopSubscribe,
-    () => true,
-    () => false,
-  );
-  const [controller] = useState(() => createInteractionController(store));
-  const actions = useMemo(() => createPanelActions(store), [store]);
-  const [ghost, setGhost] = useState<Ghost | null>(null);
-  const hostRef = useRef<HTMLDivElement>(null);
-  const cleanup = useRef<(() => void) | null>(null);
-
-  // l'Inspector si apre con la selezione e si chiude con la deselezione
-  useEffect(() => followInspector(store, actions), [store, actions]);
-  useEffect(() => () => cleanup.current?.(), []);
-
-  /** Trascinamento di una voce della cassetta (prototipo, righe 4939-5067): un nodo esterno, con la stessa anteprima del trascinamento tra nodi. */
-  const onItemPointerDown = (payload: CanvasDropPayload, e: ReactPointerEvent<HTMLElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    setGhost({ x: e.clientX, y: e.clientY, payload });
-    const stagePoint = (cx: number, cy: number) => {
-      const r = hostRef.current?.querySelector(".ec-stage")?.getBoundingClientRect();
-      if (!r) return null;
-      const inside = cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
-      return inside ? { x: cx - r.left, y: cy - r.top } : null;
-    };
-    const move = (ev: PointerEvent) => {
-      setGhost({ x: ev.clientX, y: ev.clientY, payload });
-      controller.hoverExternal(payload, stagePoint(ev.clientX, ev.clientY));
-    };
-    const stop = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", abort);
-      cleanup.current = null;
-      setGhost(null);
-    };
-    const up = (ev: PointerEvent) => {
-      stop();
-      controller.dropExternal(payload, stagePoint(ev.clientX, ev.clientY));
-    };
-    const abort = () => {
-      stop();
-      controller.dropExternal(payload, null);
-    };
-    cleanup.current = abort;
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", abort);
-  };
-
-  return (
-    <div ref={hostRef} className="ec-workspace-host">
-      {isClient ? (
-        <DockLayout
-          store={store}
-          actions={actions}
-          canvas={<EtlCanvas store={store} controller={controller} minHeight={0} />}
-          content={{
-            tools: ({ side }) => (
-              <Toolbox
-                store={store}
-                side={side}
-                onClose={() => actions.close("tools")}
-                onItemPointerDown={onItemPointerDown}
-              />
-            ),
-            insp: ({ side }) => (
-              <InspectorShell store={store} side={side} onClose={() => actions.close("insp")} />
-            ),
-          }}
-          overlay={
-            ghost ? (
-              <div
-                className={"ec-ghost" + (ghost.payload.component === "dataset" ? " ec-source" : "")}
-                data-testid="ec-ghost"
-                data-family={familyOfType(ghost.payload.component)}
-                style={{ left: ghost.x - 44, top: ghost.y - 44 }}
-              >
-                <Icon id={ghost.payload.component} />
-              </div>
-            ) : null
-          }
-        />
-      ) : (
-        <EtlCanvas store={store} />
-      )}
-    </div>
-  );
-}
-```
-
-### `src/etl-canvas/panels/InspectorShell.tsx`
-
-40 righe
-
-```tsx
-/**
- * Il guscio dell'Inspector (Fase 6a): si apre e si chiude come gli altri
- * pannelli; il suo contenuto è per ora solo il nome del nodo selezionato.
- * Campi, layout a colonne e selettori sono della Fase 6b.
- */
-import type { EtlStore, Side } from "../../etl-store";
-import { useEtlState } from "../../etl-store/react";
-import { CloseArrow } from "./ui-icons";
-
-export function InspectorShell(props: { store: EtlStore; side: Side; onClose: () => void }) {
-  const { store, side } = props;
-  const nodeId = useEtlState((s) => s.inspector.nodeId, store);
-  const name = useEtlState(
-    (s) => (s.inspector.nodeId ? s.graph.cards[s.inspector.nodeId]?.name : undefined),
-    store,
-  );
-  return (
-    <div className="ec-tb-inner" data-testid="ec-inspector">
-      <div className="ec-tb-head">
-        <div className="ec-tb-title">Inspector</div>
-        <button
-          type="button"
-          className="ec-close-btn"
-          aria-label="Nascondi l’inspector"
-          onClick={props.onClose}
-        >
-          <CloseArrow side={side} />
-        </button>
-      </div>
-      {nodeId ? (
-        <div className="ec-insp-name" data-testid="ec-inspector-name">
-          {name ?? nodeId}
-        </div>
-      ) : (
-        <div className="ec-tb-empty">Nessun nodo selezionato</div>
-      )}
-    </div>
-  );
-}
-```
-
-### `src/etl-canvas/panels/Toolbox.tsx`
-
-166 righe
-
-```tsx
-/**
- * La cassetta degli strumenti (prototipo, `buildPalette` righe 4727-4752, e i
- * gestori 4912-4937). Le sezioni e le voci NON sono scritte qui: derivano dal
- * catalogo di etl-core (`SECTIONS`, `META`), così un'operazione aggiunta al
- * dominio compare da sola. La sezione Dataset mostra la libreria di etl-store
- * e il caricamento di un CSV.
- */
-import { useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
-import { META, SECTIONS } from "../../etl-core";
-import type { ComponentId } from "../../etl-core";
-import type { EtlStore, Side } from "../../etl-store";
-import { useEtlState } from "../../etl-store/react";
-import { Icon } from "../icons";
-import { FAMILY_OF_SECTION } from "./families";
-import type { CanvasDropPayload } from "../drop";
-import { loadCsvFile } from "./csv";
-import { ChevronIcon, CloseArrow, UploadIcon } from "./ui-icons";
-
-export interface ToolboxProps {
-  readonly store: EtlStore;
-  readonly side: Side;
-  readonly onClose: () => void;
-  /** Inizio del trascinamento di una voce (il canvas ne mostra l'anteprima): vedi EtlWorkspace. */
-  readonly onItemPointerDown: (
-    payload: CanvasDropPayload,
-    e: ReactPointerEvent<HTMLElement>,
-  ) => void;
-}
-
-function Item(props: {
-  type: ComponentId;
-  label: string;
-  meta?: string | undefined;
-  lib?: string | undefined;
-  family?: string | undefined;
-  onPointerDown: ToolboxProps["onItemPointerDown"];
-}) {
-  const { type, lib } = props;
-  const payload: CanvasDropPayload = lib
-    ? { component: type, libraryId: lib }
-    : { component: type };
-  return (
-    <div
-      className={"ec-pal-item" + (type === "dataset" ? " ec-source" : "")}
-      data-type={type}
-      data-lib={lib}
-      data-family={props.family}
-      onPointerDown={(e) => props.onPointerDown(payload, e)}
-    >
-      <div className="ec-pal-chip">
-        <Icon id={type} />
-      </div>
-      <div className="ec-pal-label">{props.label}</div>
-      {props.meta ? <div className="ec-lib-meta">{props.meta}</div> : null}
-    </div>
-  );
-}
-
-export function Toolbox(props: ToolboxProps) {
-  const { store, side } = props;
-  const library = useEtlState((s) => s.library, store);
-  const horiz = side === "top" || side === "bottom";
-  const [open, setOpen] = useState<Readonly<Record<string, boolean>>>(() =>
-    Object.fromEntries(SECTIONS.map((s) => [s.id, true])),
-  );
-  const [status, setStatus] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const onFile = async (file: File | undefined) => {
-    if (!file) return;
-    const outcome = await loadCsvFile(store, file);
-    setStatus(outcome.message);
-    if (outcome.ok) setOpen((o) => ({ ...o, data: true }));
-  };
-
-  return (
-    <div className="ec-tb-inner" data-testid="ec-toolbox">
-      <div className="ec-tb-head">
-        <div className="ec-tb-title">Strumenti</div>
-        <button
-          type="button"
-          className="ec-close-btn"
-          aria-label="Nascondi la cassetta degli strumenti"
-          onClick={props.onClose}
-        >
-          <CloseArrow side={side} />
-        </button>
-      </div>
-      {SECTIONS.map((sec) => {
-        const isOpen = horiz || open[sec.id] !== false;
-        return (
-          <div key={sec.id} className={"ec-tb-sec" + (isOpen ? " ec-open" : "")} data-sec={sec.id}>
-            <button
-              type="button"
-              className="ec-tb-sec-head"
-              aria-expanded={isOpen}
-              onClick={() => setOpen((o) => ({ ...o, [sec.id]: !(o[sec.id] !== false) }))}
-            >
-              <span className="ec-chev">
-                <ChevronIcon />
-              </span>
-              <span className="ec-tb-sec-name">{sec.name}</span>
-            </button>
-            <div className="ec-tb-sec-body">
-              {sec.items ? (
-                sec.items.map((t) => (
-                  <Item
-                    key={t}
-                    type={t}
-                    label={META[t].label}
-                    family={FAMILY_OF_SECTION[sec.id]}
-                    onPointerDown={props.onItemPointerDown}
-                  />
-                ))
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="ec-tb-upload"
-                    onClick={() => fileRef.current?.click()}
-                  >
-                    <UploadIcon />
-                    Carica dataset
-                  </button>
-                  {library.length ? (
-                    library.map((lb) => (
-                      <Item
-                        key={lb.id}
-                        type="dataset"
-                        lib={lb.id}
-                        label={lb.name}
-                        meta={`${lb.columns.length} col · ${lb.rows} righe`}
-                        onPointerDown={props.onItemPointerDown}
-                      />
-                    ))
-                  ) : (
-                    <div className="ec-tb-empty">Nessun dataset caricato</div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        );
-      })}
-      {status ? (
-        <div className="ec-tb-status" role="status">
-          {status}
-        </div>
-      ) : null}
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".csv,.tsv,.txt"
-        hidden
-        data-testid="ec-file-input"
-        onChange={(e) => {
-          const input = e.currentTarget;
-          void onFile(input.files?.[0]);
-          input.value = "";
-        }}
-      />
-    </div>
-  );
-}
-```
-
-### `src/etl-canvas/panels/actions.ts`
-
-52 righe
-
-```ts
-/**
- * Azioni sui pannelli: comandi di etl-store (`setPanel`, `setView`) più la
- * compensazione della vista. Nessuna logica di dominio e nessun DOM.
- */
-import type { CommandResult, EtlStore, PanelKey, Side } from "../../etl-store";
-import { compensate } from "./layout";
-
-export interface PanelActions {
-  open(key: PanelKey): CommandResult;
-  close(key: PanelKey): CommandResult;
-  /** Sposta il pannello su un altro bordo: si chiude, si sposta e si riapre (prototipo, `setSide`). */
-  moveTo(key: PanelKey, side: Side): CommandResult;
-}
-
-export function createPanelActions(store: EtlStore): PanelActions {
-  /** Applica `setPanel` e, se serve, `setView` perché i nodi restino fermi sullo schermo. */
-  const apply = (payload: { panel: PanelKey; open?: boolean; side?: Side }): CommandResult => {
-    const before = store.getState().panels;
-    const result = store.dispatch({ type: "setPanel", payload });
-    if (!result.ok) return result;
-    const state = store.getState();
-    const view = compensate(state.view, before, state.panels);
-    if (view !== state.view) {
-      store.dispatch({ type: "setView", payload: { x: view.x, y: view.y } });
-    }
-    return result;
-  };
-  return {
-    open: (key) => apply({ panel: key, open: true }),
-    close: (key) => apply({ panel: key, open: false }),
-    moveTo: (key, side) => apply({ panel: key, side }),
-  };
-}
-
-/**
- * L'Inspector segue la selezione (prototipo: `selectCard` apre, `deselect`
- * chiude — righe 2694-2727): si apre quando uno store passa da «nessun nodo»
- * a «un nodo» nell'inspector e si chiude nel passaggio inverso. Se l'utente lo
- * chiude con un nodo ancora selezionato, resta chiuso fino al prossimo cambio.
- * Restituisce la funzione per smettere di ascoltare.
- */
-export function followInspector(store: EtlStore, actions: PanelActions): () => void {
-  let had = store.getState().inspector.nodeId !== null;
-  return store.subscribe(() => {
-    const has = store.getState().inspector.nodeId !== null;
-    if (has === had) return;
-    had = has;
-    if (has) actions.open("insp");
-    else actions.close("insp");
-  });
-}
-```
-
-### `src/etl-canvas/panels/csv.ts`
-
-37 righe
-
-```ts
-/**
- * Caricamento di un dataset dalla cassetta (prototipo, righe 4921-4937): la
- * lettura e la deduzione dei tipi sono `parseCSV` di etl-core, la libreria è
- * quella di etl-store (`loadCsv` → comando `loadDataset`, che conserva solo i
- * metadati: nome, percorso, colonne, righe — mai il contenuto del file).
- */
-import type { EtlStore } from "../../etl-store";
-
-export interface CsvLoadOutcome {
-  readonly ok: boolean;
-  /** Messaggio per l'utente (prototipo, riga 4934 e 4927). */
-  readonly message: string;
-}
-
-/** Carica il testo di un CSV già letto. */
-export function loadCsvText(store: EtlStore, fileName: string, text: string): CsvLoadOutcome {
-  const result = store.loadCsv(text, fileName);
-  if (!result.ok) return { ok: false, message: result.reason };
-  const item = store.getState().library.at(-1);
-  return {
-    ok: true,
-    message: item
-      ? `${fileName} caricato: ${item.columns.length} colonne, ${item.rows} righe. Trascinalo sul canvas.`
-      : `${fileName} caricato.`,
-  };
-}
-
-/** Legge un file scelto dall'utente (solo nel browser: `FileReader`) e lo carica. */
-export function loadCsvFile(store: EtlStore, file: File): Promise<CsvLoadOutcome> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(loadCsvText(store, file.name, String(reader.result ?? "")));
-    reader.onerror = () => resolve({ ok: false, message: "Il file non si può leggere" });
-    reader.readAsText(file);
-  });
-}
-```
-
-### `src/etl-canvas/panels/families.ts`
-
-17 righe
-
-```ts
-import { sectionOf } from "../../etl-core";
-import type { ComponentId } from "../../etl-core";
-
-/** Famiglia di colore di una sezione della cassetta (la stessa dei nodi sul canvas: `data-family`). */
-export const FAMILY_OF_SECTION: Readonly<Record<string, string>> = {
-  rows: "filter",
-  xform: "transform",
-  merge: "merge",
-  out: "output",
-};
-
-/** Famiglia di un componente, o `undefined` per il dataset. */
-export function familyOfType(type: ComponentId): string | undefined {
-  const section = sectionOf(type);
-  return section ? FAMILY_OF_SECTION[section.id] : undefined;
 }
 ```
 

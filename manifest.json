@@ -121,7 +121,7 @@
     },
     {
       "name": "files/01d-etl-store-a.md",
-      "bytes": 48677,
+      "bytes": 50018,
       "files": [
         "src/etl-store/README.md",
         "src/etl-store/__tests__/grouping.test.ts",
@@ -132,7 +132,7 @@
     },
     {
       "name": "files/01d-etl-store-b.md",
-      "bytes": 35853,
+      "bytes": 39067,
       "files": [
         "src/etl-store/__tests__/reduce.test.ts",
         "src/etl-store/__tests__/store.test.ts",
@@ -144,7 +144,7 @@
     },
     {
       "name": "files/01d-etl-store-c.md",
-      "bytes": 57119,
+      "bytes": 57945,
       "files": [
         "src/etl-store/reduce.ts",
         "src/etl-store/serialize.ts",
@@ -155,86 +155,96 @@
     },
     {
       "name": "files/01e-etl-canvas-a.md",
-      "bytes": 54815,
+      "bytes": 59060,
       "files": [
         "src/etl-canvas/EtlCanvas.tsx",
         "src/etl-canvas/Links.tsx",
         "src/etl-canvas/Minimap.tsx",
         "src/etl-canvas/NOTE_DIVERGENZE.md",
         "src/etl-canvas/Node.tsx",
-        "src/etl-canvas/README.md",
-        "src/etl-canvas/__tests__/drop.test.ts"
+        "src/etl-canvas/README.md"
       ]
     },
     {
       "name": "files/01e-etl-canvas-b.md",
-      "bytes": 58477,
+      "bytes": 58942,
       "files": [
+        "src/etl-canvas/__tests__/controlbar.test.tsx",
+        "src/etl-canvas/__tests__/drop.test.ts",
         "src/etl-canvas/__tests__/engine.test.ts",
         "src/etl-canvas/__tests__/fake-env.ts",
         "src/etl-canvas/__tests__/flow.test.ts",
         "src/etl-canvas/__tests__/gesture-render.test.ts",
         "src/etl-canvas/__tests__/helpers.ts",
         "src/etl-canvas/__tests__/interaction.test.ts",
-        "src/etl-canvas/__tests__/keyboard.test.ts",
-        "src/etl-canvas/__tests__/loop.test.ts",
-        "src/etl-canvas/__tests__/no-reroute.test.ts"
+        "src/etl-canvas/__tests__/keyboard.test.ts"
       ]
     },
     {
       "name": "files/01e-etl-canvas-c.md",
-      "bytes": 56169,
+      "bytes": 57460,
       "files": [
+        "src/etl-canvas/__tests__/loop.test.ts",
+        "src/etl-canvas/__tests__/no-reroute.test.ts",
+        "src/etl-canvas/__tests__/overlay-layout.test.ts",
         "src/etl-canvas/__tests__/panels-actions.test.ts",
         "src/etl-canvas/__tests__/panels-layout.test.ts",
         "src/etl-canvas/__tests__/render.test.ts",
         "src/etl-canvas/__tests__/ssr.test.tsx",
         "src/etl-canvas/__tests__/tokens.test.ts",
-        "src/etl-canvas/__tests__/toolbox-drop.test.ts",
-        "src/etl-canvas/__tests__/toolbox.test.tsx",
-        "src/etl-canvas/__tests__/transitions.test.ts",
-        "src/etl-canvas/__tests__/view.test.ts",
-        "src/etl-canvas/actions.ts"
+        "src/etl-canvas/__tests__/toolbox-drop.test.ts"
       ]
     },
     {
       "name": "files/01e-etl-canvas-d.md",
-      "bytes": 38934,
+      "bytes": 53684,
       "files": [
+        "src/etl-canvas/__tests__/toolbox.test.tsx",
+        "src/etl-canvas/__tests__/transitions.test.ts",
+        "src/etl-canvas/__tests__/view.test.ts",
+        "src/etl-canvas/actions.ts",
         "src/etl-canvas/canvas.css",
         "src/etl-canvas/contrast.ts",
         "src/etl-canvas/drop.ts",
-        "src/etl-canvas/engine.ts",
-        "src/etl-canvas/flow.ts",
-        "src/etl-canvas/icons.tsx",
-        "src/etl-canvas/index.ts"
+        "src/etl-canvas/engine.ts"
       ]
     },
     {
       "name": "files/01e-etl-canvas-e.md",
-      "bytes": 55312,
+      "bytes": 55231,
       "files": [
+        "src/etl-canvas/flow.ts",
+        "src/etl-canvas/icons.tsx",
+        "src/etl-canvas/index.ts",
         "src/etl-canvas/interaction.ts",
         "src/etl-canvas/loop.ts",
         "src/etl-canvas/model.ts",
         "src/etl-canvas/motion.tsx",
-        "src/etl-canvas/panels/Dock.tsx",
+        "src/etl-canvas/panels/ControlBar.tsx",
+        "src/etl-canvas/panels/Dock.tsx"
+      ]
+    },
+    {
+      "name": "files/01e-etl-canvas-f.md",
+      "bytes": 55519,
+      "files": [
         "src/etl-canvas/panels/EtlWorkspace.tsx",
         "src/etl-canvas/panels/InspectorShell.tsx",
         "src/etl-canvas/panels/Toolbox.tsx",
         "src/etl-canvas/panels/actions.ts",
         "src/etl-canvas/panels/csv.ts",
-        "src/etl-canvas/panels/families.ts"
+        "src/etl-canvas/panels/families.ts",
+        "src/etl-canvas/panels/layout.ts",
+        "src/etl-canvas/panels/overlayLayout.ts",
+        "src/etl-canvas/panels/panels.css",
+        "src/etl-canvas/panels/ui-icons.tsx",
+        "src/etl-canvas/seed.ts"
       ]
     },
     {
-      "name": "files/01e-etl-canvas-f.md",
-      "bytes": 38907,
+      "name": "files/01e-etl-canvas-g.md",
+      "bytes": 16027,
       "files": [
-        "src/etl-canvas/panels/layout.ts",
-        "src/etl-canvas/panels/panels.css",
-        "src/etl-canvas/panels/ui-icons.tsx",
-        "src/etl-canvas/seed.ts",
         "src/etl-canvas/tokens.css",
         "src/etl-canvas/transitions.ts",
         "src/etl-canvas/view.ts"
@@ -421,7 +431,7 @@
     },
     {
       "name": "files/08-scripts-config-a.md",
-      "bytes": 47203,
+      "bytes": 57178,
       "files": [
         ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",
@@ -703,9 +713,10 @@
     },
     {
       "name": "files/12-docs-other-z.md",
-      "bytes": 26328,
+      "bytes": 28335,
       "files": [
-        "docs/visual/fase4b/v2-chiaro.webm"
+        "docs/visual/fase4b/v2-chiaro.webm",
+        "docs/visual/fase6a/posizioni-nodi.json"
       ]
     },
     {
@@ -889,7 +900,7 @@
       "reason": "binary"
     },
     {
-      "file": "docs/visual/fase6a/cassetta-alto-e-basso.png",
+      "file": "docs/visual/fase6a/barra-controlli.png",
       "reason": "binary"
     },
     {
@@ -917,7 +928,19 @@
       "reason": "binary"
     },
     {
+      "file": "docs/visual/fase6a/minimappa-con-pannello-in-basso.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6a/nodi-spinti-pannello-in-alto.png",
+      "reason": "binary"
+    },
+    {
       "file": "docs/visual/fase6a/schede-stesso-bordo.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6a/svuota-conferma.png",
       "reason": "binary"
     },
     {
@@ -1154,6 +1177,7 @@
         "src/etl-canvas/NOTE_DIVERGENZE.md",
         "src/etl-canvas/Node.tsx",
         "src/etl-canvas/README.md",
+        "src/etl-canvas/__tests__/controlbar.test.tsx",
         "src/etl-canvas/__tests__/drop.test.ts",
         "src/etl-canvas/__tests__/engine.test.ts",
         "src/etl-canvas/__tests__/fake-env.ts",
@@ -1164,6 +1188,7 @@
         "src/etl-canvas/__tests__/keyboard.test.ts",
         "src/etl-canvas/__tests__/loop.test.ts",
         "src/etl-canvas/__tests__/no-reroute.test.ts",
+        "src/etl-canvas/__tests__/overlay-layout.test.ts",
         "src/etl-canvas/__tests__/panels-actions.test.ts",
         "src/etl-canvas/__tests__/panels-layout.test.ts",
         "src/etl-canvas/__tests__/render.test.ts",
@@ -1185,6 +1210,7 @@
         "src/etl-canvas/loop.ts",
         "src/etl-canvas/model.ts",
         "src/etl-canvas/motion.tsx",
+        "src/etl-canvas/panels/ControlBar.tsx",
         "src/etl-canvas/panels/Dock.tsx",
         "src/etl-canvas/panels/EtlWorkspace.tsx",
         "src/etl-canvas/panels/InspectorShell.tsx",
@@ -1193,6 +1219,7 @@
         "src/etl-canvas/panels/csv.ts",
         "src/etl-canvas/panels/families.ts",
         "src/etl-canvas/panels/layout.ts",
+        "src/etl-canvas/panels/overlayLayout.ts",
         "src/etl-canvas/panels/panels.css",
         "src/etl-canvas/panels/ui-icons.tsx",
         "src/etl-canvas/seed.ts",
@@ -1206,7 +1233,8 @@
         "01e-etl-canvas-c.md",
         "01e-etl-canvas-d.md",
         "01e-etl-canvas-e.md",
-        "01e-etl-canvas-f.md"
+        "01e-etl-canvas-f.md",
+        "01e-etl-canvas-g.md"
       ]
     },
     "02-isa-etl": {
@@ -1432,7 +1460,8 @@
         "docs/visual/fase4b/console.txt",
         "docs/visual/fase4b/misure.json",
         "docs/visual/fase4b/prototipo.webm",
-        "docs/visual/fase4b/v2-chiaro.webm"
+        "docs/visual/fase4b/v2-chiaro.webm",
+        "docs/visual/fase6a/posizioni-nodi.json"
       ],
       "outFiles": [
         "12-docs-other-a.md",
@@ -1509,8 +1538,9 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-02T12-35-11Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-02T13-25-09Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T07-50-59Z.md",
-    "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T08-45-00Z.md"
+    "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T08-45-00Z.md",
+    "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T10-30-00Z.md"
   ],
-  "inScopeFileCount": 301,
-  "reportFileCount": 19
+  "inScopeFileCount": 306,
+  "reportFileCount": 20
 }

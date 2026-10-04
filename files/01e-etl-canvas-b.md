@@ -2,6 +2,8 @@
 
 File in questo blocco:
 
+- `src/etl-canvas/__tests__/controlbar.test.tsx`
+- `src/etl-canvas/__tests__/drop.test.ts`
 - `src/etl-canvas/__tests__/engine.test.ts`
 - `src/etl-canvas/__tests__/fake-env.ts`
 - `src/etl-canvas/__tests__/flow.test.ts`
@@ -9,10 +11,249 @@ File in questo blocco:
 - `src/etl-canvas/__tests__/helpers.ts`
 - `src/etl-canvas/__tests__/interaction.test.ts`
 - `src/etl-canvas/__tests__/keyboard.test.ts`
-- `src/etl-canvas/__tests__/loop.test.ts`
-- `src/etl-canvas/__tests__/no-reroute.test.ts`
 
 ---
+
+### `src/etl-canvas/__tests__/controlbar.test.tsx`
+
+145 righe
+
+```tsx
+import { readFileSync, readdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { createEtlStore } from "../../etl-store";
+import { createInteractionController } from "../interaction";
+import { ControlBar } from "../panels/ControlBar";
+import { storeWith } from "./helpers";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+function bar(store: ReturnType<typeof createEtlStore>): string {
+  return renderToStaticMarkup(
+    createElement(ControlBar, {
+      store,
+      controller: createInteractionController(store),
+      area: { w: 800, h: 500 },
+    }),
+  );
+}
+
+describe("barra dei controlli", () => {
+  it("ha Libero/Organizzato, Riordina, Annulla, Ripristina e Svuota", () => {
+    const markup = bar(storeWith());
+    for (const label of ["Libero", "Organizzato", "Riordina", "Annulla", "Ripristina", "Svuota"]) {
+      expect(markup).toContain(label);
+    }
+    expect(markup).toContain('role="toolbar"');
+    // i suggerimenti riportano le scorciatoie
+    expect(markup).toContain("Cmd/Ctrl+Z");
+    expect(markup).toContain("Cmd/Ctrl+Maiusc+Z");
+  });
+
+  it("«Reimposta» e «Funzionalità» non ci sono, né in barra né nei file dei pannelli", () => {
+    expect(bar(storeWith())).not.toMatch(/Reimposta|Funzionalit/i);
+    const dir = resolve(root, "panels");
+    for (const f of readdirSync(dir).filter((n) => /\.(tsx?|css)$/.test(n))) {
+      const text = readFileSync(resolve(dir, f), "utf8");
+      // i commenti possono citare il pulsante del prototipo che non si porta
+      const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+      expect(code, f).not.toMatch(/Reimposta|Funzionalit/i);
+    }
+  });
+
+  it("Annulla e Ripristina sono disabilitati senza cronologia; Svuota e Riordina senza nodi", () => {
+    const empty = bar(createEtlStore());
+    expect(empty).toMatch(/aria-label="Annulla"[^>]*disabled/);
+    expect(empty).toMatch(/aria-label="Ripristina"[^>]*disabled/);
+    expect(empty).toMatch(/aria-label="Svuota il canvas"[^>]*disabled/);
+    const store = storeWith();
+    store.dispatch({ type: "moveNodes", payload: { ids: ["op-join"], dx: 4, dy: 0 } });
+    const full = bar(store);
+    expect(full).not.toMatch(/aria-label="Annulla"[^>]*disabled/);
+    expect(full).toMatch(/aria-label="Ripristina"[^>]*disabled/);
+    expect(full).not.toMatch(/aria-label="Svuota il canvas"[^>]*disabled/);
+  });
+
+  it("la modalità attiva è indicata con aria-pressed", () => {
+    const store = storeWith();
+    store.dispatch({ type: "setMode", payload: { mode: "grid" } });
+    const markup = bar(store);
+    expect(markup).toMatch(/aria-pressed="true"[^>]*>Organizzato/);
+    expect(markup).toMatch(/aria-pressed="false"[^>]*>Libero/);
+  });
+});
+
+describe("Svuota: conferma e comando", () => {
+  it("la finestra riporta il testo previsto e annullare non cambia nulla", () => {
+    const store = storeWith();
+    const c = createInteractionController(store);
+    const graph = store.getState().graph;
+    const logLength = store.getLog().length;
+    c.requestClearAll();
+    const confirm = c.getUi().confirm;
+    expect(confirm?.kind).toBe("clear");
+    expect(confirm?.text).toBe(
+      "Eliminare tutti i nodi e i collegamenti? Puoi annullare con Cmd/Ctrl+Z.",
+    );
+    // tutti i nodi sono segnati come destinati a sparire
+    expect(confirm?.removed.length).toBe(Object.keys(graph.cards).length);
+    c.cancelConfirm();
+    expect(c.getUi().confirm).toBeNull();
+    expect(store.getState().graph).toBe(graph);
+    expect(store.getLog().length).toBe(logLength);
+    expect(store.historySize().past).toBe(0);
+  });
+
+  it("Esc annulla la conferma", () => {
+    const store = storeWith();
+    const c = createInteractionController(store);
+    c.requestClearAll();
+    c.key({ key: "Escape" });
+    expect(c.getUi().confirm).toBeNull();
+    expect(Object.keys(store.getState().graph.cards).length).toBeGreaterThan(0);
+  });
+
+  it("con la conferma aperta i comandi da tastiera del canvas non agiscono", () => {
+    const store = storeWith();
+    const c = createInteractionController(store);
+    store.dispatch({ type: "select", payload: { ids: ["op-join"] } });
+    c.requestClearAll();
+    expect(c.key({ key: "Delete" })).toBe(false);
+    expect(c.key({ key: "z", metaKey: true })).toBe(false);
+    expect(store.getState().graph.cards["op-join"]).toBeDefined();
+  });
+
+  it("confermato: un solo passo di cronologia, una voce nel registro, libreria intatta; Annulla ripristina tutto", () => {
+    const store = storeWith();
+    store.dispatch({
+      type: "loadDataset",
+      payload: {
+        name: "a",
+        path: "a.csv",
+        columns: [{ name: "x", type: "integer", values: [] }] as never,
+        rows: 1,
+      },
+    });
+    const c = createInteractionController(store);
+    const before = store.getState();
+    const past = store.historySize().past;
+    const logLength = store.getLog().length;
+    c.requestClearAll();
+    expect(c.confirmDelete()).toEqual({ ok: true });
+    const s = store.getState();
+    expect(Object.keys(s.graph.cards)).toEqual([]);
+    expect(s.graph.links).toEqual([]);
+    expect(s.library).toEqual(before.library);
+    expect(store.historySize().past).toBe(past + 1);
+    expect(store.getLog().length).toBe(logLength + 1);
+    expect(store.getLog().at(-1)?.type).toBe("clearAll");
+    store.undo();
+    expect(store.getState().graph).toEqual(before.graph);
+    expect(store.getState().library).toEqual(before.library);
+  });
+
+  it("su un canvas vuoto non si chiede nulla", () => {
+    const store = createEtlStore();
+    const c = createInteractionController(store);
+    c.requestClearAll();
+    expect(c.getUi().confirm).toBeNull();
+  });
+});
+```
+
+### `src/etl-canvas/__tests__/drop.test.ts`
+
+84 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import { nodeCenter } from "../../etl-layout";
+import type { EtlStore } from "../../etl-store";
+import { createInteractionController } from "../interaction";
+import { handleCanvasDrop, previewCanvasDrop } from "../drop";
+import { storeWith } from "./helpers";
+
+const cardCount = (s: EtlStore) => Object.keys(s.getState().graph.cards).length;
+
+describe("handleCanvasDrop (rilascio dalla cassetta, per la Fase 6)", () => {
+  it("nel vuoto crea il nodo, un solo passo di cronologia", () => {
+    const store = storeWith();
+    const n = cardCount(store);
+    const r = handleCanvasDrop(store, { component: "filter" }, { x: 1000, y: 700 });
+    expect(r.ok).toBe(true);
+    expect(cardCount(store)).toBe(n + 1);
+    expect(store.historySize().past).toBe(1);
+    expect(
+      previewCanvasDrop(store, { component: "filter" }, { x: 1500, y: 900 }).outcome,
+    ).toBeNull();
+  });
+
+  it("una lavorazione su una lavorazione si fonde", () => {
+    const store = storeWith();
+    const p = nodeCenter(store.getState().graph.cards["op-sort"]!);
+    expect(previewCanvasDrop(store, { component: "filter" }, p)).toMatchObject({
+      outcome: "merge",
+      nodeId: "op-sort",
+    });
+    const n = cardCount(store);
+    expect(handleCanvasDrop(store, { component: "filter" }, p).ok).toBe(true);
+    expect(cardCount(store)).toBe(n); // assorbita: non compare da sola
+    expect(store.getState().graph.cards["op-sort"]!.components).toHaveLength(2);
+    expect(store.historySize().past).toBe(1);
+  });
+
+  it("un dataset su una lavorazione si collega; una lavorazione su un dataset si collega al contrario", () => {
+    const a = storeWith();
+    const onOp = nodeCenter(a.getState().graph.cards["op-join"]!);
+    expect(previewCanvasDrop(a, { component: "dataset" }, onOp).outcome).toBe("link");
+    handleCanvasDrop(a, { component: "dataset" }, onOp);
+    expect(a.getState().graph.links.some((l) => l.to === "op-join")).toBe(true);
+
+    const b = storeWith();
+    const onDs = nodeCenter(b.getState().graph.cards["ds1"]!);
+    expect(previewCanvasDrop(b, { component: "sort" }, onDs).outcome).toBe("link-reverse");
+    handleCanvasDrop(b, { component: "sort" }, onDs);
+    expect(b.getState().graph.links.some((l) => l.from === "ds1")).toBe(true);
+  });
+
+  it("una lavorazione su un cavo dataset→lavorazione vi si inserisce; un dataset no", () => {
+    const store = storeWith();
+    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
+    const key = "ds1|op-join";
+    const pts = store.getRoutes()[key]!.pts;
+    const p = { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 };
+    expect(previewCanvasDrop(store, { component: "sort" }, p)).toMatchObject({
+      outcome: "insert",
+      linkKey: key,
+    });
+    expect(previewCanvasDrop(store, { component: "dataset" }, p).outcome).toBeNull();
+    expect(handleCanvasDrop(store, { component: "sort" }, p).ok).toBe(true);
+    expect(store.getState().graph.links).not.toContainEqual({ from: "ds1", to: "op-join" });
+  });
+
+  it("su un cavo lavorazione→output non si inserisce: cade nel vuoto", () => {
+    const store = storeWith();
+    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
+    const pts = store.getRoutes()["op-join|out-0"]!.pts;
+    const p = { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 };
+    expect(previewCanvasDrop(store, { component: "sort" }, p).outcome).toBeNull();
+  });
+
+  it("è raggiungibile dal controller, con il punto dell'area convertito in mondo", () => {
+    const store = storeWith();
+    store.dispatch({ type: "setView", payload: { x: 50, y: 20, zoom: 2 } });
+    const c = createInteractionController(store);
+    expect(c.toWorld(250, 220)).toEqual({ x: 100, y: 100 });
+    const n = cardCount(store);
+    expect(c.handleCanvasDrop({ component: "limit" }, c.toWorld(1200, 900)).ok).toBe(true);
+    expect(cardCount(store)).toBe(n + 1);
+  });
+});
+```
 
 ### `src/etl-canvas/__tests__/engine.test.ts`
 
@@ -1304,312 +1545,6 @@ describe("annulla e ripristina", () => {
     c.key({ key: "ArrowRight" });
     expect(c.key({ key: "z", metaKey: true, typing: true })).toBe(false);
     expect(cards(store)["op-sort"]!.x).toBe(262);
-  });
-});
-```
-
-### `src/etl-canvas/__tests__/loop.test.ts`
-
-165 righe
-
-```ts
-import { describe, expect, it, vi } from "vitest";
-import { createLoop } from "../loop";
-import type { Task } from "../loop";
-import { fakeEnv } from "./fake-env";
-
-function task(busy: () => boolean): Task & { frames: number[]; settled: number } {
-  const t = {
-    frames: [] as number[],
-    settled: 0,
-    frame(now: number) {
-      t.frames.push(now);
-      return busy();
-    },
-    settle() {
-      t.settled++;
-    },
-  };
-  return t;
-}
-
-describe("ciclo condiviso", () => {
-  it("un solo rAF alla volta, con qualunque numero di compiti", () => {
-    const f = fakeEnv();
-    const loop = createLoop(f.env);
-    const a = task(() => true);
-    const b = task(() => true);
-    loop.add(a);
-    loop.add(b);
-    expect(f.pending()).toBe(1);
-    f.step();
-    expect(f.pending()).toBe(1);
-    expect(a.frames).toHaveLength(1);
-    expect(b.frames).toHaveLength(1);
-    loop.dispose();
-  });
-
-  it("si ferma da solo quando nessun compito ha nulla da animare, e riparte con wake", () => {
-    const f = fakeEnv();
-    let busy = true;
-    const loop = createLoop(f.env);
-    loop.add(task(() => busy));
-    f.step();
-    f.step();
-    expect(loop.running()).toBe(true);
-    busy = false;
-    f.step();
-    expect(loop.running()).toBe(false);
-    expect(f.pending()).toBe(0);
-    const calls = f.rafCalls();
-    f.step();
-    expect(f.rafCalls()).toBe(calls);
-    busy = true;
-    loop.wake();
-    expect(loop.running()).toBe(true);
-    loop.dispose();
-  });
-
-  it("senza compiti non parte", () => {
-    const f = fakeEnv();
-    const loop = createLoop(f.env);
-    loop.wake();
-    expect(f.rafCalls()).toBe(0);
-    const off = loop.add(task(() => true));
-    off();
-    expect(f.pending()).toBe(0);
-    loop.dispose();
-  });
-
-  it("si ferma quando la scheda è nascosta e riparte quando torna visibile", () => {
-    const f = fakeEnv();
-    const t = task(() => true);
-    const loop = createLoop(f.env);
-    loop.add(t);
-    f.step();
-    expect(loop.running()).toBe(true);
-    f.setHidden(true);
-    expect(loop.running()).toBe(false);
-    expect(f.pending()).toBe(0);
-    const frames = t.frames.length;
-    f.step();
-    f.step();
-    expect(t.frames).toHaveLength(frames);
-    f.setHidden(false);
-    expect(loop.running()).toBe(true);
-    f.step();
-    expect(t.frames.length).toBe(frames + 1);
-    loop.dispose();
-  });
-
-  it("con la scheda già nascosta non parte affatto", () => {
-    const f = fakeEnv();
-    f.setHidden(true);
-    const loop = createLoop(f.env);
-    loop.add(task(() => true));
-    expect(f.rafCalls()).toBe(0);
-    loop.dispose();
-  });
-
-  it("non riprogramma un frame se la scheda si nasconde durante il frame", () => {
-    const f = fakeEnv();
-    const loop = createLoop(f.env);
-    loop.add({
-      frame: () => {
-        f.setHidden(true);
-        return true;
-      },
-      settle: () => {},
-    });
-    f.step();
-    expect(loop.running()).toBe(false);
-    loop.dispose();
-  });
-
-  it("movimento ridotto: il ciclo non parte mai, i compiti mostrano lo stato finale", () => {
-    const f = fakeEnv();
-    f.setReduced(true);
-    const t = task(() => true);
-    const loop = createLoop(f.env);
-    loop.add(t);
-    loop.wake();
-    expect(f.rafCalls()).toBe(0);
-    expect(loop.running()).toBe(false);
-    expect(t.frames).toHaveLength(0);
-    expect(t.settled).toBeGreaterThanOrEqual(1);
-    loop.dispose();
-  });
-
-  it("se il movimento ridotto si attiva mentre gira, si ferma e mostra lo stato finale; se si disattiva, riparte", () => {
-    const f = fakeEnv();
-    const t = task(() => true);
-    const loop = createLoop(f.env);
-    loop.add(t);
-    f.step();
-    expect(loop.running()).toBe(true);
-    f.setReduced(true);
-    expect(loop.running()).toBe(false);
-    expect(t.settled).toBe(1);
-    f.setReduced(false);
-    expect(loop.running()).toBe(true);
-    loop.dispose();
-  });
-
-  it("dispose ferma il ciclo e toglie gli ascoltatori", () => {
-    const f = fakeEnv();
-    const loop = createLoop(f.env);
-    loop.add(task(() => true));
-    expect(f.listeners()).toBe(2);
-    loop.dispose();
-    expect(f.pending()).toBe(0);
-    expect(f.listeners()).toBe(0);
-  });
-
-  it("i frame ricevono l'orologio dell'ambiente", () => {
-    const f = fakeEnv();
-    const t = task(() => true);
-    const loop = createLoop(f.env);
-    loop.add(t);
-    f.step(100);
-    f.step(50);
-    expect(t.frames).toEqual([100, 150]);
-    loop.dispose();
-    void vi;
-  });
-});
-```
-
-### `src/etl-canvas/__tests__/no-reroute.test.ts`
-
-129 righe
-
-```ts
-/**
- * Vincolo della Fase 4b: le animazioni sono un effetto visivo sopra
- * percorsi già calcolati. Nessuna animazione richiama settleLinks (né alcuna
- * funzione di etl-layout che instradi) e nessuna altera i percorsi di
- * getRoutes.
- */
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("../../etl-layout", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../etl-layout")>();
-  return {
-    ...actual,
-    settleLinks: vi.fn(actual.settleLinks),
-    layoutLinks: vi.fn(actual.layoutLinks),
-    chooseRoute: vi.fn(actual.chooseRoute),
-    buildRoute: vi.fn(actual.buildRoute),
-    routeCandidates: vi.fn(actual.routeCandidates),
-    shapeCandidates: vi.fn(actual.shapeCandidates),
-    autoLayout: vi.fn(actual.autoLayout),
-  };
-});
-
-import * as layout from "../../etl-layout";
-import { linkKey } from "../../etl-layout";
-import { createMotionEngine } from "../engine";
-import type { LinkInput } from "../engine";
-import { fakeEnv } from "./fake-env";
-import { storeWith } from "./helpers";
-
-const ROUTING = [
-  "settleLinks",
-  "layoutLinks",
-  "chooseRoute",
-  "buildRoute",
-  "routeCandidates",
-  "shapeCandidates",
-  "autoLayout",
-] as const;
-
-function el() {
-  const attrs: Record<string, string> = {};
-  return {
-    attrs,
-    style: { opacity: "" },
-    setAttribute: (n: string, v: string) => void (attrs[n] = v),
-    getTotalLength: () => 300,
-    getPointAtLength: (s: number) => ({ x: s, y: 0 }),
-  };
-}
-
-function inputs(store: ReturnType<typeof storeWith>): LinkInput[] {
-  const routes = store.getRoutes();
-  return store.getState().graph.links.flatMap((l) => {
-    const r = routes[linkKey(l)];
-    return r ? [{ key: linkKey(l), live: true, pts: r.pts, d: r.d, pa: r.pa, pb: r.pb }] : [];
-  });
-}
-
-describe("le animazioni non ricalcolano né alterano i percorsi", () => {
-  it("nessuna funzione di instradamento viene chiamata mentre girano flusso, attesa e transizioni", () => {
-    const store = storeWith();
-    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
-    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-filter" } });
-    const before = inputs(store);
-    expect(before.length).toBeGreaterThan(1);
-    const routesBefore = JSON.stringify(store.getRoutes());
-
-    // da qui in poi il calcolo dei percorsi è già avvenuto: si azzerano i contatori
-    for (const name of ROUTING) (layout[name] as unknown as ReturnType<typeof vi.fn>).mockClear();
-
-    const f = fakeEnv();
-    const engine = createMotionEngine();
-    const groups = new Map<string, ReturnType<typeof el>[]>();
-    for (const l of before) {
-      const els = [el(), el(), el(), el(), el()];
-      groups.set(l.key, els);
-      const map: Record<string, unknown> = {
-        ".ec-link": els[0],
-        ".ec-link-ghost": els[1],
-        ".ec-flow": els[2],
-        '[data-dot="a"]': els[3],
-        '[data-dot="b"]': els[4],
-      };
-      engine.registerLink(l.key, { querySelector: (s) => map[s] ?? null });
-    }
-    engine.registerSlice("out-0:1", el());
-    engine.start(f.env);
-    engine.update({ links: before, gesturing: false });
-    for (let i = 0; i < 40; i++) f.step(16);
-
-    // un cambio discreto dei percorsi (spostato a mano per simulare autoLayout): si anima
-    const moved = before.map((l) => {
-      const pts = l.pts.map((p) => ({ x: p.x + 30, y: p.y + 10 }));
-      return { ...l, pts, pa: pts[0]!, pb: pts[pts.length - 1]! };
-    });
-    engine.update({ links: moved, gesturing: false });
-    for (let i = 0; i < 40; i++) f.step(16);
-    engine.update({ links: before, gesturing: true });
-    for (let i = 0; i < 10; i++) f.step(16);
-    engine.update({ links: before, gesturing: false });
-    for (let i = 0; i < 40; i++) f.step(16);
-
-    for (const name of ROUTING) {
-      expect(layout[name], name).not.toHaveBeenCalled();
-    }
-    // e i percorsi restituiti da getRoutes sono rimasti identici
-    expect(JSON.stringify(store.getRoutes())).toBe(routesBefore);
-    expect(JSON.stringify(inputs(store))).toBe(JSON.stringify(before));
-  });
-
-  it("con lo store reale: una modifica del grafo ricalcola i percorsi solo tramite lo store, non le animazioni", () => {
-    const store = storeWith();
-    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-filter" } });
-    store.getRoutes();
-    (layout.settleLinks as unknown as ReturnType<typeof vi.fn>).mockClear();
-    const f = fakeEnv();
-    const engine = createMotionEngine();
-    engine.start(f.env);
-    engine.update({ links: inputs(store), gesturing: false });
-    for (let i = 0; i < 30; i++) f.step(16);
-    // le animazioni hanno girato e settleLinks non è stato invocato da loro
-    expect(layout.settleLinks).not.toHaveBeenCalled();
-    // lo store invece ricalcola quando cambia il grafo (controllo di sanità dello spy)
-    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-sort" } });
-    store.getRoutes();
-    expect(layout.settleLinks).toHaveBeenCalled();
   });
 });
 ```
