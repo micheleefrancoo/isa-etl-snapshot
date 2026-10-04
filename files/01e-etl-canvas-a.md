@@ -14,7 +14,7 @@ File in questo blocco:
 
 ### `src/etl-canvas/EtlCanvas.tsx`
 
-426 righe
+431 righe
 
 ```tsx
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -28,7 +28,7 @@ import { useEtlState } from "../etl-store/react";
 import { fit, zoomAtPoint, zoomIn, zoomOut, zoomReset } from "./actions";
 import { createMotionEngine } from "./engine";
 import { createInteractionController } from "./interaction";
-import type { DownTarget, PointerInput, PortSide } from "./interaction";
+import type { DownTarget, InteractionController, PointerInput, PortSide } from "./interaction";
 import type { LinkInput } from "./engine";
 import { browserEnv } from "./loop";
 import type { LoopEnv } from "./loop";
@@ -68,6 +68,8 @@ export interface CanvasSurfaceProps {
   readonly size: Size;
   /** Ambiente delle animazioni (orologio, rAF, visibilità, movimento ridotto); nei test si sostituisce. */
   readonly env?: LoopEnv;
+  /** Controller dei gesti condiviso con chi sta fuori dal canvas (la cassetta); se manca, ne nasce uno. */
+  readonly controller?: InteractionController | undefined;
 }
 
 /**
@@ -84,7 +86,8 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
   const maxBends = useEtlState((s) => s.options.maxBends, store);
   const flowOnlyIfValid = useEtlState((s) => s.options.flowOnlyIfValid, store);
   const [engine] = useState(createMotionEngine);
-  const [controller] = useState(() => createInteractionController(store));
+  const [ownController] = useState(() => props.controller ?? createInteractionController(store));
+  const controller = props.controller ?? ownController;
   const ui = useSyncExternalStore(controller.subscribe, controller.getUi, controller.getUi);
   const stageRef = useRef<HTMLDivElement>(null);
   const [spaceDown, setSpaceDown] = useState(false);
@@ -409,7 +412,7 @@ const noopSubscribe = () => () => {};
  * di idratazione produce sempre lo stesso contenitore vuoto, così non ci
  * sono differenze da riconciliare. Misura l'area con un ResizeObserver.
  */
-export function EtlCanvas(props: { store: EtlStore }) {
+export function EtlCanvas(props: { store: EtlStore; controller?: InteractionController }) {
   const isClient = useSyncExternalStore(
     noopSubscribe,
     () => true,
@@ -438,7 +441,9 @@ export function EtlCanvas(props: { store: EtlStore }) {
       className="etl-canvas-host"
       style={{ position: "relative", width: "100%", height: "100%", minHeight: 520 }}
     >
-      {isClient && size ? <CanvasSurface store={props.store} size={size} /> : null}
+      {isClient && size ? (
+        <CanvasSurface store={props.store} size={size} controller={props.controller} />
+      ) : null}
     </div>
   );
 }
@@ -748,17 +753,18 @@ export const Node = memo(function Node(props: { node: NodeView }) {
 
 ### `src/etl-canvas/README.md`
 
-200 righe
+226 righe
 
 ```md
-# etl-canvas — Fasi 4a, 4b e 5: il canvas, le sue animazioni e i gesti
+# etl-canvas — Fasi 4a, 4b, 5 e 6a: il canvas, le sue animazioni, i gesti e i pannelli
 
 Resa visiva del canvas ETL in React, fedele al prototipo
 `docs/prototype/isa-fusion-prototype.html`. Solo **vista**: token, nodi,
 cavi, pan, zoom, controlli di zoom, minimappa (4a) e animazioni: flusso nei
 cavi, attesa delle fette vuote, transizione dei percorsi (4b), e i gesti (Fase 5): trascinamento, fusione,
-collegamento, porte, selezione, tastiera. La cassetta degli strumenti e
-l'Inspector (Fase 6) non ci sono ancora.
+collegamento, porte, selezione, tastiera, e i pannelli (Fase 6a): cassetta degli
+strumenti e guscio dell'Inspector, agganciabili ai quattro bordi. Il contenuto
+dell'Inspector (Fase 6b) non c'è ancora.
 
 Importa da `etl-core`, `etl-layout` ed `etl-store`; nessuno di questi importa
 da qui. Non usa il vecchio stato (`src/lib/etl-workflow.tsx`): legge e
@@ -860,6 +866,31 @@ conferma è aperta.
   testo (il prototipo le applicava sempre): lì vale l'annulla del campo.
 - _Non collegati_ (fuori dall'elenco della fase): i pulsanti di eliminazione ed
   espansione sul nodo (prototipo 4584, Fase 6).
+
+## Fase 6a — Pannelli e cassetta
+
+Codice in `panels/` (`Dock.tsx`, `Toolbox.tsx`, `InspectorShell.tsx`,
+`EtlWorkspace.tsx`; logica pura in `layout.ts`, `actions.ts`, `csv.ts`,
+`families.ts`). Lo stato (lato, aperto/chiuso, scheda attiva) è in `etl-store`
+(`panels`) e si salva con il resto. Prototipo:
+`docs/prototype/isa-fusion-prototype.html`.
+
+| Elemento                                                                            | Prototipo (righe)                                                                                  | Qui                                                                                                                        |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Struttura, griglia dei quattro bordi, colonna o fascia                              | CSS 211-346 (`#dock-*` 216-219), HTML 808-838                                                      | `Dock.tsx`, `panels.css`, `layout.ts`                                                                                      |
+| Apertura e chiusura, tacca visibile solo da chiuso                                  | `setPanelOpen` 4835-4860, `layoutNotches` 4847-4858, CSS `.notch` 272-295                          | comando `setPanel`; `layout.ts` (la tacca si nasconde se il pannello è aperto o raggiungibile da una scheda)               |
+| Trascinare la tacca su un altro bordo (soglia, un clic apre)                        | 4881-4905 (soglia 4884, «un click apre soltanto» 4899)                                             | `Dock.tsx` (gesto della tacca), `actions.ts` (`setSide`: chiude, sposta, riapre)                                           |
+| Due pannelli sullo stesso bordo: schede, contenuto sul posto                        | `dock-tabs` CSS 306-327, `switchTab` 4787-4806; nessuna animazione di apertura                     | `Dock.tsx`, `layout.ts` (`grouped`, scheda attiva); la larghezza non cambia al cambio di scheda                            |
+| Compensazione della vista sui bordi verticali                                       | 4780-4784, 4818-4821                                                                               | `layout.ts` (spostamento della vista) → comando di vista di etl-store; su bordo orizzontale cresce l'area di lavoro        |
+| Sezioni della cassetta (Dataset, Filtra e ordina, Trasforma, Merge e union, Output) | `buildPalette` 4727-4752, `SECTIONS`, `palItem` 4727-4733                                          | `Toolbox.tsx`, `families.ts`: sezioni e voci derivano da `etl-core/catalog/operations.ts`, non da una lista a mano         |
+| Sezione comprimibile                                                                | `.tb-sec-head` 246-250, clic 4914-4919 (senza ridisegno)                                           | stato locale di `Toolbox.tsx` per sezione                                                                                  |
+| Caricamento CSV e deduzione dei tipi                                                | `parseCSV` 4672-4725 (tipo: integer, numerico, data, stringa: righe 4696-4699), `change` 4921-4937 | `panels/csv.ts` → `store.loadCsv` (`parseCSV` di etl-core, comando `loadDataset`); voce trascinabile nella sezione Dataset |
+| Trascinare una voce dalla cassetta al canvas                                        | `paletteEl` `pointerdown` 4939-5067, `paletteRelation` 4711                                        | `EtlWorkspace.tsx` → `handleCanvasDrop` / `previewCanvasDrop` (`drop.ts`)                                                  |
+| Inspector (guscio): si apre con la selezione, si chiude senza                       | `selectCard` / `deselect` 2692-2727, `openInspector` 2692                                          | `InspectorShell.tsx` (solo il nome del nodo), `actions.ts` (segue la selezione)                                            |
+
+Non portati: il pulsante «Funzionalità» (tutte le funzionalità sono sempre
+attive, Fase T). Prova nel browser: `scripts/e2e-fase6a.mjs` (36 prove,
+schermate in `docs/visual/fase6a/`).
 
 ## Rendering lato server
 

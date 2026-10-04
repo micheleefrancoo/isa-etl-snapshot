@@ -1027,7 +1027,7 @@ function DashboardModule() {
 
 ### `src/routes/solutions.$solutionId.etl.tsx`
 
-345 righe
+346 righe
 
 ```tsx
 import { createFileRoute } from "@tanstack/react-router";
@@ -1040,7 +1040,8 @@ import { DATASET_NAMES } from "@/lib/etl-catalog";
 import { pipelineOrder, useEtlWorkflow } from "@/lib/etl-workflow";
 import { useSolutions } from "@/lib/solutions-store";
 import { useTheme } from "@/lib/theme";
-import { EtlCanvas, prototypeScene } from "@/etl-canvas";
+import { prototypeScene } from "@/etl-canvas";
+import { EtlWorkspace as PanelsWorkspace } from "@/etl-canvas/panels/EtlWorkspace";
 import { usePersistentEtlStore } from "@/etl-store/react";
 
 export const Route = createFileRoute("/solutions/$solutionId/etl")({
@@ -1129,7 +1130,7 @@ function EtlCanvasV2() {
         </button>
       </div>
       <div className="relative flex min-h-[520px] min-w-0 flex-1 flex-col">
-        <EtlCanvas store={store} />
+        <PanelsWorkspace store={store} />
       </div>
     </div>
   );

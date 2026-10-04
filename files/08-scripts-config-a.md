@@ -13,6 +13,7 @@ File in questo blocco:
 - `package.json`
 - `scripts/check-tokens.mjs`
 - `scripts/e2e-fase5.mjs`
+- `scripts/e2e-fase6a.mjs`
 - `scripts/extract-golden.mjs`
 - `scripts/generate-index.mjs`
 
@@ -544,7 +545,7 @@ if (strict.length) {
 
 ### `scripts/e2e-fase5.mjs`
 
-294 righe
+299 righe
 
 ```js
 #!/usr/bin/env node
@@ -604,6 +605,11 @@ const shot = (name) => page.screenshot({ path: resolve(OUT, name), animations: "
 try {
   await page.goto(`${server.base}/solutions/${SOLUTION.id}/etl?seed=prototype`);
   await page.waitForSelector('[data-node-id="ds1"]', { timeout: 90000 });
+  // il canvas nudo ha i pannelli chiusi (Fase 6a: la cassetta si apre da sola): si chiudono nello store, senza compensare la vista e senza transizione
+  await page.addStyleTag({ content: ".ec-workspace, .ec-panel { transition: none !important; }" });
+  await page.evaluate(() =>
+    window.__etlStore.dispatch({ type: "setPanel", payload: { panel: "tools", open: false } }),
+  );
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(500);
 
@@ -833,6 +839,385 @@ try {
   check("nessun errore in console", errors.length === 0, errors.join(" | ").slice(0, 300));
 } catch (e) {
   check("eccezione nello script", false, String(e).slice(0, 200));
+} finally {
+  await browser.close();
+  server.stop();
+}
+console.table(results);
+console.log(failed ? `${failed} PROVE FALLITE` : `TUTTE LE ${results.length} PROVE SUPERATE`);
+process.exit(failed ? 1 : 0);
+```
+
+### `scripts/e2e-fase6a.mjs`
+
+373 righe
+
+```js
+#!/usr/bin/env node
+/**
+ * Verifica nel browser reale dei pannelli e della cassetta (Fase 6a): apertura,
+ * chiusura, tacche, trascinamento tra i quattro bordi, schede condivise,
+ * compensazione della vista, Inspector che segue la selezione, caricamento di
+ * un CSV, trascinamento dalla cassetta, persistenza. Salva le schermate in
+ * docs/visual/fase6a/. Esce con codice 1 se una prova fallisce.
+ *
+ * Uso: node scripts/e2e-fase6a.mjs
+ */
+import { mkdirSync } from "node:fs";
+import { resolve } from "node:path";
+import { chromium } from "playwright";
+import { ROOT, SOLUTION, startServer } from "./visual-lib.mjs";
+
+const OUT = resolve(ROOT, "docs/visual/fase6a");
+mkdirSync(OUT, { recursive: true });
+const server = await startServer(Number(process.env.PORT ?? 5194));
+const browser = await chromium.launch();
+const ctx = await browser.newContext({
+  viewport: { width: 1440, height: 900 },
+  deviceScaleFactor: 1,
+});
+await ctx.addInitScript((s) => {
+  if (!localStorage.getItem("isa.solutions"))
+    localStorage.setItem("isa.solutions", JSON.stringify([s]));
+  localStorage.setItem("isa-theme", "light");
+}, SOLUTION);
+const page = await ctx.newPage();
+const errors = [];
+page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+page.on("pageerror", (e) => errors.push(String(e)));
+
+let failed = 0;
+const results = [];
+function check(name, ok, extra = "") {
+  results.push({
+    prova: name,
+    esito: ok ? "ok" : "FALLITA",
+    dettaglio: String(extra).slice(0, 160),
+  });
+  if (!ok) failed++;
+}
+const state = () => page.evaluate(() => window.__etlStore.getState());
+const box = async (sel) => await page.locator(sel).first().boundingBox();
+const center = (b) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
+const shot = (name) => page.screenshot({ path: resolve(OUT, name), animations: "disabled" });
+const nodeBox = (id) => box(`[data-node-id="${id}"] .ec-icon-wrap`);
+const URL = `${server.base}/solutions/${SOLUTION.id}/etl?seed=prototype`;
+
+async function dragNotch(key, side) {
+  const n = await box(`[data-notch="${key}"]`);
+  const s = await box(".ec-stage");
+  const from = center(n);
+  const to = {
+    left: { x: s.x + 6, y: s.y + s.height / 2 },
+    right: { x: s.x + s.width - 6, y: s.y + s.height / 2 },
+    top: { x: s.x + s.width / 2, y: s.y + 6 },
+    bottom: { x: s.x + s.width / 2, y: s.y + s.height - 6 },
+  }[side];
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 6 });
+  await page.mouse.move(to.x, to.y, { steps: 6 });
+  if (process.env.HOLD) await page.waitForTimeout(200);
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+}
+const panelSide = (key) => page.locator(`[data-panel="${key}"]`).getAttribute("data-side");
+const isOpen = async (key) => (await state()).panels[key].open;
+
+try {
+  await page.goto(URL);
+  await page.waitForSelector('[data-node-id="ds1"]', { timeout: 90000 });
+  await page.waitForTimeout(600);
+
+  // 1. la cassetta è aperta a sinistra e deriva dal catalogo
+  check(
+    "la cassetta è aperta a sinistra all'avvio",
+    (await panelSide("tools")) === "left" && (await isOpen("tools")),
+  );
+  const secs = await page.locator("[data-sec]").evaluateAll((els) => els.map((e) => e.dataset.sec));
+  check(
+    "cinque sezioni nell'ordine del catalogo",
+    secs.join() === "data,rows,xform,merge,out",
+    secs.join(),
+  );
+  const items = await page.locator(".ec-pal-item").count();
+  check("tutte le operazioni del catalogo sono presenti (19)", items === 19, String(items));
+  await shot("cassetta-sinistra.png");
+
+  // 2. sezione comprimibile
+  await page.locator('[data-sec="rows"] .ec-tb-sec-head').click();
+  check("una sezione si comprime", (await page.locator('[data-sec="rows"].ec-open').count()) === 0);
+  await page.locator('[data-sec="rows"] .ec-tb-sec-head').click();
+
+  // 3. chiusura: i nodi restano fermi sullo schermo (la vista compensa)
+  const before = await nodeBox("op-join");
+  await page.getByRole("button", { name: "Nascondi la cassetta degli strumenti" }).click();
+  await page.waitForTimeout(600);
+  const after = await nodeBox("op-join");
+  check(
+    "chiudendo la cassetta a sinistra i nodi restano fermi sullo schermo",
+    Math.abs(after.x - before.x) < 1.5 && Math.abs(after.y - before.y) < 1.5,
+    `${before.x}→${after.x}`,
+  );
+  check(
+    "la cassetta è chiusa e la sua tacca è visibile",
+    !(await isOpen("tools")) &&
+      (await page.locator('[data-notch="tools"]:not(.ec-hidden)').count()) === 1,
+  );
+  await page.locator('[data-notch="tools"]').click();
+  await page.waitForTimeout(600);
+  const reopened = await nodeBox("op-join");
+  check(
+    "un clic sulla tacca riapre; i nodi restano fermi",
+    (await isOpen("tools")) && Math.abs(reopened.x - before.x) < 1.5,
+    `${before.x}→${reopened.x}`,
+  );
+
+  // 4. trascinamento tra i quattro bordi
+  await page.getByRole("button", { name: "Nascondi la cassetta degli strumenti" }).click();
+  await page.waitForTimeout(500);
+  for (const side of ["right", "top", "bottom", "left"]) {
+    await dragNotch("tools", side);
+    check(
+      `la tacca trascinata sul bordo ${side} sposta la cassetta`,
+      (await panelSide("tools")) === side && (await isOpen("tools")),
+      await panelSide("tools"),
+    );
+    if (side !== "left")
+      await shot(`cassetta-${{ right: "destra", top: "alto", bottom: "basso" }[side]}.png`);
+    if (side === "top" || side === "bottom") {
+      check(
+        `bordo ${side}: la cassetta è una fascia orizzontale`,
+        (await page.locator(`[data-panel="tools"].ec-horiz`).count()) === 1,
+      );
+    }
+    if (side !== "left") {
+      await page.getByRole("button", { name: "Nascondi la cassetta degli strumenti" }).click();
+      await page.waitForTimeout(500);
+    }
+  }
+  // la tacca si trascina da chiuso: si chiude, poi si porta sul bordo inferiore
+  await page.getByRole("button", { name: "Nascondi la cassetta degli strumenti" }).click();
+  await page.waitForTimeout(500);
+  const stageH = (await box(".ec-stage")).height;
+  await dragNotch("tools", "bottom");
+  check(
+    "la cassetta è sul bordo inferiore",
+    (await panelSide("tools")) === "bottom" && (await isOpen("tools")),
+  );
+  const stageHBottom = (await box(".ec-stage")).height;
+  check(
+    "sul bordo orizzontale il canvas mantiene la sua altezza (cresce l'area di lavoro)",
+    Math.abs(stageH - stageHBottom) < 1.5,
+    `${stageH}→${stageHBottom}`,
+  );
+  await shot("cassetta-basso-orizzontale.png");
+  await page.getByRole("button", { name: "Nascondi la cassetta degli strumenti" }).click();
+  await page.waitForTimeout(500);
+  await dragNotch("tools", "left");
+
+  // 5. due pannelli sullo stesso bordo diventano schede
+  await page.getByRole("button", { name: "Nascondi la cassetta degli strumenti" }).click();
+  await page.waitForTimeout(400);
+  await page.locator('[data-notch="tools"]').click();
+  await page.waitForTimeout(500);
+  await dragNotch("insp", "left");
+  check(
+    "l'Inspector trascinato sul bordo della cassetta: schede sullo stesso bordo",
+    (await panelSide("insp")) === "left" &&
+      (await page.locator(".ec-panel.ec-grouped").count()) === 2,
+  );
+  check("è aperta una sola scheda", (await isOpen("insp")) && !(await isOpen("tools")));
+  await shot("schede-stesso-bordo.png");
+  const w1 = (await box('[data-panel="insp"]')).width;
+  await page.locator('[data-panel="insp"] .ec-dock-tab', { hasText: "Strumenti" }).click();
+  await page.waitForTimeout(100);
+  check(
+    "cambiare scheda sostituisce il contenuto sul posto",
+    (await isOpen("tools")) && !(await isOpen("insp")),
+  );
+  await page.waitForTimeout(400);
+  const w2 = (await box('[data-panel="tools"]')).width;
+  check("la larghezza non cambia al cambio di scheda", Math.abs(w1 - w2) < 1.5, `${w1} vs ${w2}`);
+  // separati di nuovo: si chiude la scheda aperta (le tacche tornano visibili) e si trascina via l'altra
+  await page.getByRole("button", { name: "Nascondi la cassetta degli strumenti" }).click();
+  await page.waitForTimeout(400);
+  await dragNotch("insp", "right");
+  check(
+    "spostato su un altro bordo torna un pannello separato",
+    (await panelSide("insp")) === "right" &&
+      (await page.locator(".ec-panel.ec-grouped").count()) === 0,
+  );
+  await page
+    .getByRole("button", { name: "Nascondi l’inspector" })
+    .click()
+    .catch(() => {});
+  await page.waitForTimeout(300);
+  await page.locator('[data-notch="tools"]').click();
+  await page.waitForTimeout(500);
+  check(
+    "la cassetta è di nuovo aperta a sinistra",
+    (await isOpen("tools")) && !(await isOpen("insp")),
+  );
+
+  // 6. l'Inspector segue la selezione
+  await page.waitForTimeout(500);
+  const j = center(await nodeBox("op-join"));
+  await page.mouse.click(j.x, j.y);
+  await page.waitForTimeout(500);
+  check(
+    "selezionare un nodo apre l'Inspector con il suo nome",
+    (await isOpen("insp")) &&
+      (await page.locator('[data-testid="ec-inspector-name"]').innerText()) === "Unisci (Join)",
+  );
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(500);
+  check("deselezionare chiude l'Inspector", !(await isOpen("insp")));
+
+  // 7. caricamento CSV e trascinamento dalla cassetta
+  await page.locator('[data-testid="ec-file-input"]').setInputFiles({
+    name: "clienti.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("id,nome,fatturato\n1,Acme,10.5\n2,Delta,20\n3,Eureka,31.25\n"),
+  });
+  await page.waitForSelector('.ec-pal-item[data-lib="lib-1"]', { timeout: 5000 });
+  check(
+    "il CSV compare nella libreria come voce trascinabile",
+    (await page.locator('.ec-pal-item[data-lib="lib-1"] .ec-lib-meta').innerText()) ===
+      "3 col · 3 righe",
+  );
+  check(
+    "il messaggio di caricamento è visibile",
+    (await page.locator(".ec-tb-status").innerText()).includes(
+      "clienti.csv caricato: 3 colonne, 3 righe",
+    ),
+  );
+  const lib = (await state()).library[0];
+  check(
+    "colonne e tipi dedotti",
+    lib.columns.map((c) => c.type).join() === "integer,stringa,numerico",
+    lib.columns.map((c) => c.type).join(),
+  );
+
+  const stage = await box(".ec-stage");
+  const n0 = Object.keys((await state()).graph.cards).length;
+  // nel vuoto: nodo isolato
+  let src = center(await box('.ec-pal-item[data-type="limit"]'));
+  await page.mouse.move(src.x, src.y);
+  await page.mouse.down();
+  await page.mouse.move(stage.x + 700, stage.y + 300, { steps: 12 });
+  check(
+    "durante il trascinamento compare l'anteprima (ghost)",
+    (await page.locator('[data-testid="ec-ghost"]').count()) === 1,
+  );
+  await page.mouse.up();
+  check(
+    "rilasciato sul vuoto crea un nodo isolato",
+    Object.keys((await state()).graph.cards).length === n0 + 1 &&
+      (await state()).graph.links.length === 0,
+  );
+
+  // su un box compatibile: contorno di fusione e fusione
+  src = center(await box('.ec-pal-item[data-type="filter"]'));
+  const sortC = center(await nodeBox("op-sort"));
+  await page.mouse.move(src.x, src.y);
+  await page.mouse.down();
+  await page.mouse.move(sortC.x, sortC.y, { steps: 14 });
+  check(
+    "sopra un box compatibile compare il contorno di fusione",
+    (await page.locator('[data-node-id="op-sort"].ec-drop-merge').count()) === 1,
+  );
+  await shot("trascinamento-dalla-cassetta.png");
+  await page.mouse.up();
+  check(
+    "al rilascio la voce si fonde nel box",
+    (await state()).graph.cards["op-sort"].components.length === 2,
+  );
+
+  // dataset della libreria su una lavorazione: collegamento
+  src = center(await box('.ec-pal-item[data-lib="lib-1"]'));
+  const joinC = center(await nodeBox("op-join"));
+  await page.mouse.move(src.x, src.y);
+  await page.mouse.down();
+  await page.mouse.move(joinC.x, joinC.y, { steps: 14 });
+  check(
+    "un dataset sopra una lavorazione mostra il collegamento",
+    (await page.locator('[data-node-id="op-join"].ec-drop-link').count()) === 1,
+  );
+  await page.mouse.up();
+  const g = (await state()).graph;
+  const created = Object.values(g.cards).find((k) => k.name === "clienti");
+  check(
+    "il dataset caricato è collegato",
+    !!created && g.links.some((l) => l.from === created.id && l.to === "op-join"),
+  );
+
+  // su un cavo valido: inserimento
+  const hit = await page.evaluate(() => {
+    const st = window.__etlStore;
+    const k = Object.keys(st.getRoutes()).find((x) =>
+      x.startsWith(
+        st
+          .getState()
+          .graph.links.find(
+            (l) =>
+              st.getState().graph.cards[l.from].kind === "dataset" &&
+              st.getState().graph.cards[l.to].kind === "op",
+          ).from + "|",
+      ),
+    );
+    const pts = st.getRoutes()[k].pts;
+    const v = st.getState().view;
+    const r = document.querySelector(".ec-stage").getBoundingClientRect();
+    return {
+      key: k,
+      x: r.left + v.x + ((pts[0].x + pts[1].x) / 2) * v.zoom,
+      y: r.top + v.y + ((pts[0].y + pts[1].y) / 2) * v.zoom,
+    };
+  });
+  src = center(await box('.ec-pal-item[data-type="sort"]'));
+  await page.mouse.move(src.x, src.y);
+  await page.mouse.down();
+  await page.mouse.move(hit.x, hit.y, { steps: 14 });
+  check(
+    "su un cavo valido il cavo si evidenzia",
+    (await page.locator(".ec-link.ec-link-hot").count()) === 1,
+  );
+  await shot("trascinamento-dalla-cassetta-su-cavo.png");
+  await page.mouse.up();
+  check(
+    "al rilascio la lavorazione si inserisce nel cavo",
+    !(await state()).graph.links.some((l) => `${l.from}|${l.to}` === hit.key),
+  );
+
+  // 8. persistenza dei pannelli dopo il ricaricamento
+  await dragNotch("tools", "right").catch(() => {});
+  if (!(await isOpen("tools")) || (await panelSide("tools")) !== "right") {
+    await page
+      .locator('[data-notch="tools"]')
+      .click()
+      .catch(() => {});
+  }
+  await page
+    .getByRole("button", { name: "Nascondi la cassetta degli strumenti" })
+    .click()
+    .catch(() => {});
+  await page.waitForTimeout(300);
+  await dragNotch("tools", "right");
+  const savedSide = await panelSide("tools");
+  await page.waitForTimeout(1500);
+  await page.reload();
+  await page.waitForSelector("[data-panel]", { timeout: 90000 });
+  await page.waitForTimeout(600);
+  check(
+    "lato e stato dei pannelli sopravvivono al ricaricamento",
+    (await panelSide("tools")) === savedSide && savedSide === "right" && (await isOpen("tools")),
+    `${savedSide} → ${await panelSide("tools")}`,
+  );
+
+  check("nessun errore in console", errors.length === 0, errors.join(" | "));
+} catch (e) {
+  check("eccezione nello script", false, e);
 } finally {
   await browser.close();
   server.stop();

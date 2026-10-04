@@ -13,7 +13,7 @@ File in questo blocco:
 
 ### `scripts/visual-fase4b.mjs`
 
-318 righe
+323 righe
 
 ```js
 #!/usr/bin/env node
@@ -82,6 +82,11 @@ async function v2Page(ctx, base, theme, seed = true) {
   await page.goto(`${base}/solutions/${SOLUTION.id}/etl${seed ? "?seed=prototype" : ""}`);
   if (seed) await page.waitForSelector('[data-node-id="ds1"]', { timeout: 60000 });
   else await page.waitForSelector(".ec-stage", { timeout: 60000 });
+  // il canvas nudo ha i pannelli chiusi (Fase 6a: la cassetta si apre da sola): si chiudono nello store, senza compensare la vista e senza transizione
+  await page.addStyleTag({ content: ".ec-workspace, .ec-panel { transition: none !important; }" });
+  await page.evaluate(() =>
+    window.__etlStore.dispatch({ type: "setPanel", payload: { panel: "tools", open: false } }),
+  );
   await page.evaluate(() => document.fonts.ready);
   // in sviluppo ThemeProvider sovrascrive il tema salvato: si fissa con la classe `.dark`
   await page.evaluate(
@@ -430,7 +435,7 @@ export const SOLUTION = {
 
 ### `scripts/visual-temi.mjs`
 
-100 righe
+107 righe
 
 ```js
 #!/usr/bin/env node
@@ -490,6 +495,13 @@ async function shot(mode, path, file, { theme, hue, via = "archivio" } = {}) {
   await page.goto(`${server.base}${path}${theme ? `${sep}theme=${theme}` : ""}`);
   if (path.includes("/etl")) {
     await page.waitForSelector('[data-node-id="ds1"]', { timeout: 60000 });
+    // il canvas nudo ha i pannelli chiusi (Fase 6a: la cassetta si apre da sola): si chiudono nello store, senza compensare la vista e senza transizione
+    await page.addStyleTag({
+      content: ".ec-workspace, .ec-panel { transition: none !important; }",
+    });
+    await page.evaluate(() =>
+      window.__etlStore.dispatch({ type: "setPanel", payload: { panel: "tools", open: false } }),
+    );
   } else {
     await page.waitForSelector("main, [data-slot], h1", { timeout: 60000 });
   }

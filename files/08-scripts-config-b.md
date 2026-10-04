@@ -1173,7 +1173,7 @@ process.exit(failed ? 1 : 0);
 
 ### `scripts/visual-fase4.mjs`
 
-374 righe
+381 righe
 
 ```js
 #!/usr/bin/env node
@@ -1517,6 +1517,13 @@ try {
     page.on("pageerror", (e) => issues.push(`[${theme}] pageerror: ${e.message}`));
     await page.goto(`${server.base}/solutions/${SOLUTION.id}/etl?seed=prototype`);
     await page.waitForSelector('[data-node-id="ds1"]', { timeout: 60000 });
+    // il canvas nudo ha i pannelli chiusi (Fase 6a: la cassetta si apre da sola): si chiudono nello store, senza compensare la vista e senza transizione
+    await page.addStyleTag({
+      content: ".ec-workspace, .ec-panel { transition: none !important; }",
+    });
+    await page.evaluate(() =>
+      window.__etlStore.dispatch({ type: "setPanel", payload: { panel: "tools", open: false } }),
+    );
     await page.evaluate(() => document.fonts.ready);
     // In sviluppo (StrictMode) ThemeProvider sovrascrive il tema salvato prima di leggerlo
     // (src/lib/theme.tsx, difetto preesistente): il tema si fissa con la stessa classe `.dark`.
