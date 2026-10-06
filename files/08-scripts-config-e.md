@@ -3,6 +3,8 @@
 File in questo blocco:
 
 - `scripts/generate-snapshot.mjs`
+- `scripts/snapshot-lib.mjs`
+- `scripts/snapshot-lib.test.mjs`
 - `scripts/sync-snapshot.sh`
 - `scripts/theme-map.mjs`
 - `scripts/token-legacy-files.txt`
@@ -13,7 +15,7 @@ File in questo blocco:
 
 ### `scripts/generate-snapshot.mjs`
 
-528 righe
+519 righe
 
 ```js
 #!/usr/bin/env node
@@ -37,6 +39,7 @@ File in questo blocco:
 import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync } from "node:fs";
 import { join, relative, extname, basename } from "node:path";
 import { execFileSync } from "node:child_process";
+import { BINARY_EXT, blockNames, isBinaryContent } from "./snapshot-lib.mjs";
 
 const REPO_ROOT = process.cwd();
 const args = process.argv.slice(2);
@@ -68,20 +71,6 @@ const EXCLUDE_DIR_NAMES = new Set([
   ".pw-tmp",
   ".nitro",
   ".vinxi",
-]);
-
-const BINARY_EXT = new Set([
-  ".ico",
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".woff",
-  ".woff2",
-  ".ttf",
-  ".eot",
-  ".otf",
 ]);
 
 const LOCKFILE_NAMES = new Set(["package-lock.json", "bun.lock", "yarn.lock", "pnpm-lock.yaml"]);
@@ -118,6 +107,12 @@ function classify(rel) {
   if (isEnvFile(name)) return "env";
   if (LOCKFILE_NAMES.has(name)) return "lockfile";
   if (BINARY_EXT.has(ext)) return "binary";
+  // un file con estensione di testo ma contenuto binario (per esempio un .svg binario) non va nei blocchi
+  try {
+    if (isBinaryContent(readFileSync(join(REPO_ROOT, rel)))) return "binary";
+  } catch {
+    /* illeggibile: resta com'è */
+  }
   return "text";
 }
 
@@ -393,12 +388,10 @@ const areaKeys = [...byArea.keys()].sort();
 for (const area of areaKeys) {
   const files = byArea.get(area);
   const blocks = packArea(area, files);
-  const suffixes =
-    blocks.length > 1 ? "abcdefghijklmnopqrstuvwxyz".slice(0, blocks.length).split("") : [""];
   const outNames = [];
+  const names = blockNames(area, blocks.length);
   blocks.forEach((block, i) => {
-    const suffix = blocks.length > 1 ? `-${suffixes[i]}` : "";
-    const name = `${area}${suffix}.md`;
+    const name = names[i];
     outNames.push(name);
     const uniqueFiles = [...new Set(block.files)];
     const fileList = uniqueFiles.map((f) => `- \`${f}\``).join("\n");
@@ -543,6 +536,178 @@ console.log(
     2,
   ),
 );
+```
+
+### `scripts/snapshot-lib.mjs`
+
+87 righe
+
+```js
+// Funzioni pure di generate-snapshot.mjs, separate perché lo script esegue
+// tutto all'import e così si possono provare con un test.
+
+// Estensioni di file binari (immagini, audio, video, font, archivi, ...):
+// stanno solo in TREE.md, mai nei blocchi di files/ (motivo "binary").
+// .svg non c'è: è testo; se un .svg è binario lo riconosce isBinaryContent.
+export const BINARY_EXT = new Set([
+  ".ico",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".avif",
+  ".bmp",
+  ".tif",
+  ".tiff",
+  ".heic",
+  ".webm",
+  ".mp4",
+  ".m4v",
+  ".mov",
+  ".mkv",
+  ".avi",
+  ".mp3",
+  ".m4a",
+  ".wav",
+  ".ogg",
+  ".flac",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".eot",
+  ".otf",
+  ".pdf",
+  ".zip",
+  ".gz",
+  ".tgz",
+  ".tar",
+  ".7z",
+  ".wasm",
+  ".bin",
+  ".sqlite",
+  ".db",
+]);
+
+/** `true` se il contenuto è binario: un byte NUL o UTF-8 non valido nei primi 8000 byte. */
+export function isBinaryContent(buf) {
+  const head = buf.subarray(0, 8000);
+  if (head.includes(0)) return true;
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  // se il file continua oltre i 8000 byte, il taglio può spezzare un carattere: si tolgono fino a 3 byte di coda
+  const maxCut = buf.length > head.length ? 3 : 0;
+  for (let cut = 0; cut <= maxCut; cut++) {
+    try {
+      decoder.decode(head.subarray(0, head.length - cut));
+      return false;
+    } catch {
+      /* riprova con un byte in meno */
+    }
+  }
+  return true;
+}
+
+/** Suffisso del blocco `i` (da 0): a … z, aa, ab, … az, ba, … zz, aaa, … (base 26 senza zero: mai due uguali). */
+export function blockSuffix(i) {
+  let n = i + 1;
+  let s = "";
+  while (n > 0) {
+    n -= 1;
+    s = String.fromCharCode(97 + (n % 26)) + s;
+    n = Math.floor(n / 26);
+  }
+  return s;
+}
+
+/** Nomi dei file dei blocchi di un'area: un solo blocco non ha suffisso. Lancia se due nomi coincidono. */
+export function blockNames(area, count) {
+  const names = Array.from({ length: count }, (_, i) =>
+    count > 1 ? `${area}-${blockSuffix(i)}.md` : `${area}.md`,
+  );
+  if (new Set(names).size !== names.length) {
+    throw new Error(`Nomi di blocco duplicati per l'area ${area}`);
+  }
+  return names;
+}
+```
+
+### `scripts/snapshot-lib.test.mjs`
+
+73 righe
+
+```js
+import { describe, expect, it } from "vitest";
+import { BINARY_EXT, blockNames, blockSuffix, isBinaryContent } from "./snapshot-lib.mjs";
+
+describe("blockSuffix", () => {
+  it("va da a a z e poi continua con aa, ab, …", () => {
+    expect(blockSuffix(0)).toBe("a");
+    expect(blockSuffix(25)).toBe("z");
+    expect(blockSuffix(26)).toBe("aa");
+    expect(blockSuffix(27)).toBe("ab");
+    expect(blockSuffix(51)).toBe("az");
+    expect(blockSuffix(52)).toBe("ba");
+    expect(blockSuffix(701)).toBe("zz");
+    expect(blockSuffix(702)).toBe("aaa");
+  });
+
+  it("non produce mai due suffissi uguali", () => {
+    const all = Array.from({ length: 5000 }, (_, i) => blockSuffix(i));
+    expect(new Set(all).size).toBe(all.length);
+    expect(all.every((s) => /^[a-z]+$/.test(s))).toBe(true);
+  });
+});
+
+describe("blockNames", () => {
+  it("100 blocchi finti: 100 nomi distinti, senza «undefined»", () => {
+    const names = blockNames("02-src", 100);
+    expect(names).toHaveLength(100);
+    expect(new Set(names).size).toBe(100);
+    expect(names.some((n) => n.includes("undefined"))).toBe(false);
+    expect(names[0]).toBe("02-src-a.md");
+    expect(names[25]).toBe("02-src-z.md");
+    expect(names[26]).toBe("02-src-aa.md");
+    expect(names[27]).toBe("02-src-ab.md");
+    expect(names[99]).toBe("02-src-cv.md");
+  });
+
+  it("un solo blocco non ha suffisso", () => {
+    expect(blockNames("03-docs", 1)).toEqual(["03-docs.md"]);
+  });
+});
+
+describe("file binari", () => {
+  it("le estensioni multimediali e binarie sono escluse", () => {
+    for (const ext of [
+      ".webm",
+      ".mp4",
+      ".gif",
+      ".jpg",
+      ".jpeg",
+      ".webp",
+      ".png",
+      ".mov",
+      ".pdf",
+      ".zip",
+    ]) {
+      expect(BINARY_EXT.has(ext)).toBe(true);
+    }
+    expect(BINARY_EXT.has(".svg")).toBe(false);
+  });
+
+  it("riconosce il contenuto binario e non il testo (anche con accenti)", () => {
+    expect(isBinaryContent(Buffer.from("<svg>àèìòù «€»</svg>", "utf8"))).toBe(false);
+    expect(
+      isBinaryContent(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00])),
+    ).toBe(true);
+    expect(isBinaryContent(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x41]))).toBe(true);
+  });
+
+  it("un carattere spezzato dal taglio a 8000 byte non rende binario un file lungo", () => {
+    const text = Buffer.from("a".repeat(7999) + "é" + "b".repeat(100), "utf8");
+    expect(isBinaryContent(text)).toBe(false);
+  });
+});
 ```
 
 ### `scripts/sync-snapshot.sh`

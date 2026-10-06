@@ -537,9 +537,11 @@
     },
     {
       "name": "files/08-scripts-config-e.md",
-      "bytes": 51254,
+      "bytes": 56066,
       "files": [
         "scripts/generate-snapshot.mjs",
+        "scripts/snapshot-lib.mjs",
+        "scripts/snapshot-lib.test.mjs",
         "scripts/sync-snapshot.sh",
         "scripts/theme-map.mjs",
         "scripts/token-legacy-files.txt",
@@ -620,202 +622,27 @@
     },
     {
       "name": "files/12-docs-other-a.md",
-      "bytes": 34435,
+      "bytes": 42191,
       "files": [
         "docs/theme-debt.md",
         "docs/visual/fase4/console.txt",
         "docs/visual/fase4/misure.json",
         "docs/visual/fase4b/console.txt",
-        "docs/visual/fase4b/misure.json"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-b.md",
-      "bytes": 48525,
-      "files": [
-        "docs/visual/fase4b/prototipo.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-c.md",
-      "bytes": 49720,
-      "files": [
-        "docs/visual/fase4b/prototipo.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-d.md",
-      "bytes": 49755,
-      "files": [
-        "docs/visual/fase4b/prototipo.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-e.md",
-      "bytes": 49712,
-      "files": [
-        "docs/visual/fase4b/prototipo.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-f.md",
-      "bytes": 49446,
-      "files": [
-        "docs/visual/fase4b/prototipo.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-g.md",
-      "bytes": 49777,
-      "files": [
-        "docs/visual/fase4b/prototipo.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-h.md",
-      "bytes": 49538,
-      "files": [
-        "docs/visual/fase4b/prototipo.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-i.md",
-      "bytes": 49721,
-      "files": [
-        "docs/visual/fase4b/prototipo.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-j.md",
-      "bytes": 49888,
-      "files": [
-        "docs/visual/fase4b/prototipo.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-k.md",
-      "bytes": 48619,
-      "files": [
-        "docs/visual/fase4b/prototipo.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-l.md",
-      "bytes": 49426,
-      "files": [
-        "docs/visual/fase4b/prototipo.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-m.md",
-      "bytes": 49908,
-      "files": [
-        "docs/visual/fase4b/prototipo.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-n.md",
-      "bytes": 28887,
-      "files": [
-        "docs/visual/fase4b/prototipo.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-o.md",
-      "bytes": 49668,
-      "files": [
-        "docs/visual/fase4b/v2-chiaro.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-p.md",
-      "bytes": 48975,
-      "files": [
-        "docs/visual/fase4b/v2-chiaro.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-q.md",
-      "bytes": 49492,
-      "files": [
-        "docs/visual/fase4b/v2-chiaro.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-r.md",
-      "bytes": 48657,
-      "files": [
-        "docs/visual/fase4b/v2-chiaro.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-s.md",
-      "bytes": 49678,
-      "files": [
-        "docs/visual/fase4b/v2-chiaro.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-t.md",
-      "bytes": 49629,
-      "files": [
-        "docs/visual/fase4b/v2-chiaro.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-u.md",
-      "bytes": 49385,
-      "files": [
-        "docs/visual/fase4b/v2-chiaro.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-v.md",
-      "bytes": 49537,
-      "files": [
-        "docs/visual/fase4b/v2-chiaro.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-w.md",
-      "bytes": 49425,
-      "files": [
-        "docs/visual/fase4b/v2-chiaro.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-x.md",
-      "bytes": 49096,
-      "files": [
-        "docs/visual/fase4b/v2-chiaro.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-y.md",
-      "bytes": 49696,
-      "files": [
-        "docs/visual/fase4b/v2-chiaro.webm"
-      ]
-    },
-    {
-      "name": "files/12-docs-other-z.md",
-      "bytes": 34084,
-      "files": [
-        "docs/visual/fase4b/v2-chiaro.webm",
+        "docs/visual/fase4b/misure.json",
         "docs/visual/fase6a/posizioni-nodi.json",
         "docs/visual/fase6b11/REPORT.md"
       ]
     },
     {
-      "name": "files/12-docs-other-undefined.md",
-      "bytes": 49918,
+      "name": "files/12-docs-other-b.md",
+      "bytes": 49910,
       "files": [
         "docs/visual/fase6b11/misure.json"
       ]
     },
     {
-      "name": "files/12-docs-other-undefined.md",
-      "bytes": 16961,
+      "name": "files/12-docs-other-c.md",
+      "bytes": 16953,
       "files": [
         "docs/visual/fase6b11/misure.json"
       ]
@@ -954,6 +781,10 @@
       "reason": "binary"
     },
     {
+      "file": "docs/visual/fase4b/prototipo.webm",
+      "reason": "binary"
+    },
+    {
       "file": "docs/visual/fase4b/v2-chiaro-movimento-ridotto.png",
       "reason": "binary"
     },
@@ -967,6 +798,10 @@
     },
     {
       "file": "docs/visual/fase4b/v2-chiaro-t500.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase4b/v2-chiaro.webm",
       "reason": "binary"
     },
     {
@@ -1699,6 +1534,8 @@
         "scripts/extract-golden.mjs",
         "scripts/generate-index.mjs",
         "scripts/generate-snapshot.mjs",
+        "scripts/snapshot-lib.mjs",
+        "scripts/snapshot-lib.test.mjs",
         "scripts/sync-snapshot.sh",
         "scripts/theme-map.mjs",
         "scripts/token-legacy-files.txt",
@@ -1759,8 +1596,6 @@
         "docs/visual/fase4/misure.json",
         "docs/visual/fase4b/console.txt",
         "docs/visual/fase4b/misure.json",
-        "docs/visual/fase4b/prototipo.webm",
-        "docs/visual/fase4b/v2-chiaro.webm",
         "docs/visual/fase6a/posizioni-nodi.json",
         "docs/visual/fase6b11/REPORT.md",
         "docs/visual/fase6b11/misure.json"
@@ -1768,32 +1603,7 @@
       "outFiles": [
         "12-docs-other-a.md",
         "12-docs-other-b.md",
-        "12-docs-other-c.md",
-        "12-docs-other-d.md",
-        "12-docs-other-e.md",
-        "12-docs-other-f.md",
-        "12-docs-other-g.md",
-        "12-docs-other-h.md",
-        "12-docs-other-i.md",
-        "12-docs-other-j.md",
-        "12-docs-other-k.md",
-        "12-docs-other-l.md",
-        "12-docs-other-m.md",
-        "12-docs-other-n.md",
-        "12-docs-other-o.md",
-        "12-docs-other-p.md",
-        "12-docs-other-q.md",
-        "12-docs-other-r.md",
-        "12-docs-other-s.md",
-        "12-docs-other-t.md",
-        "12-docs-other-u.md",
-        "12-docs-other-v.md",
-        "12-docs-other-w.md",
-        "12-docs-other-x.md",
-        "12-docs-other-y.md",
-        "12-docs-other-z.md",
-        "12-docs-other-undefined.md",
-        "12-docs-other-undefined.md"
+        "12-docs-other-c.md"
       ]
     },
     "13-misc": {

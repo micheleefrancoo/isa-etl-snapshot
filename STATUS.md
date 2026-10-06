@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-10-06T09:02:24Z (UTC)
+Generato: 2026-10-06T09:10:26Z (UTC)
 
 ## Type check
 
@@ -9,7 +9,7 @@ Nessuno script "typecheck" in package.json: eseguito il comando diretto.
 Comando: `npx tsc --noEmit`
 
 Esito: OK (exit 0)
-Durata: 16s
+Durata: 14s
 
 Ultime 60 righe di output:
 ```
@@ -20,7 +20,7 @@ Ultime 60 righe di output:
 Comando: `npm run lint`
 
 Esito: FALLITO (exit 1)
-Durata: 15s
+Durata: 14s
 
 Ultime 60 righe di output:
 ```
@@ -87,7 +87,7 @@ Ultime 60 righe di output:
 Comando: `npm test`
 
 Esito: OK (exit 0)
-Durata: 48s
+Durata: 46s
 
 Ultime 60 righe di output:
 ```
@@ -100,13 +100,13 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
  RUN  v5.0.1 /workspaces/isa-glass-platform
 
 
- Test Files  55 passed (55)
-      Tests  1132 passed (1132)
-   Start at  09:02:56
-   Duration  46.52s (tests 86%, import 8%, transform 4%, worker 1%)
+ Test Files  56 passed (56)
+      Tests  1139 passed (1139)
+   Start at  09:10:55
+   Duration  45.23s (tests 87%, import 8%, transform 4%, worker 1%)
 
-    Isolate  55 workers spawned · ~117ms startup each (spawn + environment, per file)
-             at least ~6.30s faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  56 workers spawned · ~116ms startup each (spawn + environment, per file)
+             at least ~6.37s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -115,7 +115,7 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 Comando: `npm run build`
 
 Esito: OK (exit 0)
-Durata: 9s
+Durata: 7s
 
 Ultime 60 righe di output:
 ```
@@ -170,7 +170,7 @@ Ultime 60 righe di output:
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.35s
+✓ built in 1.12s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -188,7 +188,7 @@ Colori, raggi e ombre letterali nei file controllati (scripts/check-tokens.mjs).
 Comando: `node scripts/check-tokens.mjs`
 
 Esito: OK (exit 0)
-Durata: 0s
+Durata: 1s
 
 Ultime 60 righe di output:
 ```
@@ -198,6 +198,7 @@ check-tokens: 0 violazioni nei file controllati; debito preesistente: 26 (6 ombr
 ## Git log (ultimi 20 commit)
 
 ```
+9affb87 Snapshot: esclude i binari multimediali, suffisso dei blocchi oltre la 'z'
 f9e1cfb Fase 6b.1.1: report di validazione, registro delle richieste di rete fallite
 78cb9ee Fase 6b.1.1: verifica nel browser dello zoom automatico e correzione della misura a fine animazione
 681c72a Fase 6b.1.1: test dell'animatore, easing a seno (pendenza ≤ π/2) per rispettare R4
@@ -217,7 +218,6 @@ a39ee3a Fase 6b.1: elenco delle parti del prototipo da portare (README di etl-ca
 d560fdd Fase 6b.0: dominio, colonne multiple nelle voci
 8db8087 Fase 6a.2: report di validazione
 a7a2127 Baseline visiva rigenerata: la barra dei controlli riduce l'altezza del canvas
-4a51045 Fase 6a.2: un pannello alla volta, spinta senza sovrapposizioni, barra dei controlli
 ```
 
 ## Branch

@@ -7,6 +7,8 @@ File in questo blocco:
 - `docs/visual/fase4/misure.json`
 - `docs/visual/fase4b/console.txt`
 - `docs/visual/fase4b/misure.json`
+- `docs/visual/fase6a/posizioni-nodi.json`
+- `docs/visual/fase6b11/REPORT.md`
 
 ---
 
@@ -1500,5 +1502,213 @@ nessun errore né avviso in console
     }
   }
 }
+```
+
+### `docs/visual/fase6a/posizioni-nodi.json`
+
+107 righe
+
+```json
+[
+  {
+    "bordo": "right",
+    "zoom": 1,
+    "nodi": {
+      "ds1": {
+        "prima": "42,378",
+        "dopo": "42,378"
+      },
+      "op-filter": {
+        "prima": "276,248",
+        "dopo": "276,248"
+      },
+      "op-join": {
+        "prima": "276,378",
+        "dopo": "276,378"
+      },
+      "op-sort": {
+        "prima": "276,534",
+        "dopo": "276,534"
+      },
+      "op-export": {
+        "prima": "458,534",
+        "dopo": "458,534"
+      }
+    }
+  },
+  {
+    "bordo": "top",
+    "zoom": 1,
+    "nodi": {
+      "ds1": {
+        "prima": "42,378",
+        "dopo": "42,560"
+      },
+      "op-filter": {
+        "prima": "276,248",
+        "dopo": "276,430"
+      },
+      "op-join": {
+        "prima": "276,378",
+        "dopo": "276,560"
+      },
+      "op-sort": {
+        "prima": "276,534",
+        "dopo": "276,716"
+      },
+      "op-export": {
+        "prima": "458,534",
+        "dopo": "458,716"
+      }
+    }
+  },
+  {
+    "bordo": "bottom",
+    "zoom": 1,
+    "nodi": {
+      "ds1": {
+        "prima": "42,338",
+        "dopo": "42,338"
+      },
+      "op-filter": {
+        "prima": "276,208",
+        "dopo": "276,208"
+      },
+      "op-join": {
+        "prima": "276,338",
+        "dopo": "276,338"
+      },
+      "op-sort": {
+        "prima": "276,494",
+        "dopo": "276,494"
+      },
+      "op-export": {
+        "prima": "458,494",
+        "dopo": "458,494"
+      }
+    }
+  },
+  {
+    "bordo": "left",
+    "zoom": 1,
+    "nodi": {
+      "ds1": {
+        "prima": "42,338",
+        "dopo": "322,338"
+      },
+      "op-filter": {
+        "prima": "276,208",
+        "dopo": "556,208"
+      },
+      "op-join": {
+        "prima": "276,338",
+        "dopo": "556,338"
+      },
+      "op-sort": {
+        "prima": "276,494",
+        "dopo": "556,494"
+      },
+      "op-export": {
+        "prima": "458,494",
+        "dopo": "738,494"
+      }
+    }
+  }
+]
+```
+
+### `docs/visual/fase6b11/REPORT.md`
+
+89 righe
+
+```md
+# Fase 6b.1.1: zoom automatico, report di validazione
+
+Verifica nel browser reale (`node scripts/e2e-fase6b11.mjs`), orologio controllato
+(16 ms per passo, un campione di ogni frame), a 1440×900 e 1280×720 con una scena
+densa di 32 nodi che riempie tutta l'area sicura a pannelli chiusi.
+Esito: **227 prove, 0 fallite**, ripetuto 11 volte senza differenze (le misure sotto
+sono identiche tra le esecuzioni, salvo il numero di frame campionati: 920–924).
+
+Misure complete in `misure.json`.
+
+## Numeri per requisito
+
+44 transizioni (cassetta e Inspector sui 4 bordi, apri e chiudi; cambio scheda;
+cassetta → Inspector su un altro bordo; spostamento dell'Inspector su 3 bordi), 905 frame campionati.
+
+| Req. | Cosa | Prove | Esito | Numeri |
+|------|------|-------|-------|--------|
+| R1 | a riposo ogni nodo richiesto sta nell'area sicura e non tocca pannelli né widget | 46 | 46 ok | 32 nodi su 32 in ogni stato a riposo; nessun avviso attivo |
+| R2 | a ogni frame i nodi richiesti stanno nel canvas di quel frame (margine 24 px) | 44 | 44 ok | scarto massimo **0,000 px** su 905 frame (tolleranza 0,5) |
+| R3 | zoom monotono, nessun overshoot, almeno 10 frame | 44 | 44 ok | **19 frame attivi** per ogni animazione (≈ 300 ms); zoom minimo **0,453**, massimo **1,000**; cambio scheda: vista ferma (0 px) |
+| R4 | nessun salto: passo massimo ≤ 2,5 × la media | 44 | 44 ok | rapporto massimo **1,59** (limite teorico dell'easing a seno: π/2 ≈ 1,57); spostamento massimo per frame **31,24 px** (Inspector spostato su left, 1440) |
+| R5 | movimento ridotto: stato finale immediato | 8 | 8 ok | 0 frame di animazione, R1 vale subito, apri → chiudi torna alla vista iniziale |
+| R6 | apri → chiudi senza altre azioni: la vista finale è quella iniziale | 16 | 16 ok | scarto ≤ 0,5 px e 1e-3 di zoom (cassetta e Inspector × 4 bordi × 2 finestre) |
+
+Altre prove: ridimensionamento (12 passi per finestra) senza nodi fuori area e,
+tornando alla dimensione di prima, vista identica al bit; rotella a metà
+transizione: la vista resta dov'è (solo 40 px di scorrimento) e il pannello finisce;
+nessun guscio dopo lo spostamento; nessuna transizione CSS di larghezza/altezza;
+1,60–1,63 `requestAnimationFrame` per passo (un solo ciclo condiviso).
+
+### Due cambi ravvicinati (apri e, dopo 6 frame, chiudi)
+
+Con la nuova misura (rapporto passo/media calcolato per ciascuna delle due
+animazioni): **1,72** a 1440 e a 1280×720, passo massimo 26,48 px (1440) e 28,14 px
+(1280×720). La posizione è continua; al momento dell'inversione la velocità cade a
+zero e la seconda animazione riparte da ferma (nessun salto di posizione, ma uno
+scatto di velocità: scelta di progetto, la seconda animazione parte dalla vista
+corrente con la sua curva).
+
+La misura precedente divideva il passo massimo della prima animazione per la media
+di entrambe (la seconda è molto più corta): dava 3,59–4,16 senza che ci fosse alcun
+salto di posizione. Per questo è stata cambiata, non per far passare la prova.
+
+## MIN_ZOOM
+
+`MIN_ZOOM` = 0,35. Zoom necessario per tenere tutti i 32 nodi richiesti con
+l'Inspector in basso: **0,535** a 1440×900 e **0,453** a 1280×720. Entrambi sono
+sopra il minimo: nessuno dei due casi arriva al limite, l'avviso «nodi fuori
+dall'area» non compare (`avviso: false`) e lo zoom finale coincide con quello
+necessario. Il comportamento al limite (zoom fermo a `MIN_ZOOM`, avviso) è
+coperto dai test unitari di `autoFit` (`autofit.test.ts`), non da questa scena.
+
+## Il difetto di `clientWidth` (corretto in `Dock.tsx`)
+
+`DockLayout` misura l'area del canvas con `el.clientWidth` / `clientHeight`, che sono
+**interi arrotondati**, e li tiene in uno stato React. Durante l'animazione la
+larghezza del canvas è frazionaria (per esempio 969,1 px). L'ultima misura
+intermedia (969) veniva consegnata a `animator.onMeasure` quando l'animazione
+era già finita (l'animatore ignora le misure durante l'animazione, ma quella
+arrivava dopo): confrontata con l'area calcolata (968) differiva di 1 px, oltre la
+tolleranza di 0,5 px, e la vista veniva ricalcolata sull'area sbagliata; poi
+arrivava la misura corretta (968) e la vista veniva ricalcolata di nuovo.
+
+Effetti osservati: per un frame i nodi più a destra stavano a 23 px dal bordo invece
+di 24 (R2, scarto di 1,00 px, intermittente), la vista finale oscillava
+(zoom 0,7307 → 0,7297) e, dopo un ridimensionamento e il ritorno alla dimensione di
+prima, la vista non tornava quella di prima (1280×720: x 236 → 181, zoom 0,453 → 0,531).
+
+Correzione: l'effetto che chiama `onMeasure` legge la misura di adesso con
+`getBoundingClientRect()` (frazionaria, come quella calcolata) invece dello stato
+intero; lo stato `area` resta intero per la disposizione dei widget.
+
+## Richieste di rete fallite
+
+Una sola esecuzione su 15 ha registrato in console «Failed to load resource:
+net::ERR_CONNECTION_REFUSED» (nessun indirizzo: la console non lo dice). Non è
+stata riprodotta nelle 14 esecuzioni successive, anche con 3 esecuzioni in
+parallelo. Lo script ora registra l'indirizzo di ogni richiesta fallita
+(`requestfailed`) e la posizione dell'errore in console, senza filtrare nulla:
+se ricompare, la prova «nessun errore in console» riporta l'URL.
+
+## Schermate
+
+- `cassetta-a-sinistra-scena-densa-{1440,1280x720}-{chiaro,scuro}.png`
+- `inspector-in-basso-{1440,1280x720}-dopo-{chiaro,scuro}.png`; le schermate «prima»
+  sono quelle già committate in `docs/visual/fase6b1/inspector-in-basso-*`.
+- `striscia-apertura-inspector-in-basso.png` e `striscia-chiusura-inspector-in-basso.png`:
+  sei fotogrammi (0, 20, 40, 60, 80, 100 %), con il riquadro del canvas evidenziato.
 ```
 

@@ -44,12 +44,12 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `docs/visual/fase4b/prototipo-t0.png` — binary, 96885 B
 - `docs/visual/fase4b/prototipo-t250.png` — binary, 97854 B
 - `docs/visual/fase4b/prototipo-t500.png` — binary, 98105 B
-- `docs/visual/fase4b/prototipo.webm` — 1352 righe (342834 B)
+- `docs/visual/fase4b/prototipo.webm` — binary, 342834 B
 - `docs/visual/fase4b/v2-chiaro-movimento-ridotto.png` — binary, 113739 B
 - `docs/visual/fase4b/v2-chiaro-t0.png` — binary, 112633 B
 - `docs/visual/fase4b/v2-chiaro-t250.png` — binary, 113583 B
 - `docs/visual/fase4b/v2-chiaro-t500.png` — binary, 113830 B
-- `docs/visual/fase4b/v2-chiaro.webm` — 1259 righe (314264 B)
+- `docs/visual/fase4b/v2-chiaro.webm` — binary, 314264 B
 - `docs/visual/fase4b/v2-scuro-t0.png` — binary, 88476 B
 - `docs/visual/fase4b/v2-scuro-t250.png` — binary, 89583 B
 - `docs/visual/fase4b/v2-scuro-t500.png` — binary, 89977 B
@@ -141,7 +141,9 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `scripts/e2e-fase6b11.mjs` — 820 righe (31210 B)
 - `scripts/extract-golden.mjs` — 386 righe (13437 B)
 - `scripts/generate-index.mjs` — 114 righe (3872 B)
-- `scripts/generate-snapshot.mjs` — 528 righe (17668 B)
+- `scripts/generate-snapshot.mjs` — 519 righe (17701 B)
+- `scripts/snapshot-lib.mjs` — 87 righe (2159 B)
+- `scripts/snapshot-lib.test.mjs` — 73 righe (2446 B)
 - `scripts/sync-snapshot.sh` — 238 righe (7197 B)
 - `scripts/theme-map.mjs` — 96 righe (3623 B)
 - `scripts/token-legacy-files.txt` — 169 righe (5299 B)
