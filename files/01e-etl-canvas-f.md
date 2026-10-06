@@ -2,24 +2,1134 @@
 
 File in questo blocco:
 
+- `src/etl-canvas/__tests__/view.test.ts`
+- `src/etl-canvas/actions.ts`
+- `src/etl-canvas/canvas.css`
+- `src/etl-canvas/contrast.ts`
+- `src/etl-canvas/drop.ts`
 - `src/etl-canvas/engine.ts`
 - `src/etl-canvas/flow.ts`
 - `src/etl-canvas/icons.tsx`
 - `src/etl-canvas/index.ts`
 - `src/etl-canvas/inspector/ActionMenu.tsx`
 - `src/etl-canvas/inspector/BlockedNotice.tsx`
-- `src/etl-canvas/inspector/ColumnPicker.tsx`
-- `src/etl-canvas/inspector/ExpandedPanel.tsx`
-- `src/etl-canvas/inspector/Field.tsx`
-- `src/etl-canvas/inspector/Header.tsx`
-- `src/etl-canvas/inspector/Inspector.tsx`
-- `src/etl-canvas/inspector/Menu.tsx`
 
 ---
 
+### `src/etl-canvas/__tests__/view.test.ts`
+
+194 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import { CARD, LABEL_H } from "../../etl-layout";
+import { ZOOM_MAX, ZOOM_MIN } from "../../etl-store";
+import { fit, zoomAtPoint, zoomIn, zoomOut, zoomReset } from "../actions";
+import { prototypeScene } from "../seed";
+import { bounds, fitView, minimapFrame, toWorld, viewFromMinimap, wheelPan, zoomAt } from "../view";
+import { SIZE, storeWith } from "./helpers";
+
+function allInside(store: ReturnType<typeof storeWith>, size = SIZE): void {
+  const { view, graph } = store.getState();
+  for (const c of Object.values(graph.cards)) {
+    const x1 = c.x * view.zoom + view.x;
+    const y1 = c.y * view.zoom + view.y;
+    const x2 = (c.x + CARD) * view.zoom + view.x;
+    const y2 = (c.y + CARD + LABEL_H) * view.zoom + view.y;
+    expect(x1, c.id).toBeGreaterThanOrEqual(0);
+    expect(y1, c.id).toBeGreaterThanOrEqual(0);
+    expect(x2, c.id).toBeLessThanOrEqual(size.w);
+    expect(y2, c.id).toBeLessThanOrEqual(size.h);
+  }
+}
+
+describe("Adatta", () => {
+  it("dopo la chiamata tutti i nodi rientrano nell'area visibile", () => {
+    const store = storeWith();
+    store.dispatch({ type: "setView", payload: { x: -900, y: 400, zoom: 2 } });
+    fit(store, SIZE);
+    allInside(store);
+  });
+
+  it("vale per finestre piccole e grandi", () => {
+    for (const size of [
+      { w: 320, h: 240 },
+      { w: 1440, h: 900 },
+      { w: 600, h: 1200 },
+    ]) {
+      const store = storeWith();
+      fit(store, size);
+      allInside(store, size);
+    }
+  });
+
+  it("vale anche per una scena sparsa su tutto il mondo", () => {
+    const size = { w: 1200, h: 800 };
+    const store = storeWith();
+    const s = prototypeScene();
+    const far = { ...s.graph.cards["op-export"]!, x: 2400, y: 1400 };
+    store.replaceState({
+      ...s,
+      graph: { ...s.graph, cards: { ...s.graph.cards, "op-export": far } },
+    });
+    fit(store, size);
+    allInside(store, size);
+  });
+
+  it("oltre il limite di zoom (0,35) Adatta si ferma al limite, come nel prototipo", () => {
+    const store = storeWith();
+    const s = prototypeScene();
+    const far = { ...s.graph.cards["op-export"]!, x: 2400, y: 1400 };
+    store.replaceState({
+      ...s,
+      graph: { ...s.graph, cards: { ...s.graph.cards, "op-export": far } },
+    });
+    fit(store, { w: 320, h: 240 });
+    expect(store.getState().view.zoom).toBe(ZOOM_MIN);
+  });
+
+  it("con il margine del prototipo (48) e zoom al più 1,25", () => {
+    const one = [{ x: 100, y: 100 }];
+    const v = fitView(one, { w: 2000, h: 2000 });
+    expect(v.zoom).toBe(1.25);
+    const b = bounds(one)!;
+    // centrato
+    expect(v.x + b.x1 * v.zoom).toBeCloseTo((2000 - (b.x2 - b.x1) * v.zoom) / 2, 6);
+  });
+
+  it("canvas vuoto: vista di partenza", () => {
+    expect(fitView([], SIZE)).toEqual({ x: 0, y: 0, zoom: 1 });
+  });
+});
+
+describe("zoom", () => {
+  it("limiti del prototipo (0,35 – 2)", () => {
+    const store = storeWith();
+    for (let i = 0; i < 40; i++) zoomIn(store, SIZE);
+    expect(store.getState().view.zoom).toBe(ZOOM_MAX);
+    for (let i = 0; i < 80; i++) zoomOut(store, SIZE);
+    expect(store.getState().view.zoom).toBe(ZOOM_MIN);
+    zoomReset(store, SIZE);
+    expect(store.getState().view.zoom).toBe(1);
+  });
+
+  it("attorno al puntatore il punto del mondo sotto il puntatore non si muove", () => {
+    const store = storeWith();
+    store.dispatch({ type: "setView", payload: { x: 30, y: 50, zoom: 0.8 } });
+    const before = toWorld(store.getState().view, 400, 300);
+    zoomAtPoint(store, 400, 300, 1.7);
+    const after = toWorld(store.getState().view, 400, 300);
+    expect(after.x).toBeCloseTo(before.x, 6);
+    expect(after.y).toBeCloseTo(before.y, 6);
+    expect(store.getState().view.zoom).toBeCloseTo(1.7, 6);
+  });
+
+  it("zoomAt è puro e rispetta i limiti", () => {
+    const v = { x: 0, y: 0, zoom: 1 };
+    expect(zoomAt(v, 10, 10, 99).zoom).toBe(ZOOM_MAX);
+    expect(v).toEqual({ x: 0, y: 0, zoom: 1 });
+  });
+
+  it("la vista passa da etl-store: la modifica notifica gli ascoltatori", () => {
+    const store = storeWith();
+    let n = 0;
+    store.subscribe(() => n++);
+    zoomIn(store, SIZE);
+    expect(n).toBe(1);
+    // e non entra nel registro né nella cronologia
+    expect(store.getLog().some((e) => e.type === "setView")).toBe(false);
+    expect(store.canUndo()).toBe(false);
+  });
+});
+
+describe("minimappa", () => {
+  it("contiene tutti i nodi e la porzione visibile nel riquadro 168 × 104", () => {
+    const store = storeWith();
+    const cards = Object.values(store.getState().graph.cards);
+    const frame = minimapFrame(cards, store.getState().view, SIZE);
+    for (const c of cards) {
+      const l = frame.ox + (c.x - frame.x1) * frame.k;
+      const t = frame.oy + (c.y - frame.y1) * frame.k;
+      expect(l).toBeGreaterThanOrEqual(0);
+      expect(t).toBeGreaterThanOrEqual(0);
+      expect(l + CARD * frame.k).toBeLessThanOrEqual(168 + 1e-9);
+      expect(t + CARD * frame.k).toBeLessThanOrEqual(104 + 1e-9);
+    }
+  });
+
+  it("un clic sulla minimappa porta quel punto al centro dell'area", () => {
+    const store = storeWith();
+    const cards = Object.values(store.getState().graph.cards);
+    const view = store.getState().view;
+    const frame = minimapFrame(cards, view, SIZE);
+    const next = viewFromMinimap(frame, view, SIZE, 84, 52);
+    const center = toWorld(next, SIZE.w / 2, SIZE.h / 2);
+    expect(center.x).toBeCloseTo(frame.x1 + (84 - frame.ox) / frame.k, 6);
+    expect(center.y).toBeCloseTo(frame.y1 + (52 - frame.oy) / frame.k, 6);
+  });
+});
+
+describe("«Adatta» con i margini dei widget e rotella", () => {
+  it("con i margini l'insieme sta nell'area meno i widget", () => {
+    const cards = [
+      { x: 0, y: 0 },
+      { x: 600, y: 300 },
+    ];
+    const size = { w: 1000, h: 600 };
+    const insets = { top: 0, right: 0, bottom: 120, left: 200 };
+    const v = fitView(cards, size, insets);
+    const b = bounds(cards)!;
+    expect(b.x1 * v.zoom + v.x).toBeGreaterThanOrEqual(insets.left - 0.001);
+    expect(b.x2 * v.zoom + v.x).toBeLessThanOrEqual(size.w - insets.right + 0.001);
+    expect(b.y1 * v.zoom + v.y).toBeGreaterThanOrEqual(insets.top - 0.001);
+    expect(b.y2 * v.zoom + v.y).toBeLessThanOrEqual(size.h - insets.bottom + 0.001);
+    // senza margini il risultato è quello di sempre
+    expect(fitView(cards, size)).toEqual(
+      fitView(cards, size, { top: 0, right: 0, bottom: 0, left: 0 }),
+    );
+  });
+
+  it("rotella semplice: pan in verticale (e in orizzontale col trackpad); Maiusc: orizzontale; zoom resta a Cmd/Ctrl", () => {
+    const view = { x: 10, y: 20, zoom: 1.5 };
+    expect(wheelPan(view, { deltaX: 0, deltaY: 30, shiftKey: false })).toEqual({
+      x: 10,
+      y: -10,
+      zoom: 1.5,
+    });
+    expect(wheelPan(view, { deltaX: 8, deltaY: 30, shiftKey: false })).toEqual({
+      x: 2,
+      y: -10,
+      zoom: 1.5,
+    });
+    expect(wheelPan(view, { deltaX: 0, deltaY: 30, shiftKey: true })).toEqual({
+      x: -20,
+      y: 20,
+      zoom: 1.5,
+    });
+    // Maiusc con un trackpad che già invia deltaX: si usa deltaX
+    expect(wheelPan(view, { deltaX: 12, deltaY: 5, shiftKey: true })).toEqual({
+      x: -2,
+      y: 15,
+      zoom: 1.5,
+    });
+  });
+});
+```
+
+### `src/etl-canvas/actions.ts`
+
+42 righe
+
+```ts
+/** Azioni sulla vista, applicate attraverso etl-store (`setView`). */
+import type { Size } from "../etl-layout";
+import type { EtlStore } from "../etl-store";
+import { fitView, zoomAt, zoomCentered, ZOOM_STEP } from "./view";
+import type { Insets } from "./view";
+
+/** "Adatta": inquadra tutti i nodi, evitando lo spazio dei widget in sovrimpressione. */
+export function fit(store: EtlStore, size: Size, insets?: Insets): void {
+  store.dispatch({
+    type: "setView",
+    payload: fitView(Object.values(store.getState().graph.cards), size, insets),
+  });
+}
+
+export function zoomBy(store: EtlStore, size: Size, factor: number): void {
+  const view = store.getState().view;
+  store.dispatch({ type: "setView", payload: zoomCentered(view, size, view.zoom * factor) });
+}
+
+export function zoomIn(store: EtlStore, size: Size): void {
+  zoomBy(store, size, ZOOM_STEP);
+}
+
+export function zoomOut(store: EtlStore, size: Size): void {
+  zoomBy(store, size, 1 / ZOOM_STEP);
+}
+
+export function zoomReset(store: EtlStore, size: Size): void {
+  store.dispatch({
+    type: "setView",
+    payload: zoomCentered(store.getState().view, size, 1),
+  });
+}
+
+/** Zoom attorno al puntatore (`px`, `py` relativi all'area). */
+export function zoomAtPoint(store: EtlStore, px: number, py: number, zoom: number): void {
+  store.dispatch({
+    type: "setView",
+    payload: zoomAt(store.getState().view, px, py, zoom),
+  });
+}
+```
+
+### `src/etl-canvas/canvas.css`
+
+658 righe
+
+```css
+/*
+ * Aspetto del canvas ETL (Fase 4a): nodi, cavi, controlli, minimappa.
+ * Misure e classi del prototipo (docs/prototype/isa-fusion-prototype.html,
+ * righe indicate); colori solo dai token di tokens.css. Tutte le regole
+ * sono limitate a `.etl-canvas`. Il carattere (Manrope) è quello di tutta l'app,
+ * caricato da src/styles.css.
+ */
+@import "./tokens.css";
+
+.etl-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 520px;
+  box-sizing: border-box;
+  padding: 0;
+  background: var(--ec-bg);
+  color: var(--ec-ink);
+  font-family: var(--ec-font);
+  border-radius: var(--ec-r-stage);
+}
+.etl-canvas *,
+.etl-canvas *::before,
+.etl-canvas *::after {
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+/* riga 621-624 */
+.etl-canvas .ec-stage {
+  position: absolute;
+  inset: 0;
+  user-select: none;
+  touch-action: none;
+  border-radius: var(--ec-r-stage);
+  background: var(--ec-stage);
+  overflow: hidden;
+}
+.etl-canvas .ec-stage.ec-pannable {
+  cursor: grab;
+}
+.etl-canvas .ec-stage.ec-panning {
+  cursor: grabbing;
+}
+
+/* righe 3-4 di .world e .links (righe 205-206) */
+.etl-canvas .ec-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+.etl-canvas .ec-links {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* nodo — riga 626 */
+.etl-canvas .ec-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 88px;
+  z-index: 2;
+}
+.etl-canvas .ec-icon-wrap {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  border-radius: var(--ec-r-op);
+  background: var(--ec-node-op);
+  color: var(--ec-node-op-ink);
+  box-shadow: var(--ec-node-op-outline);
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  align-items: center;
+  gap: 6px;
+  padding: 7px;
+}
+.etl-canvas .ec-dataset .ec-icon-wrap {
+  background: var(--ec-node-fill);
+  color: var(--ec-node-fill-ink);
+  border-radius: var(--ec-r-fill);
+  box-shadow: none;
+}
+.etl-canvas .ec-output .ec-icon-wrap {
+  opacity: var(--ec-output-opacity);
+}
+.etl-canvas .ec-selected .ec-icon-wrap {
+  box-shadow: var(--ec-select-ring);
+}
+.etl-canvas .ec-icon-wrap svg {
+  display: block;
+  flex-shrink: 0;
+}
+.etl-canvas .ec-count-1 {
+  grid-template-columns: repeat(1, auto);
+}
+.etl-canvas .ec-count-2 {
+  grid-template-columns: repeat(2, auto);
+}
+.etl-canvas .ec-count-3,
+.etl-canvas .ec-count-6,
+.etl-canvas .ec-count-many {
+  grid-template-columns: repeat(3, auto);
+}
+.etl-canvas .ec-count-1 svg {
+  width: 26px;
+  height: 26px;
+}
+.etl-canvas .ec-count-2 svg {
+  width: 20px;
+  height: 20px;
+}
+.etl-canvas .ec-count-3 svg {
+  width: 17px;
+  height: 17px;
+}
+.etl-canvas .ec-count-6 svg {
+  width: 15px;
+  height: 15px;
+}
+.etl-canvas .ec-count-many svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* output parziale: una fetta per tabella attesa — righe 656-669 */
+.etl-canvas .ec-dataset .ec-icon-wrap.ec-split {
+  padding: 0;
+  display: flex;
+  overflow: hidden;
+  background: var(--ec-split-bg);
+  gap: 0;
+}
+.etl-canvas .ec-split .ec-slice {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.etl-canvas .ec-split .ec-slice.ec-slice-full {
+  background: var(--ec-node-fill);
+  color: var(--ec-node-fill-ink);
+}
+.etl-canvas .ec-split .ec-slice.ec-slice-empty {
+  background: var(--ec-split-empty);
+  color: var(--ec-split-empty-ink);
+}
+.etl-canvas .ec-split .ec-slice + .ec-slice {
+  border-left: 1.5px dashed var(--ec-split-line);
+}
+.etl-canvas .ec-split .ec-slice svg {
+  width: 100%;
+  height: auto;
+  max-width: 22px;
+  max-height: 100%;
+}
+.etl-canvas .ec-split .ec-slice.ec-slice-empty svg {
+  opacity: 0.85;
+}
+
+/* etichetta — righe 680-683 */
+.etl-canvas .ec-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.25;
+  color: var(--ec-ink);
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 2px;
+}
+.etl-canvas .ec-dataset .ec-label {
+  color: var(--ec-accent-text);
+}
+.etl-canvas .ec-partial .ec-label {
+  color: var(--ec-muted);
+  font-style: italic;
+}
+
+/* indicatore ambra — righe 183-187 */
+.etl-canvas .ec-state-dot {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 13px;
+  height: 13px;
+  border-radius: var(--ec-r-pill);
+  background: var(--ec-warn);
+  border: 2.5px solid var(--ec-warn-ring);
+  z-index: 4;
+}
+
+/* cavi — righe 1404-1408 */
+.etl-canvas .ec-link {
+  fill: none;
+  stroke: var(--ec-link);
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.etl-canvas .ec-link-dot-ds {
+  fill: var(--ec-link-dot-fill);
+}
+.etl-canvas .ec-link-dot-op {
+  fill: var(--ec-link-dot-op);
+}
+
+/* flusso nei cavi (riga 1517: fill rgba(108,99,255,0.6)) e tracciato uscente di una dissolvenza */
+.etl-canvas .ec-flow {
+  fill: var(--ec-flow);
+  pointer-events: none;
+}
+.etl-canvas .ec-link-ghost {
+  fill: none;
+  stroke: var(--ec-link);
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* controlli di zoom — righe 138-150 */
+.etl-canvas .ec-zoom {
+  position: absolute;
+  /* posizione e misura: inline, da panels/overlayLayout.ts */
+  box-sizing: border-box;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--ec-r-pill);
+  background: var(--ec-surface-strong);
+  backdrop-filter: blur(var(--ec-glass-blur));
+  border: 1px solid var(--ec-panel-border);
+  box-shadow: var(--ec-glass-shadow);
+}
+.etl-canvas .ec-zoom button {
+  all: unset;
+  cursor: pointer;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ec-r-pill);
+  font-family: var(--ec-font);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ec-ink);
+}
+.etl-canvas .ec-zoom button:hover {
+  background: var(--ec-accent-soft);
+  color: var(--ec-accent-text);
+}
+.etl-canvas .ec-zoom button:focus-visible {
+  outline: 2px solid var(--ec-accent-text);
+  outline-offset: 1px;
+}
+.etl-canvas .ec-zoom .ec-fit {
+  color: var(--ec-accent-text);
+}
+
+/* minimappa — righe 152-161 */
+.etl-canvas .ec-minimap {
+  position: absolute;
+  /* posizione e misura: inline, da panels/overlayLayout.ts */
+  box-sizing: border-box;
+  z-index: 15;
+  border-radius: var(--ec-r-minimap);
+  background: var(--ec-surface-strong);
+  backdrop-filter: blur(var(--ec-glass-blur));
+  border: 1px solid var(--ec-panel-border);
+  box-shadow: var(--ec-glass-shadow);
+  overflow: hidden;
+  cursor: pointer;
+}
+.etl-canvas .ec-mm-node {
+  position: absolute;
+  border-radius: var(--ec-r-xs);
+  background: var(--ec-mm-node);
+}
+.etl-canvas .ec-mm-node.ec-ds {
+  background: var(--ec-mm-node-ds);
+}
+.etl-canvas .ec-mm-view {
+  position: absolute;
+  border: 1.5px solid var(--ec-mm-view-line);
+  border-radius: var(--ec-r-sm);
+  background: var(--ec-mm-view-bg);
+  pointer-events: none;
+}
+
+/* stato vuoto */
+.etl-canvas .ec-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 1;
+}
+.etl-canvas .ec-empty-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ec-ink);
+}
+.etl-canvas .ec-empty-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ec-empty-ink);
+}
+
+/* ── Gesti (Fase 5): a riposo non cambia nulla, tutto compare solo durante il gesto ── */
+
+/* nodo in movimento — righe 627, 639 */
+.etl-canvas .ec-card.ec-dragging {
+  cursor: grabbing;
+  z-index: 20;
+}
+.etl-canvas .ec-card.ec-dragging .ec-icon-wrap {
+  box-shadow: var(--ec-drag-shadow);
+  transform: scale(1.05);
+}
+
+/* esiti del rilascio: ciascuno ha colore e stile di contorno propri (righe 640-642 per fusione e collegamento) */
+.etl-canvas .ec-card.ec-drop-merge .ec-icon-wrap {
+  box-shadow: var(--ec-drop-merge-ring);
+  transform: scale(1.09);
+}
+.etl-canvas .ec-card.ec-drop-merge .ec-icon-wrap svg {
+  transform: scale(0.88);
+}
+.etl-canvas .ec-card.ec-drop-link .ec-icon-wrap {
+  box-shadow: var(--ec-drop-link-ring);
+  transform: scale(1.04);
+}
+.etl-canvas .ec-card.ec-drop-link-reverse .ec-icon-wrap {
+  outline: 3px dashed var(--ec-drop-link-reverse);
+  outline-offset: 3px;
+  transform: scale(1.04);
+}
+.etl-canvas .ec-card.ec-drop-displace .ec-icon-wrap {
+  outline: 3px dotted var(--ec-drop-displace);
+  outline-offset: 3px;
+}
+.etl-canvas .ec-card.ec-drop-reject .ec-icon-wrap {
+  outline: 3px solid var(--ec-drop-reject);
+  outline-offset: 3px;
+}
+
+/* nodi che sparirebbero se si confermasse l'eliminazione */
+.etl-canvas .ec-card.ec-doomed .ec-icon-wrap {
+  outline: 3px dashed var(--ec-doomed);
+  outline-offset: 3px;
+  opacity: 0.55;
+}
+
+/* cavo in cui si inserirebbe la lavorazione (riga 1403, `hot`) */
+.etl-canvas .ec-link.ec-link-hot {
+  stroke: var(--ec-link-insert);
+  stroke-width: 3.4;
+}
+
+/* porte — righe 168-181: compaiono al passaggio del puntatore */
+.etl-canvas .ec-port {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: var(--ec-r-pill);
+  box-sizing: border-box;
+  background: var(--ec-port-fill);
+  border: 2px solid var(--ec-port-line);
+  z-index: 5;
+  cursor: crosshair;
+  opacity: 0;
+  transform: scale(0.5);
+  transition:
+    opacity 0.14s,
+    transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.etl-canvas .ec-card:hover .ec-port {
+  opacity: 1;
+  transform: scale(1);
+}
+.etl-canvas .ec-card.ec-dragging .ec-port {
+  opacity: 0;
+}
+.etl-canvas .ec-port:hover {
+  background: var(--ec-port-line);
+}
+.etl-canvas .ec-port-t {
+  left: calc(44px - 5.5px);
+  top: -5.5px;
+}
+.etl-canvas .ec-port-b {
+  left: calc(44px - 5.5px);
+  top: calc(88px - 5.5px);
+}
+.etl-canvas .ec-port-l {
+  top: calc(44px - 5.5px);
+  left: -5.5px;
+}
+.etl-canvas .ec-port-r {
+  top: calc(44px - 5.5px);
+  left: calc(88px - 5.5px);
+}
+
+/* cavo provvisorio tirato da una porta — riga 3995 */
+.etl-canvas .ec-temp-link {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 19;
+}
+.etl-canvas .ec-temp-link path {
+  fill: none;
+  stroke: var(--ec-temp-link-muted);
+  stroke-width: 2.2;
+  stroke-dasharray: 6 5;
+  stroke-linecap: round;
+}
+.etl-canvas .ec-temp-link circle {
+  fill: var(--ec-temp-link-muted);
+}
+.etl-canvas .ec-temp-link.ec-valid path {
+  stroke: var(--ec-temp-link);
+}
+.etl-canvas .ec-temp-link.ec-valid circle {
+  fill: var(--ec-temp-link);
+}
+
+/* riquadro di selezione — riga 163 */
+.etl-canvas .ec-marquee {
+  position: absolute;
+  z-index: 14;
+  pointer-events: none;
+  border: 1.5px dashed var(--ec-marquee-line);
+  background: var(--ec-marquee-fill);
+  border-radius: var(--ec-r-sm);
+}
+
+/* suggerimento durante un gesto (prototipo: `hint`) */
+.etl-canvas .ec-hint {
+  position: absolute;
+  /* posizione e misura: inline, da panels/overlayLayout.ts */
+  box-sizing: border-box;
+  z-index: 16;
+  padding: 0 14px;
+  line-height: 28px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: var(--ec-r-pill);
+  background: var(--ec-surface-strong);
+  border: 1px solid var(--ec-panel-border);
+  box-shadow: var(--ec-glass-shadow);
+  color: var(--ec-ink);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* conferma di eliminazione — righe 112-132 */
+.etl-canvas .ec-confirm {
+  position: absolute;
+  z-index: 30;
+  width: 246px;
+  padding: 22px;
+  border-radius: var(--ec-r-fill);
+  background: var(--ec-surface-strong);
+  backdrop-filter: blur(var(--ec-glass-blur));
+  border: 1px solid var(--ec-panel-border);
+  box-shadow: var(--ec-overlay-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.etl-canvas .ec-confirm-title {
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--ec-ink);
+}
+.etl-canvas .ec-confirm-text {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ec-empty-ink);
+  margin-top: 3px;
+}
+.etl-canvas .ec-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.etl-canvas .ec-confirm-actions button {
+  all: unset;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 9px 15px;
+  border-radius: var(--ec-r-pill);
+}
+.etl-canvas .ec-confirm-actions button:focus-visible {
+  outline: 2px solid var(--ec-select);
+  outline-offset: 2px;
+}
+.etl-canvas .ec-confirm-actions .ec-confirm-cancel {
+  color: var(--ec-empty-ink);
+  background: var(--ec-accent-soft);
+}
+.etl-canvas .ec-confirm-actions .ec-confirm-cancel:hover {
+  color: var(--ec-ink);
+}
+.etl-canvas .ec-confirm-actions .ec-confirm-ok {
+  background: var(--ec-danger);
+  color: var(--ec-text-on-danger);
+}
+
+/* minimappa ridotta a un pulsante, quando l'area è troppo piccola per ospitarla (Fase 6a.2) */
+.etl-canvas .ec-minimap-toggle {
+  all: unset;
+  cursor: pointer;
+  position: absolute;
+  box-sizing: border-box;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ec-r-minimap);
+  background: var(--ec-surface-strong);
+  backdrop-filter: blur(var(--ec-glass-blur));
+  border: 1px solid var(--ec-panel-border);
+  box-shadow: var(--ec-glass-shadow);
+  color: var(--ec-accent-text);
+}
+.etl-canvas .ec-minimap-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+.etl-canvas .ec-minimap-toggle:focus-visible {
+  outline: 2px solid var(--ec-select);
+  outline-offset: 2px;
+}
+.etl-canvas .ec-mm-close {
+  all: unset;
+  cursor: pointer;
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  z-index: 1;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  color: var(--ec-empty-ink);
+}
+.etl-canvas .ec-mm-close:focus-visible {
+  outline: 2px solid var(--ec-select);
+}
+
+/* pulsanti sul nodo (Fase 6b.1): elimina (×) ed espansione dei box combinati — righe 89-102, 685-694 */
+.etl-canvas .ec-node-btn {
+  all: unset;
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: var(--ec-r-pill);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.7);
+  box-shadow: var(--ec-glass-shadow);
+  transition:
+    opacity 0.16s,
+    transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background 0.16s;
+}
+/* l'area che si può premere è di almeno 32 px, anche se il disegno è più piccolo */
+.etl-canvas .ec-node-btn::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+}
+.etl-canvas .ec-node-btn svg {
+  width: 9px;
+  height: 9px;
+}
+.etl-canvas .ec-del-btn {
+  top: -5px;
+  left: -5px;
+  background: var(--isa-text);
+  color: var(--isa-surface-overlay);
+}
+.etl-canvas .ec-del-btn:hover {
+  background: var(--isa-danger);
+  color: var(--isa-text-on-danger);
+}
+.etl-canvas .ec-expand-btn {
+  top: -7px;
+  right: -7px;
+  width: 24px;
+  height: 24px;
+  background: var(--isa-accent);
+  color: var(--isa-text-on-accent);
+}
+.etl-canvas .ec-expand-btn svg {
+  width: 12px;
+  height: 12px;
+}
+.etl-canvas .ec-card:hover .ec-node-btn,
+.etl-canvas .ec-card:focus-within .ec-node-btn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
+.etl-canvas .ec-card.ec-dragging .ec-node-btn,
+.etl-canvas .ec-card.ec-drop-target .ec-node-btn {
+  opacity: 0;
+  pointer-events: none;
+}
+.etl-canvas .ec-node-btn:focus-visible {
+  outline: 2px solid var(--ec-select);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .etl-canvas .ec-node-btn {
+    transition: none;
+  }
+}
+```
+
+### `src/etl-canvas/contrast.ts`
+
+93 righe
+
+```ts
+/**
+ * Contrasto WCAG tra i token di `tokens.css`. Usato dai test. I colori e il
+ * calcolo del contrasto sono in src/theme/color.ts.
+ */
+import { contrast, over, parseColor } from "../theme/color";
+import type { Rgba } from "../theme/color";
+
+export { contrast, luminance, over, parseColor } from "../theme/color";
+export type { Rgba } from "../theme/color";
+
+function readBlock(css: string, selector: string, prefix: string): Record<string, string> {
+  // il selettore può essere seguito da altri in lista (`.etl-canvas,\n.ec-workspace {`)
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const found = new RegExp(`\\n${escaped}(?:,[^{}]*)?\\s*\\{`).exec(css);
+  if (!found) throw new Error(`blocco non trovato: ${selector}`);
+  const start = found.index;
+  const end = css.indexOf("\n}", start);
+  const out: Record<string, string> = {};
+  for (const m of css
+    .slice(start, end)
+    .matchAll(new RegExp(`(${prefix}[a-z0-9-]+):\\s*([^;]+);`, "g"))) {
+    out[m[1] as string] = (m[2] as string).trim();
+  }
+  return out;
+}
+
+/**
+ * Legge i token del canvas (`--ec-*`) da tokens.css e li risolve con i token
+ * semantici (`--isa-*`) di un tema e di un modo, già risolti in valori (vedi
+ * src/theme/__tests__/support.ts: `resolveTokens`).
+ */
+export function readTokens(css: string, semantic: Record<string, string>): Record<string, string> {
+  const tokens = readBlock(css, ".etl-canvas", "--ec-");
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(tokens)) {
+    out[name] = value.replace(/var\((--isa-[a-z0-9-]+)\)/g, (_, ref: string) => {
+      const resolved = semantic[ref];
+      if (resolved === undefined) throw new Error(`token semantico non trovato: ${ref}`);
+      return resolved;
+    });
+  }
+  return out;
+}
+
+export interface ContrastPair {
+  readonly role: string;
+  /** Token in primo piano e token di sfondo. */
+  readonly fg: string;
+  readonly bg: string;
+  /** 4.5 per il testo, 3 per gli elementi non testuali. */
+  readonly min: number;
+}
+
+/**
+ * Coppie da verificare. Il fondo del canvas è `--ec-bg` con sopra
+ * `--ec-stage`; il vetro è `--ec-surface-strong` sopra il canvas.
+ */
+export const PAIRS: readonly ContrastPair[] = [
+  { role: "Etichetta dataset/output", fg: "--ec-accent-text", bg: "canvas", min: 4.5 },
+  { role: "Etichetta lavorazione", fg: "--ec-ink", bg: "canvas", min: 4.5 },
+  { role: "Etichetta output parziale", fg: "--ec-muted", bg: "canvas", min: 4.5 },
+  { role: "Icona su nodo pieno", fg: "--ec-node-fill-ink", bg: "--ec-node-fill", min: 3 },
+  { role: "Icona su nodo lavorazione", fg: "--ec-node-op-ink", bg: "--ec-node-op", min: 3 },
+  { role: "Nodo pieno su canvas", fg: "--ec-node-fill", bg: "canvas", min: 3 },
+  { role: "Bordo del nodo lavorazione", fg: "--ec-node-op-border", bg: "canvas", min: 3 },
+  { role: "Icona fetta vuota", fg: "--ec-split-empty-ink", bg: "--ec-split-empty", min: 3 },
+  { role: "Cavo", fg: "--ec-link", bg: "canvas", min: 3 },
+  { role: "Indicatore ambra", fg: "--ec-warn", bg: "canvas", min: 3 },
+  { role: "Contorno di selezione", fg: "--ec-select", bg: "canvas", min: 3 },
+  { role: "Testo dei controlli di zoom", fg: "--ec-ink", bg: "glass", min: 4.5 },
+  { role: "«Adatta»", fg: "--ec-accent-text", bg: "glass", min: 4.5 },
+  { role: "Flusso nei cavi", fg: "--ec-flow", bg: "canvas", min: 3 },
+  { role: "Nodo nella minimappa", fg: "--ec-mm-node", bg: "glass", min: 3 },
+  { role: "Nodo dataset nella minimappa", fg: "--ec-mm-node-ds", bg: "glass", min: 3 },
+  { role: "Riquadro visibile (minimappa)", fg: "--ec-mm-view-line", bg: "glass", min: 3 },
+  { role: "Testo dello stato vuoto", fg: "--ec-empty-ink", bg: "canvas", min: 4.5 },
+  { role: "Titolo dello stato vuoto", fg: "--ec-ink", bg: "canvas", min: 4.5 },
+];
+
+export function measure(tokens: Record<string, string>, pair: ContrastPair): number {
+  const get = (name: string): Rgba => {
+    const value = tokens[name];
+    if (value === undefined) throw new Error(`token mancante: ${name}`);
+    return parseColor(value);
+  };
+  const canvas = over(get("--ec-stage"), over(get("--ec-bg"), [255, 255, 255, 1]));
+  const glass = over(get("--ec-surface-strong"), canvas);
+  const bg =
+    pair.bg === "canvas" ? canvas : pair.bg === "glass" ? glass : over(get(pair.bg), canvas);
+  const fg = over(get(pair.fg), bg);
+  return contrast(fg, bg);
+}
+```
+
+### `src/etl-canvas/drop.ts`
+
+94 righe
+
+```ts
+/**
+ * Rilascio di un nuovo elemento sul canvas (prototipo `paletteEl` →
+ * `onUp`, righe 4939-5069). La cassetta degli strumenti arriva nella Fase 6:
+ * questa funzione contiene già tutta la logica di rilascio, così la Fase 6
+ * deve solo chiamarla con il payload e il punto (coordinate del MONDO; da un
+ * punto dello schermo si passa con `toWorld` di view.ts).
+ *
+ * Nessuna logica di dominio nuova: il bersaglio si individua con la
+ * geometria di etl-layout (`nodeAt`, `linkAt`) e le regole sono quelle di
+ * etl-core (`insertable`) e del comando `addNode` di etl-store, che decide
+ * fusione, collegamento, inserimento o rilascio nel vuoto.
+ */
+import { insertable } from "../etl-core";
+import type { Card, ComponentId, Graph, Link } from "../etl-core";
+import { linkAt, nodeAt } from "../etl-layout";
+import type { Point } from "../etl-layout";
+import { paletteRelation } from "../etl-store";
+import type { CommandResult, DropTarget, EtlStore } from "../etl-store";
+
+/** Ciò che si rilascia: un componente della cassetta o un dataset della libreria. */
+export interface CanvasDropPayload {
+  readonly component: ComponentId;
+  readonly libraryId?: string;
+}
+
+export type DropOutcome = "merge" | "link" | "link-reverse" | "insert";
+
+export interface DropPreview {
+  /** Bersaglio da passare ad `addNode`, se ce n'è uno valido. */
+  readonly target: DropTarget | null;
+  /** Cosa succederebbe al rilascio, o `null` (nel vuoto). */
+  readonly outcome: DropOutcome | null;
+  readonly nodeId?: string;
+  readonly linkKey?: string;
+}
+
+const NEW_NODE = "__nuovo__";
+
+function kindOf(component: ComponentId): Card["kind"] {
+  return component === "dataset" ? "dataset" : "op";
+}
+
+function linkByKey(graph: Graph, key: string): Link | undefined {
+  return graph.links.find((l) => l.from + "|" + l.to === key);
+}
+
+/** Cosa troverebbe un rilascio in `point` (coordinate del mondo), senza modificare nulla. */
+export function previewCanvasDrop(
+  store: EtlStore,
+  payload: CanvasDropPayload,
+  point: Point,
+): DropPreview {
+  const graph = store.getState().graph;
+  const kind = kindOf(payload.component);
+  const nodeId = nodeAt(graph, point);
+  if (nodeId) {
+    const rel = paletteRelation(graph, kind, nodeId);
+    // senza una relazione possibile `addNode` rilascia come nel vuoto (prototipo, riga 5046)
+    return rel
+      ? { target: { node: nodeId }, outcome: rel, nodeId }
+      : { target: null, outcome: null };
+  }
+  if (kind === "op") {
+    const key = linkAt(store.getRoutes(), point);
+    const link = key ? linkByKey(graph, key) : undefined;
+    if (key && link && insertable(graph, link, NEW_NODE)) {
+      return { target: { link }, outcome: "insert", linkKey: key };
+    }
+  }
+  return { target: null, outcome: null };
+}
+
+/**
+ * Rilascia `payload` in `point` (coordinate del mondo): crea il nodo e, se il
+ * punto è su un nodo o su un cavo, lo fonde, lo collega o lo inserisce.
+ * Un solo comando `addNode`: un solo passo di cronologia.
+ */
+export function handleCanvasDrop(
+  store: EtlStore,
+  payload: CanvasDropPayload,
+  point: Point,
+): CommandResult {
+  const { target } = previewCanvasDrop(store, payload, point);
+  return store.dispatch({
+    type: "addNode",
+    payload: {
+      component: payload.component,
+      ...(payload.libraryId !== undefined ? { libraryId: payload.libraryId } : {}),
+      point,
+      ...(target ? { target } : {}),
+    },
+  });
+}
+```
+
 ### `src/etl-canvas/engine.ts`
 
-335 righe
+338 righe
 
 ```ts
 /**
@@ -104,7 +1214,8 @@ interface Rec {
 export interface MotionEngine {
   registerLink(key: string, group: GroupLike | null): void;
   registerSlice(id: string, el: AttrEl | null): void;
-  start(env: LoopEnv): void;
+  /** Con `shared` il motore si aggiunge al ciclo di un altro (un solo requestAnimationFrame per tutto il canvas) e non lo chiude. */
+  start(env: LoopEnv, shared?: Loop): void;
   stop(): void;
   update(input: UpdateInput): void;
   setGesturing(gesturing: boolean): void;
@@ -132,6 +1243,7 @@ export function createMotionEngine(): MotionEngine {
   const slices = new Map<string, { el: AttrEl | null; t0: number | null }>();
   let env: LoopEnv | null = null;
   let loop: Loop | null = null;
+  let ownsLoop = true;
   let off: (() => void) | null = null;
   let gesturing = false;
   let last: UpdateInput | null = null;
@@ -320,10 +1432,11 @@ export function createMotionEngine(): MotionEngine {
       loop?.wake();
     },
 
-    start(e) {
+    start(e, shared) {
       this.stop();
       env = e;
-      loop = createLoop(e);
+      ownsLoop = !shared;
+      loop = shared ?? createLoop(e);
       off = loop.add({ frame, settle });
       if (last) applyUpdate(last);
     },
@@ -331,7 +1444,7 @@ export function createMotionEngine(): MotionEngine {
     stop() {
       off?.();
       off = null;
-      loop?.dispose();
+      if (ownsLoop) loop?.dispose();
       loop = null;
       env = null;
     },
@@ -697,1016 +1810,6 @@ export function BlockedNotice(props: { readonly capacity: number }) {
       </div>
       {props.capacity > 1 ? <div className="ei-help">{copy.lockedJoin(props.capacity)}</div> : null}
     </>
-  );
-}
-```
-
-### `src/etl-canvas/inspector/ColumnPicker.tsx`
-
-342 righe
-
-```tsx
-/**
- * Selettore multiplo di colonne: le scelte sono etichette rimovibili, NELL'ORDINE
- * DI SCELTA (conta per Ordina, Rimuovi duplicati, Raggruppa), riordinabili con
- * il trascinamento e con Alt+←/→. Il menu (in un portale) ha ricerca, ogni
- * colonna col suo tipo, «Tutte» e «Nessuna» (sulle sole colonne visibili dopo
- * la ricerca) e il conteggio «N colonne su M», annunciato ai lettori di schermo.
- */
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, PointerEvent } from "react";
-import type { ColumnDef } from "../../etl-core";
-import { copy } from "./copy";
-import { CheckIcon, PlusIcon, XIcon } from "./icons";
-import {
-  addVisible,
-  canonicalName,
-  clampActive,
-  comboAction,
-  filterByQuery,
-  fold,
-  moveItem,
-  moveTarget,
-  nearestIndex,
-  removeVisible,
-  toggleColumn,
-} from "./logic";
-import { Menu } from "./Menu";
-
-export interface ColumnPickerProps {
-  readonly value: readonly string[];
-  readonly schema: readonly ColumnDef[];
-  readonly onChange: (columns: string[]) => void;
-  readonly labelledBy?: string | undefined;
-  readonly ariaLabel?: string | undefined;
-}
-
-interface Row {
-  readonly name: string;
-  readonly label: string;
-  readonly hint?: string;
-  readonly free?: boolean;
-}
-
-/** Spostamento minimo prima che un clic su un'etichetta diventi un trascinamento. */
-const DRAG_START_PX = 4;
-
-export function ColumnPicker(props: ColumnPickerProps) {
-  const { value, schema, onChange } = props;
-  const id = useId();
-  const listId = `${id}-list`;
-  const fieldRef = useRef<HTMLDivElement>(null);
-  const addRef = useRef<HTMLButtonElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const chipRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const focusIndex = useRef<number | null>(null);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
-  const [drag, setDrag] = useState<{ index: number; dx: number; dy: number } | null>(null);
-  const names = useMemo(() => schema.map((c) => c.name), [schema]);
-
-  const rows = useMemo<Row[]>(() => {
-    const found: Row[] = filterByQuery(
-      schema.map((c) => ({ name: c.name, label: c.name, hint: c.type })),
-      query,
-    );
-    const typed = query.trim();
-    const exists =
-      names.some((n) => fold(n) === fold(typed)) || value.some((v) => fold(v) === fold(typed));
-    if (typed && !exists)
-      found.push({ name: typed, label: copy.columnsAddTyped(typed), free: true });
-    return found;
-  }, [schema, names, query, value]);
-  const act = clampActive(active, rows.length);
-  const visibleNames = rows.filter((r) => !r.free).map((r) => r.name);
-
-  const setColumns = (next: string[]) => onChange(next);
-  const close = (returnFocus: boolean) => {
-    setOpen(false);
-    setQuery("");
-    if (returnFocus) addRef.current?.focus();
-  };
-
-  useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
-  useEffect(() => {
-    if (!open || act < 0) return;
-    listRef.current?.querySelector(`[data-index="${act}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [open, act, rows.length]);
-  // dopo un riordino da tastiera il focus segue l'etichetta spostata
-  useEffect(() => {
-    if (focusIndex.current !== null) {
-      chipRefs.current[focusIndex.current]?.focus();
-      focusIndex.current = null;
-    }
-  });
-
-  const toggleRow = (r: Row) => {
-    if (r.free) {
-      setColumns([...value, canonicalName(names, r.name)]);
-      setQuery("");
-    } else setColumns(toggleColumn(value, r.name));
-  };
-
-  // il Tab resta nel menu (Tutte, Nessuna); alla fine il menu si chiude da solo
-  const onInputKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    const a = comboAction(e.key, act, rows.length);
-    if (a.kind === "move") {
-      e.preventDefault();
-      setActive(a.to);
-    } else if (a.kind === "commit") {
-      e.preventDefault();
-      const r = rows[act];
-      if (r) toggleRow(r);
-    } else if (a.kind === "close") {
-      e.preventDefault();
-      e.stopPropagation();
-      close(true);
-    }
-  };
-
-  // --- etichette: tastiera e trascinamento -----------------------------------
-  const onChipKey = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
-    if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
-      e.preventDefault();
-      const to = moveTarget(i, value.length, e.key);
-      if (to !== null) {
-        focusIndex.current = to;
-        setColumns(moveItem(value, i, to));
-      }
-    } else if (e.key === "Backspace" || e.key === "Delete") {
-      e.preventDefault();
-      setColumns(value.filter((_, k) => k !== i));
-      focusIndex.current = Math.max(0, Math.min(i, value.length - 2));
-      if (value.length <= 1) addRef.current?.focus();
-    }
-  };
-  const onChipPointerDown = (e: PointerEvent<HTMLButtonElement>, i: number) => {
-    if (e.button !== 0) return;
-    const sx = e.clientX;
-    const sy = e.clientY;
-    let moved = false;
-    const el = e.currentTarget;
-    // i centri delle etichette prima che quella trascinata si muova: il suo centro seguirebbe il puntatore
-    const centers = chipRefs.current.slice(0, value.length).map((c) => {
-      const r = c?.getBoundingClientRect();
-      return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : { x: 0, y: 0 };
-    });
-    el.setPointerCapture(e.pointerId);
-    const move = (ev: globalThis.PointerEvent) => {
-      const dx = ev.clientX - sx;
-      const dy = ev.clientY - sy;
-      if (!moved && Math.hypot(dx, dy) < DRAG_START_PX) return;
-      moved = true;
-      setDrag({ index: i, dx, dy });
-    };
-    const up = (ev: globalThis.PointerEvent) => {
-      el.removeEventListener("pointermove", move);
-      el.removeEventListener("pointerup", up);
-      el.removeEventListener("pointercancel", up);
-      setDrag(null);
-      if (!moved) return;
-      const to = nearestIndex(centers, { x: ev.clientX, y: ev.clientY });
-      // il clic che segue un trascinamento non deve fare altro
-      el.addEventListener("click", (c) => c.stopPropagation(), { once: true, capture: true });
-      if (to !== i) {
-        focusIndex.current = to;
-        setColumns(moveItem(value, i, to));
-      }
-    };
-    el.addEventListener("pointermove", move);
-    el.addEventListener("pointerup", up);
-    el.addEventListener("pointercancel", up);
-  };
-
-  const countText = copy.columnsCount(value.length, schema.length);
-
-  return (
-    <>
-      <div
-        ref={fieldRef}
-        className="ei-field ei-chipsfield"
-        data-picker="columns"
-        data-selected={value.length}
-        data-total={schema.length}
-        role="group"
-        aria-labelledby={props.labelledBy}
-        aria-label={props.labelledBy ? undefined : props.ariaLabel}
-        data-open={open || undefined}
-      >
-        {value.length === 0 ? (
-          <span className="ei-placeholder">{copy.columnsPlaceholder}</span>
-        ) : null}
-        <ul className="ei-chips">
-          {value.map((name, i) => {
-            const known = names.includes(name);
-            const dragging = drag?.index === i;
-            return (
-              <li
-                key={name}
-                className={"ei-chip" + (known ? "" : " ei-free") + (dragging ? " ei-dragging" : "")}
-                style={
-                  dragging && drag
-                    ? { transform: `translate(${drag.dx}px, ${drag.dy}px)` }
-                    : undefined
-                }
-              >
-                <button
-                  ref={(el) => {
-                    chipRefs.current[i] = el;
-                  }}
-                  type="button"
-                  className="ei-chip-label"
-                  title={known ? copy.columnsMoveHelp : copy.columnsFree}
-                  aria-label={copy.columnsPosition(name, i + 1, value.length)}
-                  onKeyDown={(e) => onChipKey(e, i)}
-                  onPointerDown={(e) => onChipPointerDown(e, i)}
-                >
-                  {name}
-                </button>
-                <button
-                  type="button"
-                  className="ei-chip-x"
-                  aria-label={copy.columnsRemove(name)}
-                  onClick={() => setColumns(value.filter((_, k) => k !== i))}
-                >
-                  <XIcon />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        <button
-          ref={addRef}
-          type="button"
-          className="ei-add"
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-controls={open ? listId : undefined}
-          onClick={() => (open ? close(false) : setOpen(true))}
-        >
-          <PlusIcon />
-          <span>{copy.columnsAdd}</span>
-        </button>
-      </div>
-      {open ? (
-        <Menu
-          anchor={fieldRef}
-          onClose={() => close(false)}
-          onEscape={() => close(true)}
-          ariaLabel={copy.columnsMenu}
-        >
-          <div className="ei-menu-head">
-            <input
-              ref={inputRef}
-              type="text"
-              className="ei-search"
-              role="combobox"
-              aria-expanded="true"
-              aria-controls={listId}
-              aria-autocomplete="list"
-              aria-activedescendant={act >= 0 ? `${id}-opt-${act}` : undefined}
-              aria-label={copy.columnsSearch}
-              placeholder={copy.columnsSearch}
-              autoComplete="off"
-              spellCheck={false}
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setActive(0);
-              }}
-              onKeyDown={onInputKey}
-            />
-          </div>
-          <div
-            ref={listRef}
-            id={listId}
-            className="ei-menu-scroll"
-            role="listbox"
-            aria-multiselectable="true"
-            aria-label={copy.columnsMenu}
-            data-scroll=""
-          >
-            {rows.length === 0 ? <div className="ei-menu-empty">{copy.noResults}</div> : null}
-            {rows.map((r, i) => {
-              const on = !r.free && value.includes(r.name);
-              return (
-                <div
-                  key={`${r.free ? "free:" : ""}${r.name}`}
-                  id={`${id}-opt-${i}`}
-                  data-index={i}
-                  role="option"
-                  aria-selected={on}
-                  className={
-                    "ei-option" +
-                    (i === act ? " ei-active" : "") +
-                    (on ? " ei-selected" : "") +
-                    (r.free ? " ei-free" : "")
-                  }
-                  onPointerDown={(e) => e.preventDefault()}
-                  onPointerMove={() => setActive(i)}
-                  onClick={() => toggleRow(r)}
-                >
-                  {r.free ? null : (
-                    <span className="ei-checkbox" data-on={on || undefined} aria-hidden="true">
-                      {on ? <CheckIcon /> : null}
-                    </span>
-                  )}
-                  <span className="ei-option-label">{r.label}</span>
-                  {r.hint ? <span className="ei-option-hint">{r.hint}</span> : null}
-                </div>
-              );
-            })}
-          </div>
-          <div className="ei-menu-foot">
-            <span className="ei-count" role="status" aria-live="polite">
-              {countText}
-            </span>
-            <span className="ei-menu-actions">
-              <button
-                type="button"
-                className="ei-link-btn"
-                onClick={() => setColumns(addVisible(value, visibleNames))}
-              >
-                {copy.columnsAll}
-              </button>
-              <button
-                type="button"
-                className="ei-link-btn"
-                onClick={() => setColumns(removeVisible(value, visibleNames))}
-              >
-                {copy.columnsNone2}
-              </button>
-            </span>
-          </div>
-        </Menu>
-      ) : null}
-    </>
-  );
-}
-```
-
-### `src/etl-canvas/inspector/ExpandedPanel.tsx`
-
-115 righe
-
-```tsx
-/**
- * Il pannello espanso di un box combinato (prototipo, righe 855-866, 2117-2135 e
- * 2250-2400): i passaggi in sequenza, riordinabili; ognuno ha un menu
- * («Configura parametri», «Sgancia», «Elimina passaggio») e trascinarlo fuori dal
- * pannello lo sgancia sul canvas, nel punto di rilascio. Si chiude con Esc, con
- * il pulsante o con un clic sullo sfondo, e da solo se il box non è più combinato.
- */
-import { useEffect, useRef } from "react";
-import type { KeyboardEvent } from "react";
-import { createPortal } from "react-dom";
-import type { EtlStore } from "../../etl-store";
-import { useEtlState } from "../../etl-store/react";
-import { copy } from "./copy";
-import { XIcon } from "./icons";
-import { NameInput } from "./NameInput";
-import { StepList } from "./StepList";
-
-export function ExpandedPanel(props: {
-  readonly store: EtlStore;
-  readonly nodeId: string;
-  readonly onClose: () => void;
-  /** «Configura parametri»: apre l'Inspector su quel passaggio. */
-  readonly onConfigure: (index: number) => void;
-  /** Rilascio fuori dal pannello: sgancia il passaggio nel punto indicato (coordinate della finestra). */
-  readonly onDetachOutside: (index: number, clientX: number, clientY: number) => void;
-}) {
-  const { store, nodeId } = props;
-  const card = useEtlState((s) => s.graph.cards[nodeId], store);
-  const step = useEtlState((s) => s.inspector.step, store);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
-  const combined = !!card && card.kind === "op" && card.components.length > 1;
-
-  // non più combinato (sgancio dell'ultimo passaggio, eliminazione): si chiude da solo
-  useEffect(() => {
-    if (!combined) props.onClose();
-  }, [combined, props]);
-  useEffect(() => {
-    closeRef.current?.focus();
-  }, []);
-
-  if (!card || !combined || typeof document === "undefined") return null;
-
-  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      props.onClose();
-    } else if (e.key === "Tab") {
-      // il focus resta dentro il pannello
-      const items = Array.from(
-        panelRef.current?.querySelectorAll<HTMLElement>(
-          "button:not([disabled]), input:not([disabled])",
-        ) ?? [],
-      );
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last?.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first?.focus();
-      }
-    }
-  };
-
-  return createPortal(
-    <div
-      className="ei-expanded-backdrop"
-      data-testid="ei-expanded"
-      onKeyDown={onKey}
-      onPointerDown={(e) => {
-        if (e.target === e.currentTarget) props.onClose();
-      }}
-    >
-      <div
-        ref={panelRef}
-        className="ei-expanded ei-root"
-        role="dialog"
-        aria-modal="true"
-        aria-label={copy.expandedTitle}
-      >
-        <div className="ei-expanded-head">
-          <div>
-            <NameInput store={store} card={card} className="ei-name" testId="ei-expanded-name" />
-            <div className="ei-help">{copy.expandedSub(card.components.length)}</div>
-          </div>
-          <button
-            ref={closeRef}
-            type="button"
-            className="ei-icon-btn"
-            aria-label={copy.expandedClose}
-            onClick={props.onClose}
-          >
-            <XIcon />
-          </button>
-        </div>
-        <div className="ei-help">{copy.expandedNote}</div>
-        <StepList
-          store={store}
-          card={card}
-          selectedStep={step}
-          variant="expanded"
-          containerRef={panelRef}
-          onSelect={() => {}}
-          onConfigure={props.onConfigure}
-          onDetachOutside={props.onDetachOutside}
-        />
-      </div>
-    </div>,
-    document.getElementById("ei-portal") ?? document.body,
-  );
-}
-```
-
-### `src/etl-canvas/inspector/Field.tsx`
-
-47 righe
-
-```tsx
-/** Un campo dell'Inspector: etichetta, controllo, nota; più il campo di testo (senza frecce native). */
-import { useId } from "react";
-import type { ReactNode } from "react";
-
-export function Field(props: {
-  readonly label: string;
-  readonly children: (labelId: string) => ReactNode;
-  readonly help?: ReactNode;
-}) {
-  const labelId = useId();
-  return (
-    <div className="ei-fieldgroup">
-      <div id={labelId} className="ei-label">
-        {props.label}
-      </div>
-      {props.children(labelId)}
-      {props.help ? <div className="ei-help">{props.help}</div> : null}
-    </div>
-  );
-}
-
-export function TextField(props: {
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-  readonly labelledBy?: string | undefined;
-  readonly ariaLabel?: string | undefined;
-  readonly inputMode?: "text" | "numeric" | "decimal";
-  readonly disabled?: boolean;
-  readonly placeholder?: string;
-}) {
-  return (
-    <input
-      type="text"
-      className="ei-field ei-input"
-      inputMode={props.inputMode ?? "text"}
-      aria-labelledby={props.labelledBy}
-      aria-label={props.labelledBy ? undefined : props.ariaLabel}
-      autoComplete="off"
-      spellCheck={false}
-      disabled={props.disabled}
-      placeholder={props.placeholder}
-      value={props.value}
-      onChange={(e) => props.onChange(e.target.value)}
-    />
-  );
-}
-```
-
-### `src/etl-canvas/inspector/Header.tsx`
-
-22 righe
-
-```tsx
-/** Intestazione dell'Inspector: la famiglia del nodo (testo piccolo in maiuscolo) e il nome, modificabile in linea. */
-import type { Card } from "../../etl-core";
-import type { EtlStore } from "../../etl-store";
-import { familyLabel } from "./family";
-import { NameInput } from "./NameInput";
-
-export function Header(props: { readonly store: EtlStore; readonly card: Card }) {
-  return (
-    <div className="ei-header">
-      <div className="ei-overline" data-testid="ei-family">
-        {familyLabel(props.card)}
-      </div>
-      <NameInput
-        store={props.store}
-        card={props.card}
-        className="ei-name"
-        testId="ec-inspector-name"
-      />
-    </div>
-  );
-}
-```
-
-### `src/etl-canvas/inspector/Inspector.tsx`
-
-287 righe
-
-```tsx
-/**
- * Il contenuto dell'Inspector (Fase 6b.1), montato da `panels/InspectorShell`.
- * Legge il nodo di `etl-store` (`inspector`) e mostra, per tipo di nodo:
- * stato bloccato (lavorazione senza ingresso), dataset e output (nome, origine,
- * colonne in sola lettura), lavorazioni (campi e liste del catalogo, con colonne
- * e valori dallo schema in ingresso) e box combinati (elenco dei passaggi).
- * Le condizioni di filtro e join sono della Fase 6b.2.
- *
- * Scrive solo con i comandi `setParams`, `renameNode`, `inspect` e quelli dei
- * passaggi; legge e scrive SOLO `columns` (mai `flattenRows`). Il focus non si
- * perde mai scrivendo: i campi hanno chiavi stabili e nulla viene ricreato.
- */
-import type { KeyboardEvent } from "react";
-import { MERGE_OPS, PARAM_DEFS, boxCapacity, inputsOf } from "../../etl-core";
-import type { Card, Graph, Params, SimpleFieldDef } from "../../etl-core";
-import type { EtlStore } from "../../etl-store";
-import { useEtlState } from "../../etl-store/react";
-import { BlockedNotice } from "./BlockedNotice";
-import { copy } from "./copy";
-import { Field, TextField } from "./Field";
-import { Header } from "./Header";
-import { MultiList } from "./MultiList";
-import { NUMERIC_KEYS, isMulti, textParam, withParam } from "./params";
-import { StepList } from "./StepList";
-import { StyledSelect } from "./StyledSelect";
-import { useActiveSchema } from "./useActiveSchema";
-import "./inspector.css";
-
-/** Esc nel pannello riporta il focus al canvas, senza deselezionare. */
-function returnToCanvas(e: KeyboardEvent<HTMLElement>): void {
-  if (e.key !== "Escape" || e.defaultPrevented) return;
-  e.stopPropagation();
-  document.querySelector<HTMLElement>(".ec-stage")?.focus();
-}
-
-export function Inspector(props: { readonly store: EtlStore }) {
-  const { store } = props;
-  const nodeId = useEtlState((s) => s.inspector.nodeId, store);
-  const step = useEtlState((s) => s.inspector.step, store);
-  const card = useEtlState(
-    (s) => (s.inspector.nodeId ? s.graph.cards[s.inspector.nodeId] : undefined),
-    store,
-  );
-  const graph = useEtlState((s) => s.graph, store);
-  const schema = useActiveSchema(store, nodeId);
-
-  if (!card) {
-    return (
-      <div className="ei-root" data-testid="ei-root" onKeyDown={returnToCanvas}>
-        <div className="ei-help ei-empty">{copy.emptyInspector}</div>
-      </div>
-    );
-  }
-  return (
-    <div
-      className="ei-root"
-      data-testid="ei-root"
-      data-kind={kindOf(card)}
-      onKeyDown={returnToCanvas}
-    >
-      <Header store={store} card={card} />
-      <Body store={store} card={card} graph={graph} step={step} schema={schema} />
-    </div>
-  );
-}
-
-function kindOf(card: Card): string {
-  if (card.kind === "dataset") return card.isOutput ? "output" : "dataset";
-  return card.components.length > 1 ? "box" : "op";
-}
-
-function Body(props: {
-  store: EtlStore;
-  card: Card;
-  graph: Graph;
-  step: number;
-  schema: ReturnType<typeof useActiveSchema>;
-}) {
-  const { store, card, graph, schema } = props;
-
-  if (card.kind === "dataset" && card.isOutput) {
-    const producer = graph.links.find((l) => l.to === card.id);
-    const producerName = (producer && graph.cards[producer.from]?.name) || copy.producerFallback;
-    const incomplete =
-      card.capacity !== undefined && card.capacity > 1 && (card.filled ?? 0) < card.capacity;
-    return (
-      <>
-        <div className="ei-help">{copy.resultNote(producerName)}</div>
-        {incomplete ? <div className="ei-help">{copy.resultIncomplete}</div> : null}
-        <ColumnsReadOnly schema={schema} />
-      </>
-    );
-  }
-
-  if (card.kind === "dataset") {
-    const par = card.params[0] ?? {};
-    return (
-      <>
-        <SimpleFields
-          defs={PARAM_DEFS.dataset as readonly SimpleFieldDef[]}
-          par={par}
-          names={[]}
-          onChange={(p) =>
-            store.dispatch({ type: "setParams", payload: { node: card.id, index: 0, params: p } })
-          }
-        />
-        <ColumnsReadOnly schema={schema} />
-      </>
-    );
-  }
-
-  // lavorazione senza tabella in ingresso: stato bloccato, nessun campo
-  const inputs = inputsOf(graph, card.id);
-  if (inputs.length === 0) return <BlockedNotice capacity={boxCapacity(card)} />;
-
-  const step = Math.max(0, Math.min(props.step, card.components.length - 1));
-  const type = card.components[step] ?? card.components[0];
-  const par: Params = card.params[step] ?? {};
-  const setParams = (p: Params) =>
-    store.dispatch({ type: "setParams", payload: { node: card.id, index: step, params: p } });
-  const names = schema.map((c) => c.name);
-
-  return (
-    <>
-      {card.components.length > 1 ? (
-        <StepList
-          store={store}
-          card={card}
-          selectedStep={step}
-          variant="inspector"
-          onSelect={(i) => store.dispatch({ type: "inspect", payload: { node: card.id, step: i } })}
-        />
-      ) : null}
-      <JoinTables card={card} graph={graph} step={step} par={par} onChange={setParams} />
-      {type === "filter" || type === "join" ? (
-        <div className="ei-help" data-testid="ei-conditions-soon">
-          {copy.conditionsSoon}
-        </div>
-      ) : type && isMulti(type) ? (
-        <MultiList type={type} par={par} schema={schema} onChange={setParams} />
-      ) : (
-        <SimpleFields
-          defs={
-            (Array.isArray(PARAM_DEFS[type as keyof typeof PARAM_DEFS])
-              ? PARAM_DEFS[type as keyof typeof PARAM_DEFS]
-              : []) as readonly SimpleFieldDef[]
-          }
-          par={par}
-          names={names}
-          onChange={setParams}
-        />
-      )}
-      <div className="ei-help">{copy.inputsCount(inputs.length, boxCapacity(card))}</div>
-    </>
-  );
-}
-
-/** Campi semplici del catalogo (`PARAM_DEFS`): testo, scelta, colonna. */
-function SimpleFields(props: {
-  defs: readonly SimpleFieldDef[];
-  par: Params;
-  names: readonly string[];
-  onChange: (par: Params) => void;
-}) {
-  const { defs, par, names, onChange } = props;
-  return (
-    <>
-      {defs.map((f) => (
-        <Field key={f.k} label={f.label}>
-          {(labelId) => {
-            const value = textParam(par, f.k);
-            if (f.type === "select")
-              return (
-                <StyledSelect
-                  labelledBy={labelId}
-                  value={value || f.def}
-                  options={(f.opts ?? []).map((o) => ({ value: o, label: o }))}
-                  onChange={(v) => onChange(withParam(par, f.k, v))}
-                />
-              );
-            if (f.type === "column")
-              return (
-                <StyledSelect
-                  labelledBy={labelId}
-                  allowFree
-                  value={value}
-                  options={names.map((n) => ({ value: n, label: n }))}
-                  onChange={(v) => onChange(withParam(par, f.k, v))}
-                />
-              );
-            return (
-              <TextField
-                labelledBy={labelId}
-                inputMode={NUMERIC_KEYS.has(f.k) ? "numeric" : "text"}
-                value={value}
-                onChange={(v) => onChange(withParam(par, f.k, v))}
-              />
-            );
-          }}
-        </Field>
-      ))}
-    </>
-  );
-}
-
-/** Dataset e output: le colonne, in sola lettura, col tipo. */
-function ColumnsReadOnly(props: { schema: ReturnType<typeof useActiveSchema> }) {
-  const { schema } = props;
-  return (
-    <section className="ei-list" aria-label={copy.columnsTitle}>
-      <div className="ei-label">{copy.columnsTitle}</div>
-      {schema.length === 0 ? (
-        <div className="ei-help">{copy.columnsNone}</div>
-      ) : (
-        <ul className="ei-colist" data-testid="ei-columns">
-          {schema.map((c) => (
-            <li key={c.name} className="ei-colrow">
-              <span className="ei-colname">{c.name}</span>
-              <span className="ei-coltype">{c.type}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-/**
- * Le tabelle su cui agisce un passaggio (prototipo, righe 3747-3774): i join si
- * applicano nell'ordine in cui compaiono e ognuno consuma una tabella in più.
- * Prima di un join: tabella di riferimento; dopo: la nota «tabella unica».
- */
-function JoinTables(props: {
-  card: Card;
-  graph: Graph;
-  step: number;
-  par: Params;
-  onChange: (par: Params) => void;
-}) {
-  const { card, graph, step, par, onChange } = props;
-  const joinPos: number[] = [];
-  card.components.forEach((c, i) => {
-    if ((MERGE_OPS as readonly string[]).includes(c)) joinPos.push(i);
-  });
-  if (joinPos.length === 0) return null;
-  const names = inputsOf(graph, card.id).map(
-    (l) => graph.cards[l.from]?.name ?? copy.tableFallback,
-  );
-  if (names.length === 0) return <div className="ei-help">{copy.tableLinkFirst}</div>;
-
-  const field = (key: string, label: string) => {
-    const stored = textParam(par, key);
-    const fallback = key === "rightTable" && names[1] ? names[1] : names[0];
-    const value = stored && names.includes(stored) ? stored : (fallback ?? "");
-    return (
-      <Field key={key} label={label}>
-        {(labelId) => (
-          <StyledSelect
-            labelledBy={labelId}
-            value={value}
-            options={names.map((n) => ({ value: n, label: n }))}
-            onChange={(v) => onChange(withParam(par, key, v))}
-          />
-        )}
-      </Field>
-    );
-  };
-
-  const type = card.components[step];
-  const joinsBefore = joinPos.filter((p) => p < step).length;
-  if (type && (MERGE_OPS as readonly string[]).includes(type)) {
-    const j = joinPos.indexOf(step);
-    return (
-      <>
-        {j === 0 ? (
-          field("leftTable", copy.tableLeft)
-        ) : (
-          <div className="ei-help">{copy.tableLeftResult(j)}</div>
-        )}
-        {field("rightTable", copy.tableRight)}
-      </>
-    );
-  }
-  if (joinsBefore === 0) return field("table", copy.tableReference);
-  return <div className="ei-help">{copy.tableSingle(joinsBefore)}</div>;
-}
-```
-
-### `src/etl-canvas/inspector/Menu.tsx`
-
-161 righe
-
-```tsx
-/**
- * Il menu dell'Inspector: sempre un nostro componente (mai un menu del
- * sistema), in un portale sul corpo della pagina, posizionato da `placeMenu`
- * (menu.ts). Si chiude con Esc (a cura di chi lo usa), clic fuori, scorrimento
- * del pannello e ridimensionamento della finestra.
- */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { CSSProperties, ReactNode, RefObject } from "react";
-import { createPortal } from "react-dom";
-import { placeMenu } from "./menu";
-import type { MenuPlacement } from "./menu";
-
-const PORTAL_ID = "ei-portal";
-
-/** Il contenitore dei menu, creato alla prima richiesta (solo nel browser). */
-function portalRoot(): HTMLElement {
-  let el = document.getElementById(PORTAL_ID);
-  if (!el) {
-    el = document.createElement("div");
-    el.id = PORTAL_ID;
-    el.className = "ei-portal";
-    document.body.appendChild(el);
-  }
-  return el;
-}
-
-/** Altezza naturale del menu: il suo riempimento più i figli (l'elenco scorrevole conta per intero, fino al suo tetto). */
-function naturalHeight(menu: HTMLElement): number {
-  const cs = getComputedStyle(menu);
-  let h =
-    parseFloat(cs.paddingTop) +
-    parseFloat(cs.paddingBottom) +
-    parseFloat(cs.borderTopWidth) +
-    parseFloat(cs.borderBottomWidth);
-  for (const kid of Array.from(menu.children) as HTMLElement[]) {
-    if (kid.dataset["scroll"] !== undefined) {
-      const cap = parseFloat(getComputedStyle(kid).maxHeight);
-      h += Number.isFinite(cap) ? Math.min(kid.scrollHeight, cap) : kid.scrollHeight;
-    } else h += kid.offsetHeight;
-  }
-  return Math.ceil(h);
-}
-
-export interface MenuProps {
-  /** L'elemento a cui si ancora (il campo). */
-  readonly anchor: RefObject<HTMLElement | null>;
-  readonly onClose: () => void;
-  readonly children: ReactNode;
-  readonly className?: string;
-  /** Altri elementi che contano come «dentro» per il clic fuori (di solito il campo). */
-  readonly inside?: readonly RefObject<HTMLElement | null>[];
-  readonly id?: string;
-  readonly ariaLabel?: string;
-  readonly role?: "menu" | "dialog" | "presentation";
-  /** Esc con il focus dentro il menu (fuori dal campo di ricerca): chiude e riporta il focus al campo. */
-  readonly onEscape?: () => void;
-  /** Larghezza naturale del contenuto, se maggiore di quella del campo. */
-  readonly naturalWidth?: number;
-}
-
-export function Menu(props: MenuProps) {
-  const { anchor, onClose, children, inside } = props;
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [placement, setPlacement] = useState<MenuPlacement | null>(null);
-  // il portale esiste subito (il menu si monta solo nel browser, dopo un'azione dell'utente):
-  // così chi lo usa può dare il focus al campo di ricerca già al primo effetto
-  const [root] = useState<HTMLElement | null>(() =>
-    typeof document === "undefined" ? null : portalRoot(),
-  );
-
-  const place = useCallback(() => {
-    const a = anchor.current;
-    const m = menuRef.current;
-    if (!a || !m) return;
-    const r = a.getBoundingClientRect();
-    setPlacement(
-      placeMenu({
-        field: { x: r.left, y: r.top, w: r.width, h: r.height },
-        win: { w: window.innerWidth, h: window.innerHeight },
-        naturalHeight: naturalHeight(m),
-        ...(props.naturalWidth !== undefined ? { naturalWidth: props.naturalWidth } : {}),
-      }),
-    );
-  }, [anchor, props.naturalWidth]);
-
-  // prima misura, e nuova misura quando il contenuto cambia (ricerca, voci aggiunte)
-  useLayoutEffect(() => {
-    if (!root) return;
-    place();
-    const m = menuRef.current;
-    if (!m) return;
-    const ro = new ResizeObserver(() => place());
-    for (const kid of Array.from(m.children)) ro.observe(kid);
-    return () => ro.disconnect();
-  }, [root, place, children]);
-
-  // chiusura: clic fuori, scorrimento del pannello, ridimensionamento
-  useEffect(() => {
-    const away = (e: Event) => {
-      const t = e.target as Node | null;
-      if (!t) return;
-      if (menuRef.current?.contains(t)) return;
-      if (anchor.current?.contains(t)) return;
-      if (inside?.some((r) => r.current?.contains(t))) return;
-      onClose();
-    };
-    const scrolled = (e: Event) => {
-      const t = e.target as Node | null;
-      if (t && menuRef.current?.contains(t)) return;
-      onClose();
-    };
-    document.addEventListener("pointerdown", away, true);
-    window.addEventListener("scroll", scrolled, true);
-    window.addEventListener("resize", onClose);
-    return () => {
-      document.removeEventListener("pointerdown", away, true);
-      window.removeEventListener("scroll", scrolled, true);
-      window.removeEventListener("resize", onClose);
-    };
-  }, [anchor, inside, onClose]);
-
-  if (!root) return null;
-  const style: CSSProperties = placement
-    ? {
-        left: placement.left,
-        top: placement.top,
-        width: placement.width,
-        maxHeight: placement.maxHeight,
-      }
-    : { left: 0, top: 0, opacity: 0, pointerEvents: "none", width: anchor.current?.offsetWidth };
-  return createPortal(
-    <div
-      ref={menuRef}
-      id={props.id}
-      className={"ei-menu" + (props.className ? ` ${props.className}` : "")}
-      data-side={placement?.side}
-      role={props.role ?? "presentation"}
-      aria-label={props.ariaLabel}
-      style={style}
-      onKeyDown={(e) => {
-        if (e.key === "Escape" && props.onEscape) {
-          e.preventDefault();
-          e.stopPropagation();
-          props.onEscape();
-        }
-      }}
-      onBlur={(e) => {
-        // il focus esce dal menu verso altro (non dal campo): il menu si chiude
-        const next = e.relatedTarget as Node | null;
-        if (!next) return;
-        if (menuRef.current?.contains(next) || anchor.current?.contains(next)) return;
-        if (inside?.some((r) => r.current?.contains(next))) return;
-        onClose();
-      }}
-    >
-      {children}
-    </div>,
-    root,
   );
 }
 ```

@@ -2,18 +2,779 @@
 
 File in questo blocco:
 
+- `src/etl-canvas/__tests__/overlay-layout.test.ts`
+- `src/etl-canvas/__tests__/panels-actions.test.ts`
+- `src/etl-canvas/__tests__/panels-layout.test.ts`
+- `src/etl-canvas/__tests__/render.test.ts`
 - `src/etl-canvas/__tests__/ssr.test.tsx`
 - `src/etl-canvas/__tests__/tokens.test.ts`
 - `src/etl-canvas/__tests__/toolbox-drop.test.ts`
 - `src/etl-canvas/__tests__/toolbox.test.tsx`
 - `src/etl-canvas/__tests__/transitions.test.ts`
-- `src/etl-canvas/__tests__/view.test.ts`
-- `src/etl-canvas/actions.ts`
-- `src/etl-canvas/canvas.css`
-- `src/etl-canvas/contrast.ts`
-- `src/etl-canvas/drop.ts`
 
 ---
+
+### `src/etl-canvas/__tests__/overlay-layout.test.ts`
+
+158 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import type { PanelKey, Side } from "../../etl-store";
+import {
+  HINT_HEIGHT,
+  MINIMAP_COMPACT,
+  MINIMAP_SIZE,
+  ZOOM_SIZE,
+  intersects,
+  overlayLayout,
+} from "../panels/overlayLayout";
+import type { OverlayInput, OverlayLayout, Rect } from "../panels/overlayLayout";
+
+const SIDES: readonly Side[] = ["left", "right", "top", "bottom"];
+/** Aree del canvas di finestre 1440×900, 1280×720 e 1280×600 con un pannello o la barra, più aree strette. */
+const AREAS = [
+  { w: 1384, h: 690 },
+  { w: 1384, h: 516 },
+  { w: 1384, h: 246 },
+  { w: 1232, h: 510 },
+  { w: 1232, h: 288 },
+  { w: 1232, h: 168 },
+  { w: 720, h: 516 },
+  { w: 560, h: 300 },
+  { w: 420, h: 260 },
+  { w: 300, h: 200 },
+];
+
+function scenario(
+  area: { w: number; h: number },
+  open: PanelKey | null,
+  tools: Side,
+  insp: Side,
+): OverlayInput {
+  const sideOf = (k: PanelKey) => (k === "tools" ? tools : insp);
+  return {
+    area,
+    openSide: open ? sideOf(open) : null,
+    notches: (["tools", "insp"] as const).map((key) => ({
+      key,
+      side: sideOf(key),
+      offset: tools === insp ? (key === "tools" ? -40 : 40) : 0,
+      visible: key !== open && !(open && tools === insp),
+    })),
+  };
+}
+
+/** Tutti gli ingombri non nulli: minimappa, zoom, suggerimento e tacche visibili. */
+function rectsOf(input: OverlayInput, l: OverlayLayout): { name: string; r: Rect }[] {
+  const out: { name: string; r: Rect }[] = [{ name: "zoom", r: l.zoom }];
+  if (l.minimap.rect) out.push({ name: "minimappa", r: l.minimap.rect });
+  if (l.hint) out.push({ name: "suggerimento", r: l.hint });
+  for (const n of input.notches)
+    if (n.visible) out.push({ name: `tacca ${n.key}`, r: l.notches[n.key] });
+  return out;
+}
+
+describe("overlayLayout: matrice bordi × misure", () => {
+  it("nessun widget interseca un altro widget o una tacca, e stanno tutti dentro l'area", () => {
+    let cases = 0;
+    for (const area of AREAS) {
+      for (const open of [null, "tools", "insp"] as const) {
+        for (const tools of SIDES) {
+          for (const insp of SIDES) {
+            const input = scenario(area, open, tools, insp);
+            const l = overlayLayout(input);
+            const rects = rectsOf(input, l);
+            const label = `${area.w}×${area.h} aperto=${open} cassetta=${tools} inspector=${insp}`;
+            for (const { name, r } of rects) {
+              if (name.startsWith("tacca")) continue;
+              expect(
+                r.x >= 0 && r.y >= 0 && r.x + r.w <= area.w && r.y + r.h <= area.h,
+                `${label}: ${name} fuori dall'area`,
+              ).toBe(true);
+            }
+            for (let i = 0; i < rects.length; i++) {
+              for (let j = i + 1; j < rects.length; j++) {
+                expect(
+                  intersects(rects[i]!.r, rects[j]!.r),
+                  `${label}: ${rects[i]!.name} tocca ${rects[j]!.name}`,
+                ).toBe(false);
+              }
+            }
+            cases++;
+          }
+        }
+      }
+    }
+    expect(cases).toBe(AREAS.length * 3 * 16);
+  });
+});
+
+describe("overlayLayout: regole di posizione", () => {
+  const roomy = { w: 1384, h: 690 };
+
+  it("senza pannello aperto: minimappa in basso a sinistra, zoom in basso a destra", () => {
+    const l = overlayLayout(scenario(roomy, null, "left", "right"));
+    expect(l.minimap.corner).toBe("bl");
+    expect(l.minimap.compact).toBe(false);
+    expect(l.minimap.rect).toMatchObject({ w: MINIMAP_SIZE.w, h: MINIMAP_SIZE.h });
+    expect(l.minimap.rect!.y + l.minimap.rect!.h).toBeLessThan(roomy.h);
+    expect(l.zoom).toMatchObject({ w: ZOOM_SIZE.w, h: ZOOM_SIZE.h });
+    expect(l.zoom.x + l.zoom.w).toBeLessThan(roomy.w);
+    expect(l.zoom.y).toBeGreaterThan(roomy.h / 2);
+  });
+
+  it("con il pannello in basso la minimappa va in alto a sinistra; con il pannello in alto resta in basso a sinistra", () => {
+    const bottom = overlayLayout(scenario(roomy, "tools", "bottom", "right"));
+    expect(bottom.minimap.corner).toBe("tl");
+    expect(bottom.minimap.rect!.y).toBeLessThan(roomy.h / 2);
+    const top = overlayLayout(scenario(roomy, "tools", "top", "right"));
+    expect(top.minimap.corner).toBe("bl");
+    for (const side of ["left", "right"] as const) {
+      expect(overlayLayout(scenario(roomy, "tools", side, "right")).minimap.corner).toBe("bl");
+    }
+  });
+
+  it("i controlli di zoom restano in basso a destra con ogni pannello", () => {
+    for (const side of SIDES) {
+      const l = overlayLayout(scenario(roomy, "tools", side, "right"));
+      expect(l.zoom.x + l.zoom.w).toBeGreaterThan(roomy.w - 40);
+      expect(l.zoom.y + l.zoom.h).toBeGreaterThan(roomy.h - 40);
+    }
+  });
+
+  it("area troppo piccola: la minimappa passa all'angolo opposto, poi diventa un pulsante compatto", () => {
+    // con le due tacche sul bordo inferiore e lo zoom, la minimappa in basso a sinistra non ci sta
+    const tight = { w: 330, h: 150 };
+    const l = overlayLayout(scenario(tight, null, "bottom", "bottom"));
+    expect(l.minimap.compact || l.minimap.corner !== "bl").toBe(true);
+    // area minuscola: compatta
+    const tiny = overlayLayout(scenario({ w: 260, h: 200 }, null, "left", "right"));
+    expect(tiny.minimap.compact || tiny.minimap.rect === null).toBe(true);
+    if (tiny.minimap.rect) {
+      expect(tiny.minimap.rect.w).toBe(MINIMAP_COMPACT);
+      expect(tiny.minimap.expanded).toMatchObject({ w: MINIMAP_SIZE.w, h: MINIMAP_SIZE.h });
+    }
+  });
+
+  it("il suggerimento sta al centro, in basso o in alto, e non tocca nulla", () => {
+    for (const area of AREAS) {
+      const input = scenario(area, null, "bottom", "top");
+      const l = overlayLayout(input);
+      if (!l.hint) continue;
+      expect(l.hint.h).toBe(HINT_HEIGHT);
+      expect(Math.abs(l.hint.x + l.hint.w / 2 - area.w / 2)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("gli ingombri dei widget diventano margini di sicurezza dell'area visibile", () => {
+    const l = overlayLayout(scenario(roomy, null, "left", "right"));
+    const total = l.insets.top + l.insets.right + l.insets.bottom + l.insets.left;
+    expect(total).toBeGreaterThan(0);
+    // i margini non portano via più di metà dell'area in nessuna direzione
+    expect(l.insets.left + l.insets.right).toBeLessThan(roomy.w / 2);
+    expect(l.insets.top + l.insets.bottom).toBeLessThan(roomy.h / 2);
+  });
+});
+```
+
+### `src/etl-canvas/__tests__/panels-actions.test.ts`
+
+242 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import { createEtlStore, fromSaved, initialState, parseSaved, toSaved } from "../../etl-store";
+import type { EtlStore } from "../../etl-store";
+import { createInteractionController } from "../interaction";
+import type { InteractionController } from "../interaction";
+import { createPanelActions, followInspector } from "../panels/actions";
+import { storeWith } from "./helpers";
+
+const panels = (s: EtlStore) => s.getState().panels;
+const view = (s: EtlStore) => s.getState().view;
+const open = (s: EtlStore) => [panels(s).tools.open, panels(s).insp.open];
+
+describe("aprire, chiudere, spostare un pannello", () => {
+  it("lo stato iniziale è quello del prototipo: cassetta aperta a sinistra, Inspector chiuso a destra", () => {
+    const s = createEtlStore();
+    expect(panels(s)).toEqual({
+      tools: { side: "left", open: true },
+      insp: { side: "right", open: false },
+    });
+  });
+
+  it("le azioni sui pannelli non toccano mai la vista (la tiene visibile keepVisible, a parte)", () => {
+    const s = createEtlStore();
+    const a = createPanelActions(s);
+    a.close("tools");
+    a.open("tools");
+    a.moveTo("tools", "top");
+    a.moveTo("tools", "bottom");
+    a.moveTo("insp", "left");
+    a.open("insp");
+    expect(view(s)).toEqual({ x: 0, y: 0, zoom: 1 });
+  });
+
+  it("trascinare la tacca su ciascuno dei quattro bordi sposta il pannello e lo riapre", () => {
+    for (const side of ["left", "right", "top", "bottom"] as const) {
+      const s = createEtlStore();
+      const a = createPanelActions(s);
+      a.close("tools");
+      a.moveTo("tools", side === "left" ? "right" : "left");
+      a.moveTo("tools", side);
+      expect(panels(s).tools).toEqual({ side, open: true });
+    }
+  });
+
+  it("due pannelli sullo stesso bordo diventano schede: se ne apre uno alla volta; separati, tornano due pannelli", () => {
+    const s = createEtlStore();
+    const a = createPanelActions(s);
+    a.moveTo("insp", "left"); // si apre sullo stesso bordo della cassetta
+    expect(panels(s).insp).toEqual({ side: "left", open: true });
+    expect(panels(s).tools).toEqual({ side: "left", open: false }); // l'altra scheda si chiude
+    a.open("tools");
+    expect(open(s)).toEqual([true, false]);
+    a.moveTo("insp", "right");
+    expect(panels(s).insp.side).toBe("right");
+    expect(panels(s).tools.side).toBe("left");
+  });
+
+  it("un solo pannello aperto alla volta anche su bordi diversi, per ogni combinazione di bordi", () => {
+    const sides = ["left", "right", "top", "bottom"] as const;
+    for (const a of sides) {
+      for (const b of sides) {
+        const s = createEtlStore();
+        const act = createPanelActions(s);
+        act.moveTo("tools", a);
+        act.moveTo("insp", b);
+        act.open("insp"); // sullo stesso bordo di prima il solo spostamento non apre: come il clic sulla tacca
+        expect(open(s)).toEqual([false, true]);
+        act.open("tools");
+        expect(open(s)).toEqual([true, false]);
+        act.open("insp");
+        expect(open(s)).toEqual([false, true]);
+      }
+    }
+  });
+});
+
+describe("persistenza", () => {
+  it("lato, aperto/chiuso e scheda attiva sopravvivono a salvataggio e caricamento", () => {
+    const s = createEtlStore();
+    const a = createPanelActions(s);
+    a.moveTo("insp", "top");
+    a.moveTo("tools", "top");
+    a.open("insp"); // scheda attiva: Inspector, in alto
+    const saved = JSON.stringify(toSaved(s.getState()));
+    const loaded = parseSaved(saved);
+    expect(loaded?.panels).toEqual(panels(s));
+    expect(loaded?.panels).toEqual({
+      tools: { side: "top", open: false },
+      insp: { side: "top", open: true },
+    });
+    expect(fromSaved(toSaved(s.getState()))?.panels).toEqual(panels(s));
+  });
+
+  it("lo stato dei pannelli non è locale ai componenti: un altro store caricato dallo stesso salvataggio ha gli stessi pannelli", () => {
+    const s = createEtlStore();
+    createPanelActions(s).moveTo("tools", "bottom");
+    const copy = createEtlStore({
+      initial: parseSaved(JSON.stringify(toSaved(s.getState()))) ?? initialState(),
+    });
+    expect(copy.getState().panels.tools).toEqual({ side: "bottom", open: true });
+  });
+});
+
+/** Un clic: pressione e rilascio nello stesso punto. */
+function click(c: InteractionController, id: string, shiftKey = false): void {
+  c.down({ kind: "node", id }, { x: 304, y: 226, shiftKey });
+  c.up({ x: 304, y: 226, shiftKey });
+}
+
+function setup() {
+  const store = storeWith();
+  const actions = createPanelActions(store);
+  const controller = createInteractionController(store);
+  const stop = followInspector(store, controller, actions);
+  return { store, actions, controller, stop };
+}
+
+describe("l'Inspector segue la selezione: apertura solo al clic", () => {
+  it("un clic su un nodo apre l'Inspector con il suo nome e chiude la cassetta; deselezionare chiude l'Inspector e riapre la cassetta", () => {
+    const { store, controller, stop } = setup();
+    expect(open(store)).toEqual([true, false]);
+    click(controller, "op-join");
+    expect(store.getState().inspector.nodeId).toBe("op-join");
+    expect(open(store)).toEqual([false, true]);
+    controller.key({ key: "Escape" });
+    expect(store.getState().inspector.nodeId).toBeNull();
+    expect(open(store)).toEqual([true, false]); // memoria di sostituzione
+    stop();
+  });
+
+  it("non apre alla sola pressione", () => {
+    const { store, controller, stop } = setup();
+    controller.down({ kind: "node", id: "op-join" }, { x: 304, y: 226 });
+    expect(open(store)).toEqual([true, false]);
+    controller.up({ x: 304, y: 226 });
+    expect(open(store)).toEqual([false, true]);
+    stop();
+  });
+
+  it("non apre durante né dopo un trascinamento", () => {
+    const { store, controller, stop } = setup();
+    controller.down({ kind: "node", id: "op-join" }, { x: 304, y: 226 });
+    controller.move({ x: 340, y: 260 });
+    expect(open(store)).toEqual([true, false]);
+    controller.up({ x: 340, y: 260 });
+    expect(open(store)).toEqual([true, false]);
+    stop();
+  });
+
+  it("non apre con un riquadro di selezione", () => {
+    const { store, controller, stop } = setup();
+    controller.down({ kind: "background" }, { x: 2, y: 2 });
+    controller.move({ x: 2000, y: 2000 });
+    controller.up({ x: 2000, y: 2000 });
+    expect(store.getState().selection.length).toBeGreaterThan(1);
+    expect(open(store)).toEqual([true, false]);
+    stop();
+  });
+
+  it("non apre con una selezione multipla (Maiusc+clic)", () => {
+    const { store, controller, stop } = setup();
+    click(controller, "op-join", true);
+    expect(open(store)).toEqual([true, false]);
+    click(controller, "op-sort", true);
+    expect(store.getState().selection).toHaveLength(2);
+    expect(open(store)).toEqual([true, false]);
+    stop();
+  });
+
+  it("non apre dopo un rilascio dalla cassetta: creare nodi in serie non fa sparire la cassetta", () => {
+    const { store, controller, stop } = setup();
+    for (let i = 0; i < 3; i++) {
+      controller.hoverExternal({ component: "filter" }, { x: 900 + i * 30, y: 500 });
+      controller.dropExternal({ component: "filter" }, { x: 900 + i * 30, y: 500 });
+      expect(open(store)).toEqual([true, false]);
+    }
+    stop();
+  });
+
+  it("se l'utente lo chiude con un nodo selezionato, resta chiuso finché non si clicca di nuovo", () => {
+    const { store, actions, controller, stop } = setup();
+    click(controller, "op-join");
+    expect(open(store)).toEqual([false, true]);
+    actions.close("insp");
+    expect(open(store)).toEqual([false, false]);
+    click(controller, "op-sort");
+    expect(open(store)).toEqual([false, true]);
+    stop();
+  });
+
+  it("smettere di ascoltare lascia i pannelli come sono", () => {
+    const { store, controller, stop } = setup();
+    stop();
+    click(controller, "op-join");
+    expect(open(store)).toEqual([true, false]);
+  });
+});
+
+describe("memoria di sostituzione", () => {
+  it("se la cassetta era chiusa, la chiusura automatica dell'Inspector non la apre", () => {
+    const { store, actions, controller, stop } = setup();
+    actions.close("tools");
+    click(controller, "op-join");
+    expect(open(store)).toEqual([false, true]);
+    controller.key({ key: "Escape" });
+    expect(open(store)).toEqual([false, false]);
+    stop();
+  });
+
+  it("qualunque azione esplicita sui pannelli azzera la memoria", () => {
+    const explicit: [string, (a: ReturnType<typeof createPanelActions>) => void][] = [
+      ["chiusura dell'Inspector", (a) => a.close("insp")],
+      ["tacca o scheda: apertura dell'Inspector", (a) => a.open("insp")],
+      ["tacca o scheda: apertura della cassetta", (a) => a.open("tools")],
+      ["trascinamento della tacca", (a) => a.moveTo("insp", "top")],
+    ];
+    for (const [name, act] of explicit) {
+      const { store, actions, controller, stop } = setup();
+      click(controller, "op-join"); // la cassetta è stata sostituita: memoria attiva
+      act(actions);
+      const before = open(store);
+      // un Inspector chiuso da deselezione non deve riaprire la cassetta se la memoria è azzerata
+      actions.close("tools");
+      controller.key({ key: "Escape" });
+      expect(open(store), name).toEqual([false, false]);
+      void before;
+      stop();
+    }
+  });
+
+  it("senza azioni esplicite la memoria resta: cassetta → Inspector → cassetta più volte", () => {
+    const { store, controller, stop } = setup();
+    for (let i = 0; i < 3; i++) {
+      click(controller, "op-join");
+      expect(open(store)).toEqual([false, true]);
+      controller.key({ key: "Escape" });
+      expect(open(store)).toEqual([true, false]);
+    }
+    stop();
+  });
+});
+```
+
+### `src/etl-canvas/__tests__/panels-layout.test.ts`
+
+152 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import type { Panels } from "../../etl-store";
+import {
+  EXTENT_PAD,
+  MIN_CANVAS_HEIGHT,
+  PANEL_HEIGHT_CAP,
+  cappedPanelHeight,
+  PANEL_SIZE,
+  activeTab,
+  isGrouped,
+  nearestSide,
+  notchHidden,
+  notchOffset,
+  openExtent,
+  panelExtent,
+  panelSize,
+} from "../panels/layout";
+import { createPanelActions } from "../panels/actions";
+import { storeWith } from "./helpers";
+
+const P = (tools: Panels["tools"], insp: Panels["insp"]): Panels => ({ tools, insp });
+const closedSplit = P({ side: "left", open: false }, { side: "right", open: false });
+
+describe("misure dei pannelli", () => {
+  it("separati hanno la misura propria; in gruppo prendono la maggiore", () => {
+    const split = P({ side: "left", open: true }, { side: "right", open: false });
+    expect(isGrouped(split)).toBe(false);
+    expect(panelSize(split, "tools")).toEqual(PANEL_SIZE.tools);
+    expect(panelSize(split, "insp")).toEqual(PANEL_SIZE.insp);
+    const grouped = P({ side: "left", open: true }, { side: "left", open: false });
+    expect(isGrouped(grouped)).toBe(true);
+    const w = Math.max(PANEL_SIZE.tools.w, PANEL_SIZE.insp.w);
+    expect(panelSize(grouped, "tools").w).toBe(w);
+    expect(panelSize(grouped, "insp").w).toBe(w);
+    expect(panelExtent(grouped, "tools")).toBe(w + EXTENT_PAD);
+  });
+
+  it("l'ingombro dei bordi verticali è la larghezza, quello degli orizzontali l'altezza", () => {
+    const top = P({ side: "top", open: true }, { side: "right", open: false });
+    expect(panelExtent(top, "tools")).toBe(PANEL_SIZE.tools.h + EXTENT_PAD);
+    expect(openExtent(top, "top")).toBe(PANEL_SIZE.tools.h + EXTENT_PAD);
+    expect(openExtent(closedSplit, "top")).toBe(0);
+  });
+
+  it("due pannelli come schede in alto o in basso usano l'altezza maggiore dei due", () => {
+    for (const side of ["top", "bottom"] as const) {
+      const grouped = P({ side, open: true }, { side, open: false });
+      const h = Math.max(PANEL_SIZE.tools.h, PANEL_SIZE.insp.h);
+      expect(panelSize(grouped, "tools").h).toBe(h);
+      expect(panelSize(grouped, "insp").h).toBe(h);
+      expect(openExtent(grouped, side)).toBe(h + EXTENT_PAD);
+    }
+  });
+
+  it("l'altezza minima del canvas è una misura positiva, definita in layout.ts", () => {
+    expect(MIN_CANVAS_HEIGHT).toBeGreaterThan(0);
+  });
+
+  it("solo i pannelli aperti sottraggono spazio", () => {
+    expect(openExtent(closedSplit, "left")).toBe(0);
+    expect(
+      openExtent(P({ side: "left", open: true }, { side: "right", open: false }), "left"),
+    ).toBe(PANEL_SIZE.tools.w + EXTENT_PAD);
+  });
+});
+
+describe("le posizioni nel mondo non cambiano mai (Libero e Organizzato)", () => {
+  for (const mode of ["free", "grid"] as const) {
+    it(`modalità ${mode}: aprire, chiudere e spostare i pannelli non tocca il grafo`, () => {
+      const store = storeWith();
+      store.dispatch({ type: "setMode", payload: { mode } });
+      const graph = store.getState().graph;
+      const actions = createPanelActions(store);
+      for (const side of ["right", "top", "bottom", "left"] as const) {
+        actions.moveTo("tools", side);
+        actions.close("tools");
+      }
+      expect(store.getState().graph).toBe(graph); // stessa istanza: nessun nodo si è mosso
+    });
+  }
+});
+
+describe("schede in alto e in basso", () => {
+  it("due pannelli come schede usano l'altezza maggiore dei due, anche per la spinta", () => {
+    for (const side of ["top", "bottom"] as const) {
+      const grouped = P({ side, open: false }, { side, open: true });
+      const h = Math.max(PANEL_SIZE.tools.h, PANEL_SIZE.insp.h);
+      expect(panelSize(grouped, "tools").h).toBe(h);
+      expect(openExtent(grouped, side)).toBe(h + EXTENT_PAD);
+    }
+  });
+});
+
+describe("tacche e schede", () => {
+  it("il bordo più vicino a un punto", () => {
+    const rect = { left: 0, right: 1000, top: 0, bottom: 600 };
+    expect(nearestSide({ x: 10, y: 300 }, rect)).toBe("left");
+    expect(nearestSide({ x: 990, y: 300 }, rect)).toBe("right");
+    expect(nearestSide({ x: 500, y: 12 }, rect)).toBe("top");
+    expect(nearestSide({ x: 500, y: 590 }, rect)).toBe("bottom");
+  });
+
+  it("due tacche sullo stesso bordo si affiancano", () => {
+    expect(notchOffset(closedSplit, "tools")).toBe(0);
+    const same = P({ side: "top", open: false }, { side: "top", open: false });
+    expect(notchOffset(same, "tools")).toBeLessThan(0);
+    expect(notchOffset(same, "insp")).toBeGreaterThan(0);
+  });
+
+  it("la tacca si nasconde se il pannello è aperto o se l'altro, sullo stesso bordo, è aperto (si raggiunge dalla scheda)", () => {
+    expect(notchHidden(closedSplit, "tools")).toBe(false);
+    expect(
+      notchHidden(P({ side: "left", open: true }, { side: "right", open: false }), "tools"),
+    ).toBe(true);
+    const grouped = P({ side: "left", open: true }, { side: "left", open: false });
+    expect(notchHidden(grouped, "insp")).toBe(true);
+    expect(
+      notchHidden(P({ side: "left", open: true }, { side: "right", open: false }), "insp"),
+    ).toBe(false);
+  });
+
+  it("la scheda attiva è il pannello aperto sul bordo", () => {
+    expect(activeTab(closedSplit, "left")).toBeNull();
+    expect(activeTab(P({ side: "left", open: false }, { side: "left", open: true }), "left")).toBe(
+      "insp",
+    );
+  });
+});
+
+describe("tetto all'altezza dei pannelli orizzontali (Fase 6b.1)", () => {
+  it("min(altezza propria, 45% dell'altezza disponibile)", () => {
+    expect(PANEL_HEIGHT_CAP).toBe(0.45);
+    expect(cappedPanelHeight(300, 1000)).toBe(300); // 450 > 300: resta la propria
+    expect(cappedPanelHeight(300, 600)).toBe(270);
+    expect(cappedPanelHeight(206, 438)).toBe(197); // 1280 × 600: 45% di 438, arrotondato per difetto
+    expect(cappedPanelHeight(300, 738)).toBe(300); // 900: il tetto è 332
+    expect(cappedPanelHeight(300, 558)).toBe(251); // 720: il tetto è 251
+    expect(cappedPanelHeight(300, 0)).toBe(0);
+  });
+
+  it("non supera mai il 45% e non è mai negativo", () => {
+    for (const own of [100, 206, 300, 900]) {
+      for (const avail of [0, 100, 438, 558, 738, 2000]) {
+        const h = cappedPanelHeight(own, avail);
+        expect(h).toBeLessThanOrEqual(own);
+        expect(h).toBeLessThanOrEqual(avail * 0.45 + 0.0001);
+        expect(h).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+});
+```
+
+### `src/etl-canvas/__tests__/render.test.ts`
+
+186 righe
+
+```ts
+import { describe, expect, it, vi } from "vitest";
+import { EMPTY_SLOT_ICON } from "../../etl-core";
+import { createEtlStore, initialState } from "../../etl-store";
+import type { EtlStore } from "../../etl-store";
+import { prototypeScene } from "../seed";
+import { html, nodeHtml, storeWith } from "./helpers";
+
+function count(markup: string, needle: string): number {
+  return markup.split(needle).length - 1;
+}
+
+function ids(store: EtlStore): string[] {
+  return Object.keys(store.getState().graph.cards);
+}
+
+describe("scena del prototipo", () => {
+  it("rende 5 nodi con le posizioni del prototipo e nessun cavo", () => {
+    const store = storeWith();
+    const markup = html(store);
+    expect(count(markup, "data-node-id=")).toBe(5);
+    expect(count(markup, 'class="ec-link"')).toBe(0);
+    expect(nodeHtml(markup, "ds1")).toContain("left:26px;top:182px");
+    expect(nodeHtml(markup, "op-filter")).toContain("left:260px;top:52px");
+    expect(nodeHtml(markup, "op-join")).toContain("left:260px;top:182px");
+    expect(nodeHtml(markup, "op-sort")).toContain("left:260px;top:338px");
+    expect(nodeHtml(markup, "op-export")).toContain("left:442px;top:338px");
+    expect(markup).toContain("Vendite 2026");
+    expect(markup).toContain("Filtra Righe");
+    expect(markup).toContain("Unisci (Join)");
+  });
+
+  it("classi per tipo di nodo", () => {
+    const markup = html(storeWith());
+    expect(nodeHtml(markup, "ds1")).toMatch(/class="ec-card ec-dataset"/);
+    for (const id of ["op-filter", "op-join", "op-sort", "op-export"]) {
+      expect(nodeHtml(markup, id)).toMatch(/class="ec-card( ec-warn)?"/);
+      expect(nodeHtml(markup, id)).not.toContain("ec-dataset");
+    }
+  });
+
+  it("indicatore ambra sui nodi incompleti, non sul dataset completo", () => {
+    const markup = html(storeWith());
+    expect(nodeHtml(markup, "ds1")).not.toContain("ec-state-dot");
+    for (const id of ["op-filter", "op-join", "op-sort", "op-export"]) {
+      expect(nodeHtml(markup, id)).toContain("ec-state-dot");
+      expect(nodeHtml(markup, id)).toContain("ec-warn");
+    }
+    // il motivo di etl-core è nell'attributo title
+    expect(nodeHtml(markup, "op-join")).toContain("Mancano tabelle in ingresso");
+  });
+
+  it("icona a una colonna per i nodi semplici", () => {
+    expect(nodeHtml(html(storeWith()), "op-filter")).toContain("ec-icon-wrap ec-count-1");
+  });
+});
+
+describe("cavi, output e box combinati", () => {
+  function connected(): { store: EtlStore; ds: string } {
+    const store = storeWith();
+    const r = store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-filter" } });
+    expect(r).toEqual({ ok: true });
+    return { store, ds: "ds1" };
+  }
+
+  it("un cavo per collegamento, con i due capi", () => {
+    const { store } = connected();
+    const links = store.getState().graph.links;
+    expect(links.length).toBeGreaterThanOrEqual(2); // ds → filtro e filtro → output generato
+    const markup = html(store);
+    expect(count(markup, 'class="ec-link"')).toBe(links.length);
+    expect(count(markup, 'r="2.6"')).toBe(links.length * 2);
+    expect(markup).toMatch(/<path class="ec-link" d="M /);
+  });
+
+  it("l'output generato ha le classi dataset e output", () => {
+    const { store } = connected();
+    const out = ids(store).find((id) => store.getState().graph.cards[id]?.isOutput);
+    expect(out).toBeDefined();
+    expect(nodeHtml(html(store), out as string)).toMatch(/class="ec-card ec-dataset ec-output"/);
+  });
+
+  it("output parziale di un join con una sola tabella: due fette, una vuota", () => {
+    const store = storeWith();
+    expect(store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } })).toEqual({
+      ok: true,
+    });
+    const out = ids(store).find((id) => store.getState().graph.cards[id]?.isOutput) as string;
+    const card = store.getState().graph.cards[out];
+    expect(card?.capacity).toBe(2);
+    expect(card?.filled).toBe(1);
+    const node = nodeHtml(html(store), out);
+    expect(node).toContain("ec-split");
+    // le fette non devono usare la classe dello stato vuoto del canvas (position:absolute; inset:0)
+    expect(node).not.toMatch(/class="[^"]*\bec-empty\b/);
+    expect(node).toContain("ec-partial");
+    expect(count(node, "ec-slice ")).toBe(2);
+    expect(count(node, "ec-slice ec-slice-full")).toBe(1);
+    expect(count(node, "ec-slice ec-slice-empty")).toBe(1);
+    // la fetta vuota mostra il simbolo <>
+    const empty = node.slice(node.indexOf("ec-slice ec-slice-empty"));
+    expect(empty).toContain(EMPTY_SLOT_ICON.slice(0, 27));
+    // la fetta piena è la prima (riempita da sinistra)
+    expect(node.indexOf("ec-slice ec-slice-full")).toBeLessThan(
+      node.indexOf("ec-slice ec-slice-empty"),
+    );
+  });
+
+  it("box combinato: classe combined e icone in file da 3", () => {
+    const store = storeWith();
+    expect(
+      store.dispatch({ type: "merge", payload: { dragged: "op-sort", target: "op-filter" } }),
+    ).toEqual({ ok: true });
+    const box = ids(store).find(
+      (id) => (store.getState().graph.cards[id]?.components.length ?? 0) > 1,
+    );
+    expect(box).toBeDefined();
+    const node = nodeHtml(html(store), box as string);
+    expect(node).toContain("ec-combined");
+    expect(node).toContain("ec-icon-wrap ec-count-2");
+  });
+});
+
+describe("selezione, vista, stato vuoto", () => {
+  it("contorno di selezione per i nodi in selection", () => {
+    const store = storeWith();
+    store.dispatch({ type: "select", payload: { ids: ["op-sort"] } });
+    const markup = html(store);
+    expect(nodeHtml(markup, "op-sort")).toContain("ec-selected");
+    expect(nodeHtml(markup, "op-filter")).not.toContain("ec-selected");
+  });
+
+  it("la vista dello store diventa la trasformazione del mondo e la percentuale", () => {
+    const store = storeWith();
+    store.dispatch({ type: "setView", payload: { x: 40, y: -12, zoom: 1.5 } });
+    const markup = html(store);
+    expect(markup).toContain("translate(40px, -12px) scale(1.5)");
+    expect(markup).toContain(">150%<");
+  });
+
+  it("canvas vuoto: stato vuoto centrato, senza minimappa di nodi", () => {
+    const markup = html(createEtlStore({ initial: initialState() }));
+    expect(markup).toContain("ec-empty");
+    expect(markup).toContain("Aggiungi un dataset");
+    expect(count(markup, "ec-mm-node")).toBe(0);
+  });
+
+  it("con nodi lo stato vuoto non c'è; controlli e minimappa ci sono", () => {
+    const markup = html(storeWith());
+    expect(markup).not.toContain("ec-empty");
+    expect(markup).toContain('aria-label="Riduci"');
+    expect(markup).toContain('aria-label="Ingrandisci"');
+    expect(markup).toContain(">Adatta<");
+    expect(count(markup, "ec-mm-node")).toBeGreaterThanOrEqual(5);
+    expect(prototypeScene().graph.links).toHaveLength(0);
+  });
+});
+
+describe("animazioni e rendering lato server", () => {
+  it("il rendering non chiama requestAnimationFrame né matchMedia", () => {
+    const g = globalThis as unknown as Record<string, unknown>;
+    const raf = vi.fn();
+    const mm = vi.fn();
+    g["requestAnimationFrame"] = raf;
+    g["matchMedia"] = mm;
+    try {
+      const store = storeWith();
+      store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
+      html(store);
+      expect(raf).not.toHaveBeenCalled();
+      expect(mm).not.toHaveBeenCalled();
+    } finally {
+      delete g["requestAnimationFrame"];
+      delete g["matchMedia"];
+    }
+  });
+
+  it("i cavi rendono anche gli elementi che il motore aggiorna, vuoti e senza movimento", () => {
+    const store = storeWith();
+    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-filter" } });
+    const markup = html(store);
+    expect(count(markup, 'class="ec-flow"')).toBe(store.getState().graph.links.length);
+    expect(markup).toContain('class="ec-link-ghost"');
+    expect(markup).not.toMatch(/<path class="ec-flow" d="M/);
+  });
+});
+```
 
 ### `src/etl-canvas/__tests__/ssr.test.tsx`
 
@@ -356,7 +1117,7 @@ describe("trascinamento dalla cassetta al canvas (un nodo esterno)", () => {
 
 ### `src/etl-canvas/__tests__/toolbox.test.tsx`
 
-190 righe
+193 righe
 
 ```tsx
 import { createElement } from "react";
@@ -365,11 +1126,13 @@ import { describe, expect, it } from "vitest";
 import { META, SECTIONS } from "../../etl-core";
 import { createEtlStore } from "../../etl-store";
 import { createInteractionController } from "../interaction";
+import { createLoop } from "../loop";
 import { createPanelActions } from "../panels/actions";
 import { DockLayout } from "../panels/Dock";
 import { InspectorShell } from "../panels/InspectorShell";
 import { Toolbox } from "../panels/Toolbox";
 import { loadCsvText } from "../panels/csv";
+import { fakeEnv } from "./fake-env";
 import { storeWith } from "./helpers";
 
 const noop = () => {};
@@ -487,6 +1250,7 @@ describe("orientamento e schede", () => {
         store,
         actions: createPanelActions(store),
         controller: createInteractionController(store),
+        loop: createLoop(fakeEnv().env),
         canvas: () => createElement("div", { "data-x": "canvas" }),
         content,
       }),
@@ -696,1116 +1460,5 @@ describe("stato visivo nel tempo", () => {
     expect(sampleTransition({ kind: "none" }, 100)).toBeNull();
   });
 });
-```
-
-### `src/etl-canvas/__tests__/view.test.ts`
-
-194 righe
-
-```ts
-import { describe, expect, it } from "vitest";
-import { CARD, LABEL_H } from "../../etl-layout";
-import { ZOOM_MAX, ZOOM_MIN } from "../../etl-store";
-import { fit, zoomAtPoint, zoomIn, zoomOut, zoomReset } from "../actions";
-import { prototypeScene } from "../seed";
-import { bounds, fitView, minimapFrame, toWorld, viewFromMinimap, wheelPan, zoomAt } from "../view";
-import { SIZE, storeWith } from "./helpers";
-
-function allInside(store: ReturnType<typeof storeWith>, size = SIZE): void {
-  const { view, graph } = store.getState();
-  for (const c of Object.values(graph.cards)) {
-    const x1 = c.x * view.zoom + view.x;
-    const y1 = c.y * view.zoom + view.y;
-    const x2 = (c.x + CARD) * view.zoom + view.x;
-    const y2 = (c.y + CARD + LABEL_H) * view.zoom + view.y;
-    expect(x1, c.id).toBeGreaterThanOrEqual(0);
-    expect(y1, c.id).toBeGreaterThanOrEqual(0);
-    expect(x2, c.id).toBeLessThanOrEqual(size.w);
-    expect(y2, c.id).toBeLessThanOrEqual(size.h);
-  }
-}
-
-describe("Adatta", () => {
-  it("dopo la chiamata tutti i nodi rientrano nell'area visibile", () => {
-    const store = storeWith();
-    store.dispatch({ type: "setView", payload: { x: -900, y: 400, zoom: 2 } });
-    fit(store, SIZE);
-    allInside(store);
-  });
-
-  it("vale per finestre piccole e grandi", () => {
-    for (const size of [
-      { w: 320, h: 240 },
-      { w: 1440, h: 900 },
-      { w: 600, h: 1200 },
-    ]) {
-      const store = storeWith();
-      fit(store, size);
-      allInside(store, size);
-    }
-  });
-
-  it("vale anche per una scena sparsa su tutto il mondo", () => {
-    const size = { w: 1200, h: 800 };
-    const store = storeWith();
-    const s = prototypeScene();
-    const far = { ...s.graph.cards["op-export"]!, x: 2400, y: 1400 };
-    store.replaceState({
-      ...s,
-      graph: { ...s.graph, cards: { ...s.graph.cards, "op-export": far } },
-    });
-    fit(store, size);
-    allInside(store, size);
-  });
-
-  it("oltre il limite di zoom (0,35) Adatta si ferma al limite, come nel prototipo", () => {
-    const store = storeWith();
-    const s = prototypeScene();
-    const far = { ...s.graph.cards["op-export"]!, x: 2400, y: 1400 };
-    store.replaceState({
-      ...s,
-      graph: { ...s.graph, cards: { ...s.graph.cards, "op-export": far } },
-    });
-    fit(store, { w: 320, h: 240 });
-    expect(store.getState().view.zoom).toBe(ZOOM_MIN);
-  });
-
-  it("con il margine del prototipo (48) e zoom al più 1,25", () => {
-    const one = [{ x: 100, y: 100 }];
-    const v = fitView(one, { w: 2000, h: 2000 });
-    expect(v.zoom).toBe(1.25);
-    const b = bounds(one)!;
-    // centrato
-    expect(v.x + b.x1 * v.zoom).toBeCloseTo((2000 - (b.x2 - b.x1) * v.zoom) / 2, 6);
-  });
-
-  it("canvas vuoto: vista di partenza", () => {
-    expect(fitView([], SIZE)).toEqual({ x: 0, y: 0, zoom: 1 });
-  });
-});
-
-describe("zoom", () => {
-  it("limiti del prototipo (0,35 – 2)", () => {
-    const store = storeWith();
-    for (let i = 0; i < 40; i++) zoomIn(store, SIZE);
-    expect(store.getState().view.zoom).toBe(ZOOM_MAX);
-    for (let i = 0; i < 80; i++) zoomOut(store, SIZE);
-    expect(store.getState().view.zoom).toBe(ZOOM_MIN);
-    zoomReset(store, SIZE);
-    expect(store.getState().view.zoom).toBe(1);
-  });
-
-  it("attorno al puntatore il punto del mondo sotto il puntatore non si muove", () => {
-    const store = storeWith();
-    store.dispatch({ type: "setView", payload: { x: 30, y: 50, zoom: 0.8 } });
-    const before = toWorld(store.getState().view, 400, 300);
-    zoomAtPoint(store, 400, 300, 1.7);
-    const after = toWorld(store.getState().view, 400, 300);
-    expect(after.x).toBeCloseTo(before.x, 6);
-    expect(after.y).toBeCloseTo(before.y, 6);
-    expect(store.getState().view.zoom).toBeCloseTo(1.7, 6);
-  });
-
-  it("zoomAt è puro e rispetta i limiti", () => {
-    const v = { x: 0, y: 0, zoom: 1 };
-    expect(zoomAt(v, 10, 10, 99).zoom).toBe(ZOOM_MAX);
-    expect(v).toEqual({ x: 0, y: 0, zoom: 1 });
-  });
-
-  it("la vista passa da etl-store: la modifica notifica gli ascoltatori", () => {
-    const store = storeWith();
-    let n = 0;
-    store.subscribe(() => n++);
-    zoomIn(store, SIZE);
-    expect(n).toBe(1);
-    // e non entra nel registro né nella cronologia
-    expect(store.getLog().some((e) => e.type === "setView")).toBe(false);
-    expect(store.canUndo()).toBe(false);
-  });
-});
-
-describe("minimappa", () => {
-  it("contiene tutti i nodi e la porzione visibile nel riquadro 168 × 104", () => {
-    const store = storeWith();
-    const cards = Object.values(store.getState().graph.cards);
-    const frame = minimapFrame(cards, store.getState().view, SIZE);
-    for (const c of cards) {
-      const l = frame.ox + (c.x - frame.x1) * frame.k;
-      const t = frame.oy + (c.y - frame.y1) * frame.k;
-      expect(l).toBeGreaterThanOrEqual(0);
-      expect(t).toBeGreaterThanOrEqual(0);
-      expect(l + CARD * frame.k).toBeLessThanOrEqual(168 + 1e-9);
-      expect(t + CARD * frame.k).toBeLessThanOrEqual(104 + 1e-9);
-    }
-  });
-
-  it("un clic sulla minimappa porta quel punto al centro dell'area", () => {
-    const store = storeWith();
-    const cards = Object.values(store.getState().graph.cards);
-    const view = store.getState().view;
-    const frame = minimapFrame(cards, view, SIZE);
-    const next = viewFromMinimap(frame, view, SIZE, 84, 52);
-    const center = toWorld(next, SIZE.w / 2, SIZE.h / 2);
-    expect(center.x).toBeCloseTo(frame.x1 + (84 - frame.ox) / frame.k, 6);
-    expect(center.y).toBeCloseTo(frame.y1 + (52 - frame.oy) / frame.k, 6);
-  });
-});
-
-describe("«Adatta» con i margini dei widget e rotella", () => {
-  it("con i margini l'insieme sta nell'area meno i widget", () => {
-    const cards = [
-      { x: 0, y: 0 },
-      { x: 600, y: 300 },
-    ];
-    const size = { w: 1000, h: 600 };
-    const insets = { top: 0, right: 0, bottom: 120, left: 200 };
-    const v = fitView(cards, size, insets);
-    const b = bounds(cards)!;
-    expect(b.x1 * v.zoom + v.x).toBeGreaterThanOrEqual(insets.left - 0.001);
-    expect(b.x2 * v.zoom + v.x).toBeLessThanOrEqual(size.w - insets.right + 0.001);
-    expect(b.y1 * v.zoom + v.y).toBeGreaterThanOrEqual(insets.top - 0.001);
-    expect(b.y2 * v.zoom + v.y).toBeLessThanOrEqual(size.h - insets.bottom + 0.001);
-    // senza margini il risultato è quello di sempre
-    expect(fitView(cards, size)).toEqual(
-      fitView(cards, size, { top: 0, right: 0, bottom: 0, left: 0 }),
-    );
-  });
-
-  it("rotella semplice: pan in verticale (e in orizzontale col trackpad); Maiusc: orizzontale; zoom resta a Cmd/Ctrl", () => {
-    const view = { x: 10, y: 20, zoom: 1.5 };
-    expect(wheelPan(view, { deltaX: 0, deltaY: 30, shiftKey: false })).toEqual({
-      x: 10,
-      y: -10,
-      zoom: 1.5,
-    });
-    expect(wheelPan(view, { deltaX: 8, deltaY: 30, shiftKey: false })).toEqual({
-      x: 2,
-      y: -10,
-      zoom: 1.5,
-    });
-    expect(wheelPan(view, { deltaX: 0, deltaY: 30, shiftKey: true })).toEqual({
-      x: -20,
-      y: 20,
-      zoom: 1.5,
-    });
-    // Maiusc con un trackpad che già invia deltaX: si usa deltaX
-    expect(wheelPan(view, { deltaX: 12, deltaY: 5, shiftKey: true })).toEqual({
-      x: -2,
-      y: 15,
-      zoom: 1.5,
-    });
-  });
-});
-```
-
-### `src/etl-canvas/actions.ts`
-
-42 righe
-
-```ts
-/** Azioni sulla vista, applicate attraverso etl-store (`setView`). */
-import type { Size } from "../etl-layout";
-import type { EtlStore } from "../etl-store";
-import { fitView, zoomAt, zoomCentered, ZOOM_STEP } from "./view";
-import type { Insets } from "./view";
-
-/** "Adatta": inquadra tutti i nodi, evitando lo spazio dei widget in sovrimpressione. */
-export function fit(store: EtlStore, size: Size, insets?: Insets): void {
-  store.dispatch({
-    type: "setView",
-    payload: fitView(Object.values(store.getState().graph.cards), size, insets),
-  });
-}
-
-export function zoomBy(store: EtlStore, size: Size, factor: number): void {
-  const view = store.getState().view;
-  store.dispatch({ type: "setView", payload: zoomCentered(view, size, view.zoom * factor) });
-}
-
-export function zoomIn(store: EtlStore, size: Size): void {
-  zoomBy(store, size, ZOOM_STEP);
-}
-
-export function zoomOut(store: EtlStore, size: Size): void {
-  zoomBy(store, size, 1 / ZOOM_STEP);
-}
-
-export function zoomReset(store: EtlStore, size: Size): void {
-  store.dispatch({
-    type: "setView",
-    payload: zoomCentered(store.getState().view, size, 1),
-  });
-}
-
-/** Zoom attorno al puntatore (`px`, `py` relativi all'area). */
-export function zoomAtPoint(store: EtlStore, px: number, py: number, zoom: number): void {
-  store.dispatch({
-    type: "setView",
-    payload: zoomAt(store.getState().view, px, py, zoom),
-  });
-}
-```
-
-### `src/etl-canvas/canvas.css`
-
-658 righe
-
-```css
-/*
- * Aspetto del canvas ETL (Fase 4a): nodi, cavi, controlli, minimappa.
- * Misure e classi del prototipo (docs/prototype/isa-fusion-prototype.html,
- * righe indicate); colori solo dai token di tokens.css. Tutte le regole
- * sono limitate a `.etl-canvas`. Il carattere (Manrope) è quello di tutta l'app,
- * caricato da src/styles.css.
- */
-@import "./tokens.css";
-
-.etl-canvas {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  min-height: 520px;
-  box-sizing: border-box;
-  padding: 0;
-  background: var(--ec-bg);
-  color: var(--ec-ink);
-  font-family: var(--ec-font);
-  border-radius: var(--ec-r-stage);
-}
-.etl-canvas *,
-.etl-canvas *::before,
-.etl-canvas *::after {
-  box-sizing: border-box;
-  font-family: inherit;
-}
-
-/* riga 621-624 */
-.etl-canvas .ec-stage {
-  position: absolute;
-  inset: 0;
-  user-select: none;
-  touch-action: none;
-  border-radius: var(--ec-r-stage);
-  background: var(--ec-stage);
-  overflow: hidden;
-}
-.etl-canvas .ec-stage.ec-pannable {
-  cursor: grab;
-}
-.etl-canvas .ec-stage.ec-panning {
-  cursor: grabbing;
-}
-
-/* righe 3-4 di .world e .links (righe 205-206) */
-.etl-canvas .ec-world {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform-origin: 0 0;
-}
-.etl-canvas .ec-links {
-  position: absolute;
-  inset: 0;
-  overflow: visible;
-  pointer-events: none;
-}
-
-/* nodo — riga 626 */
-.etl-canvas .ec-card {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  width: 88px;
-  z-index: 2;
-}
-.etl-canvas .ec-icon-wrap {
-  position: relative;
-  width: 88px;
-  height: 88px;
-  border-radius: var(--ec-r-op);
-  background: var(--ec-node-op);
-  color: var(--ec-node-op-ink);
-  box-shadow: var(--ec-node-op-outline);
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  align-items: center;
-  gap: 6px;
-  padding: 7px;
-}
-.etl-canvas .ec-dataset .ec-icon-wrap {
-  background: var(--ec-node-fill);
-  color: var(--ec-node-fill-ink);
-  border-radius: var(--ec-r-fill);
-  box-shadow: none;
-}
-.etl-canvas .ec-output .ec-icon-wrap {
-  opacity: var(--ec-output-opacity);
-}
-.etl-canvas .ec-selected .ec-icon-wrap {
-  box-shadow: var(--ec-select-ring);
-}
-.etl-canvas .ec-icon-wrap svg {
-  display: block;
-  flex-shrink: 0;
-}
-.etl-canvas .ec-count-1 {
-  grid-template-columns: repeat(1, auto);
-}
-.etl-canvas .ec-count-2 {
-  grid-template-columns: repeat(2, auto);
-}
-.etl-canvas .ec-count-3,
-.etl-canvas .ec-count-6,
-.etl-canvas .ec-count-many {
-  grid-template-columns: repeat(3, auto);
-}
-.etl-canvas .ec-count-1 svg {
-  width: 26px;
-  height: 26px;
-}
-.etl-canvas .ec-count-2 svg {
-  width: 20px;
-  height: 20px;
-}
-.etl-canvas .ec-count-3 svg {
-  width: 17px;
-  height: 17px;
-}
-.etl-canvas .ec-count-6 svg {
-  width: 15px;
-  height: 15px;
-}
-.etl-canvas .ec-count-many svg {
-  width: 12px;
-  height: 12px;
-}
-
-/* output parziale: una fetta per tabella attesa — righe 656-669 */
-.etl-canvas .ec-dataset .ec-icon-wrap.ec-split {
-  padding: 0;
-  display: flex;
-  overflow: hidden;
-  background: var(--ec-split-bg);
-  gap: 0;
-}
-.etl-canvas .ec-split .ec-slice {
-  flex: 1 1 0;
-  min-width: 0;
-  height: 100%;
-  padding: 2px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.etl-canvas .ec-split .ec-slice.ec-slice-full {
-  background: var(--ec-node-fill);
-  color: var(--ec-node-fill-ink);
-}
-.etl-canvas .ec-split .ec-slice.ec-slice-empty {
-  background: var(--ec-split-empty);
-  color: var(--ec-split-empty-ink);
-}
-.etl-canvas .ec-split .ec-slice + .ec-slice {
-  border-left: 1.5px dashed var(--ec-split-line);
-}
-.etl-canvas .ec-split .ec-slice svg {
-  width: 100%;
-  height: auto;
-  max-width: 22px;
-  max-height: 100%;
-}
-.etl-canvas .ec-split .ec-slice.ec-slice-empty svg {
-  opacity: 0.85;
-}
-
-/* etichetta — righe 680-683 */
-.etl-canvas .ec-label {
-  font-size: 10.5px;
-  font-weight: 700;
-  text-align: center;
-  line-height: 1.25;
-  color: var(--ec-ink);
-  max-width: 96px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 0 2px;
-}
-.etl-canvas .ec-dataset .ec-label {
-  color: var(--ec-accent-text);
-}
-.etl-canvas .ec-partial .ec-label {
-  color: var(--ec-muted);
-  font-style: italic;
-}
-
-/* indicatore ambra — righe 183-187 */
-.etl-canvas .ec-state-dot {
-  position: absolute;
-  right: -4px;
-  bottom: -4px;
-  width: 13px;
-  height: 13px;
-  border-radius: var(--ec-r-pill);
-  background: var(--ec-warn);
-  border: 2.5px solid var(--ec-warn-ring);
-  z-index: 4;
-}
-
-/* cavi — righe 1404-1408 */
-.etl-canvas .ec-link {
-  fill: none;
-  stroke: var(--ec-link);
-  stroke-width: 2.1;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.etl-canvas .ec-link-dot-ds {
-  fill: var(--ec-link-dot-fill);
-}
-.etl-canvas .ec-link-dot-op {
-  fill: var(--ec-link-dot-op);
-}
-
-/* flusso nei cavi (riga 1517: fill rgba(108,99,255,0.6)) e tracciato uscente di una dissolvenza */
-.etl-canvas .ec-flow {
-  fill: var(--ec-flow);
-  pointer-events: none;
-}
-.etl-canvas .ec-link-ghost {
-  fill: none;
-  stroke: var(--ec-link);
-  stroke-width: 2.1;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  pointer-events: none;
-}
-
-/* controlli di zoom — righe 138-150 */
-.etl-canvas .ec-zoom {
-  position: absolute;
-  /* posizione e misura: inline, da panels/overlayLayout.ts */
-  box-sizing: border-box;
-  z-index: 15;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 4px;
-  border-radius: var(--ec-r-pill);
-  background: var(--ec-surface-strong);
-  backdrop-filter: blur(var(--ec-glass-blur));
-  border: 1px solid var(--ec-panel-border);
-  box-shadow: var(--ec-glass-shadow);
-}
-.etl-canvas .ec-zoom button {
-  all: unset;
-  cursor: pointer;
-  min-width: 28px;
-  height: 28px;
-  padding: 0 8px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--ec-r-pill);
-  font-family: var(--ec-font);
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--ec-ink);
-}
-.etl-canvas .ec-zoom button:hover {
-  background: var(--ec-accent-soft);
-  color: var(--ec-accent-text);
-}
-.etl-canvas .ec-zoom button:focus-visible {
-  outline: 2px solid var(--ec-accent-text);
-  outline-offset: 1px;
-}
-.etl-canvas .ec-zoom .ec-fit {
-  color: var(--ec-accent-text);
-}
-
-/* minimappa — righe 152-161 */
-.etl-canvas .ec-minimap {
-  position: absolute;
-  /* posizione e misura: inline, da panels/overlayLayout.ts */
-  box-sizing: border-box;
-  z-index: 15;
-  border-radius: var(--ec-r-minimap);
-  background: var(--ec-surface-strong);
-  backdrop-filter: blur(var(--ec-glass-blur));
-  border: 1px solid var(--ec-panel-border);
-  box-shadow: var(--ec-glass-shadow);
-  overflow: hidden;
-  cursor: pointer;
-}
-.etl-canvas .ec-mm-node {
-  position: absolute;
-  border-radius: var(--ec-r-xs);
-  background: var(--ec-mm-node);
-}
-.etl-canvas .ec-mm-node.ec-ds {
-  background: var(--ec-mm-node-ds);
-}
-.etl-canvas .ec-mm-view {
-  position: absolute;
-  border: 1.5px solid var(--ec-mm-view-line);
-  border-radius: var(--ec-r-sm);
-  background: var(--ec-mm-view-bg);
-  pointer-events: none;
-}
-
-/* stato vuoto */
-.etl-canvas .ec-empty {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  text-align: center;
-  pointer-events: none;
-  z-index: 1;
-}
-.etl-canvas .ec-empty-title {
-  font-size: 15px;
-  font-weight: 800;
-  color: var(--ec-ink);
-}
-.etl-canvas .ec-empty-text {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--ec-empty-ink);
-}
-
-/* ── Gesti (Fase 5): a riposo non cambia nulla, tutto compare solo durante il gesto ── */
-
-/* nodo in movimento — righe 627, 639 */
-.etl-canvas .ec-card.ec-dragging {
-  cursor: grabbing;
-  z-index: 20;
-}
-.etl-canvas .ec-card.ec-dragging .ec-icon-wrap {
-  box-shadow: var(--ec-drag-shadow);
-  transform: scale(1.05);
-}
-
-/* esiti del rilascio: ciascuno ha colore e stile di contorno propri (righe 640-642 per fusione e collegamento) */
-.etl-canvas .ec-card.ec-drop-merge .ec-icon-wrap {
-  box-shadow: var(--ec-drop-merge-ring);
-  transform: scale(1.09);
-}
-.etl-canvas .ec-card.ec-drop-merge .ec-icon-wrap svg {
-  transform: scale(0.88);
-}
-.etl-canvas .ec-card.ec-drop-link .ec-icon-wrap {
-  box-shadow: var(--ec-drop-link-ring);
-  transform: scale(1.04);
-}
-.etl-canvas .ec-card.ec-drop-link-reverse .ec-icon-wrap {
-  outline: 3px dashed var(--ec-drop-link-reverse);
-  outline-offset: 3px;
-  transform: scale(1.04);
-}
-.etl-canvas .ec-card.ec-drop-displace .ec-icon-wrap {
-  outline: 3px dotted var(--ec-drop-displace);
-  outline-offset: 3px;
-}
-.etl-canvas .ec-card.ec-drop-reject .ec-icon-wrap {
-  outline: 3px solid var(--ec-drop-reject);
-  outline-offset: 3px;
-}
-
-/* nodi che sparirebbero se si confermasse l'eliminazione */
-.etl-canvas .ec-card.ec-doomed .ec-icon-wrap {
-  outline: 3px dashed var(--ec-doomed);
-  outline-offset: 3px;
-  opacity: 0.55;
-}
-
-/* cavo in cui si inserirebbe la lavorazione (riga 1403, `hot`) */
-.etl-canvas .ec-link.ec-link-hot {
-  stroke: var(--ec-link-insert);
-  stroke-width: 3.4;
-}
-
-/* porte — righe 168-181: compaiono al passaggio del puntatore */
-.etl-canvas .ec-port {
-  position: absolute;
-  width: 11px;
-  height: 11px;
-  border-radius: var(--ec-r-pill);
-  box-sizing: border-box;
-  background: var(--ec-port-fill);
-  border: 2px solid var(--ec-port-line);
-  z-index: 5;
-  cursor: crosshair;
-  opacity: 0;
-  transform: scale(0.5);
-  transition:
-    opacity 0.14s,
-    transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.etl-canvas .ec-card:hover .ec-port {
-  opacity: 1;
-  transform: scale(1);
-}
-.etl-canvas .ec-card.ec-dragging .ec-port {
-  opacity: 0;
-}
-.etl-canvas .ec-port:hover {
-  background: var(--ec-port-line);
-}
-.etl-canvas .ec-port-t {
-  left: calc(44px - 5.5px);
-  top: -5.5px;
-}
-.etl-canvas .ec-port-b {
-  left: calc(44px - 5.5px);
-  top: calc(88px - 5.5px);
-}
-.etl-canvas .ec-port-l {
-  top: calc(44px - 5.5px);
-  left: -5.5px;
-}
-.etl-canvas .ec-port-r {
-  top: calc(44px - 5.5px);
-  left: calc(88px - 5.5px);
-}
-
-/* cavo provvisorio tirato da una porta — riga 3995 */
-.etl-canvas .ec-temp-link {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  pointer-events: none;
-  z-index: 19;
-}
-.etl-canvas .ec-temp-link path {
-  fill: none;
-  stroke: var(--ec-temp-link-muted);
-  stroke-width: 2.2;
-  stroke-dasharray: 6 5;
-  stroke-linecap: round;
-}
-.etl-canvas .ec-temp-link circle {
-  fill: var(--ec-temp-link-muted);
-}
-.etl-canvas .ec-temp-link.ec-valid path {
-  stroke: var(--ec-temp-link);
-}
-.etl-canvas .ec-temp-link.ec-valid circle {
-  fill: var(--ec-temp-link);
-}
-
-/* riquadro di selezione — riga 163 */
-.etl-canvas .ec-marquee {
-  position: absolute;
-  z-index: 14;
-  pointer-events: none;
-  border: 1.5px dashed var(--ec-marquee-line);
-  background: var(--ec-marquee-fill);
-  border-radius: var(--ec-r-sm);
-}
-
-/* suggerimento durante un gesto (prototipo: `hint`) */
-.etl-canvas .ec-hint {
-  position: absolute;
-  /* posizione e misura: inline, da panels/overlayLayout.ts */
-  box-sizing: border-box;
-  z-index: 16;
-  padding: 0 14px;
-  line-height: 28px;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  border-radius: var(--ec-r-pill);
-  background: var(--ec-surface-strong);
-  border: 1px solid var(--ec-panel-border);
-  box-shadow: var(--ec-glass-shadow);
-  color: var(--ec-ink);
-  font-size: 12px;
-  font-weight: 600;
-  pointer-events: none;
-}
-
-/* conferma di eliminazione — righe 112-132 */
-.etl-canvas .ec-confirm {
-  position: absolute;
-  z-index: 30;
-  width: 246px;
-  padding: 22px;
-  border-radius: var(--ec-r-fill);
-  background: var(--ec-surface-strong);
-  backdrop-filter: blur(var(--ec-glass-blur));
-  border: 1px solid var(--ec-panel-border);
-  box-shadow: var(--ec-overlay-shadow);
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.etl-canvas .ec-confirm-title {
-  font-weight: 800;
-  font-size: 15px;
-  color: var(--ec-ink);
-}
-.etl-canvas .ec-confirm-text {
-  font-size: 11.5px;
-  font-weight: 600;
-  line-height: 1.5;
-  color: var(--ec-empty-ink);
-  margin-top: 3px;
-}
-.etl-canvas .ec-confirm-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-.etl-canvas .ec-confirm-actions button {
-  all: unset;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  padding: 9px 15px;
-  border-radius: var(--ec-r-pill);
-}
-.etl-canvas .ec-confirm-actions button:focus-visible {
-  outline: 2px solid var(--ec-select);
-  outline-offset: 2px;
-}
-.etl-canvas .ec-confirm-actions .ec-confirm-cancel {
-  color: var(--ec-empty-ink);
-  background: var(--ec-accent-soft);
-}
-.etl-canvas .ec-confirm-actions .ec-confirm-cancel:hover {
-  color: var(--ec-ink);
-}
-.etl-canvas .ec-confirm-actions .ec-confirm-ok {
-  background: var(--ec-danger);
-  color: var(--ec-text-on-danger);
-}
-
-/* minimappa ridotta a un pulsante, quando l'area è troppo piccola per ospitarla (Fase 6a.2) */
-.etl-canvas .ec-minimap-toggle {
-  all: unset;
-  cursor: pointer;
-  position: absolute;
-  box-sizing: border-box;
-  z-index: 15;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--ec-r-minimap);
-  background: var(--ec-surface-strong);
-  backdrop-filter: blur(var(--ec-glass-blur));
-  border: 1px solid var(--ec-panel-border);
-  box-shadow: var(--ec-glass-shadow);
-  color: var(--ec-accent-text);
-}
-.etl-canvas .ec-minimap-toggle svg {
-  width: 20px;
-  height: 20px;
-}
-.etl-canvas .ec-minimap-toggle:focus-visible {
-  outline: 2px solid var(--ec-select);
-  outline-offset: 2px;
-}
-.etl-canvas .ec-mm-close {
-  all: unset;
-  cursor: pointer;
-  position: absolute;
-  top: 2px;
-  right: 4px;
-  z-index: 1;
-  font-size: 14px;
-  line-height: 1;
-  padding: 2px 4px;
-  color: var(--ec-empty-ink);
-}
-.etl-canvas .ec-mm-close:focus-visible {
-  outline: 2px solid var(--ec-select);
-}
-
-/* pulsanti sul nodo (Fase 6b.1): elimina (×) ed espansione dei box combinati — righe 89-102, 685-694 */
-.etl-canvas .ec-node-btn {
-  all: unset;
-  position: absolute;
-  z-index: 4;
-  display: grid;
-  place-items: center;
-  width: 19px;
-  height: 19px;
-  border-radius: var(--ec-r-pill);
-  cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transform: scale(0.7);
-  box-shadow: var(--ec-glass-shadow);
-  transition:
-    opacity 0.16s,
-    transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1),
-    background 0.16s;
-}
-/* l'area che si può premere è di almeno 32 px, anche se il disegno è più piccolo */
-.etl-canvas .ec-node-btn::after {
-  content: "";
-  position: absolute;
-  inset: -7px;
-}
-.etl-canvas .ec-node-btn svg {
-  width: 9px;
-  height: 9px;
-}
-.etl-canvas .ec-del-btn {
-  top: -5px;
-  left: -5px;
-  background: var(--isa-text);
-  color: var(--isa-surface-overlay);
-}
-.etl-canvas .ec-del-btn:hover {
-  background: var(--isa-danger);
-  color: var(--isa-text-on-danger);
-}
-.etl-canvas .ec-expand-btn {
-  top: -7px;
-  right: -7px;
-  width: 24px;
-  height: 24px;
-  background: var(--isa-accent);
-  color: var(--isa-text-on-accent);
-}
-.etl-canvas .ec-expand-btn svg {
-  width: 12px;
-  height: 12px;
-}
-.etl-canvas .ec-card:hover .ec-node-btn,
-.etl-canvas .ec-card:focus-within .ec-node-btn {
-  opacity: 1;
-  pointer-events: auto;
-  transform: scale(1);
-}
-.etl-canvas .ec-card.ec-dragging .ec-node-btn,
-.etl-canvas .ec-card.ec-drop-target .ec-node-btn {
-  opacity: 0;
-  pointer-events: none;
-}
-.etl-canvas .ec-node-btn:focus-visible {
-  outline: 2px solid var(--ec-select);
-  outline-offset: 2px;
-}
-@media (prefers-reduced-motion: reduce) {
-  .etl-canvas .ec-node-btn {
-    transition: none;
-  }
-}
-```
-
-### `src/etl-canvas/contrast.ts`
-
-93 righe
-
-```ts
-/**
- * Contrasto WCAG tra i token di `tokens.css`. Usato dai test. I colori e il
- * calcolo del contrasto sono in src/theme/color.ts.
- */
-import { contrast, over, parseColor } from "../theme/color";
-import type { Rgba } from "../theme/color";
-
-export { contrast, luminance, over, parseColor } from "../theme/color";
-export type { Rgba } from "../theme/color";
-
-function readBlock(css: string, selector: string, prefix: string): Record<string, string> {
-  // il selettore può essere seguito da altri in lista (`.etl-canvas,\n.ec-workspace {`)
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const found = new RegExp(`\\n${escaped}(?:,[^{}]*)?\\s*\\{`).exec(css);
-  if (!found) throw new Error(`blocco non trovato: ${selector}`);
-  const start = found.index;
-  const end = css.indexOf("\n}", start);
-  const out: Record<string, string> = {};
-  for (const m of css
-    .slice(start, end)
-    .matchAll(new RegExp(`(${prefix}[a-z0-9-]+):\\s*([^;]+);`, "g"))) {
-    out[m[1] as string] = (m[2] as string).trim();
-  }
-  return out;
-}
-
-/**
- * Legge i token del canvas (`--ec-*`) da tokens.css e li risolve con i token
- * semantici (`--isa-*`) di un tema e di un modo, già risolti in valori (vedi
- * src/theme/__tests__/support.ts: `resolveTokens`).
- */
-export function readTokens(css: string, semantic: Record<string, string>): Record<string, string> {
-  const tokens = readBlock(css, ".etl-canvas", "--ec-");
-  const out: Record<string, string> = {};
-  for (const [name, value] of Object.entries(tokens)) {
-    out[name] = value.replace(/var\((--isa-[a-z0-9-]+)\)/g, (_, ref: string) => {
-      const resolved = semantic[ref];
-      if (resolved === undefined) throw new Error(`token semantico non trovato: ${ref}`);
-      return resolved;
-    });
-  }
-  return out;
-}
-
-export interface ContrastPair {
-  readonly role: string;
-  /** Token in primo piano e token di sfondo. */
-  readonly fg: string;
-  readonly bg: string;
-  /** 4.5 per il testo, 3 per gli elementi non testuali. */
-  readonly min: number;
-}
-
-/**
- * Coppie da verificare. Il fondo del canvas è `--ec-bg` con sopra
- * `--ec-stage`; il vetro è `--ec-surface-strong` sopra il canvas.
- */
-export const PAIRS: readonly ContrastPair[] = [
-  { role: "Etichetta dataset/output", fg: "--ec-accent-text", bg: "canvas", min: 4.5 },
-  { role: "Etichetta lavorazione", fg: "--ec-ink", bg: "canvas", min: 4.5 },
-  { role: "Etichetta output parziale", fg: "--ec-muted", bg: "canvas", min: 4.5 },
-  { role: "Icona su nodo pieno", fg: "--ec-node-fill-ink", bg: "--ec-node-fill", min: 3 },
-  { role: "Icona su nodo lavorazione", fg: "--ec-node-op-ink", bg: "--ec-node-op", min: 3 },
-  { role: "Nodo pieno su canvas", fg: "--ec-node-fill", bg: "canvas", min: 3 },
-  { role: "Bordo del nodo lavorazione", fg: "--ec-node-op-border", bg: "canvas", min: 3 },
-  { role: "Icona fetta vuota", fg: "--ec-split-empty-ink", bg: "--ec-split-empty", min: 3 },
-  { role: "Cavo", fg: "--ec-link", bg: "canvas", min: 3 },
-  { role: "Indicatore ambra", fg: "--ec-warn", bg: "canvas", min: 3 },
-  { role: "Contorno di selezione", fg: "--ec-select", bg: "canvas", min: 3 },
-  { role: "Testo dei controlli di zoom", fg: "--ec-ink", bg: "glass", min: 4.5 },
-  { role: "«Adatta»", fg: "--ec-accent-text", bg: "glass", min: 4.5 },
-  { role: "Flusso nei cavi", fg: "--ec-flow", bg: "canvas", min: 3 },
-  { role: "Nodo nella minimappa", fg: "--ec-mm-node", bg: "glass", min: 3 },
-  { role: "Nodo dataset nella minimappa", fg: "--ec-mm-node-ds", bg: "glass", min: 3 },
-  { role: "Riquadro visibile (minimappa)", fg: "--ec-mm-view-line", bg: "glass", min: 3 },
-  { role: "Testo dello stato vuoto", fg: "--ec-empty-ink", bg: "canvas", min: 4.5 },
-  { role: "Titolo dello stato vuoto", fg: "--ec-ink", bg: "canvas", min: 4.5 },
-];
-
-export function measure(tokens: Record<string, string>, pair: ContrastPair): number {
-  const get = (name: string): Rgba => {
-    const value = tokens[name];
-    if (value === undefined) throw new Error(`token mancante: ${name}`);
-    return parseColor(value);
-  };
-  const canvas = over(get("--ec-stage"), over(get("--ec-bg"), [255, 255, 255, 1]));
-  const glass = over(get("--ec-surface-strong"), canvas);
-  const bg =
-    pair.bg === "canvas" ? canvas : pair.bg === "glass" ? glass : over(get(pair.bg), canvas);
-  const fg = over(get(pair.fg), bg);
-  return contrast(fg, bg);
-}
-```
-
-### `src/etl-canvas/drop.ts`
-
-94 righe
-
-```ts
-/**
- * Rilascio di un nuovo elemento sul canvas (prototipo `paletteEl` →
- * `onUp`, righe 4939-5069). La cassetta degli strumenti arriva nella Fase 6:
- * questa funzione contiene già tutta la logica di rilascio, così la Fase 6
- * deve solo chiamarla con il payload e il punto (coordinate del MONDO; da un
- * punto dello schermo si passa con `toWorld` di view.ts).
- *
- * Nessuna logica di dominio nuova: il bersaglio si individua con la
- * geometria di etl-layout (`nodeAt`, `linkAt`) e le regole sono quelle di
- * etl-core (`insertable`) e del comando `addNode` di etl-store, che decide
- * fusione, collegamento, inserimento o rilascio nel vuoto.
- */
-import { insertable } from "../etl-core";
-import type { Card, ComponentId, Graph, Link } from "../etl-core";
-import { linkAt, nodeAt } from "../etl-layout";
-import type { Point } from "../etl-layout";
-import { paletteRelation } from "../etl-store";
-import type { CommandResult, DropTarget, EtlStore } from "../etl-store";
-
-/** Ciò che si rilascia: un componente della cassetta o un dataset della libreria. */
-export interface CanvasDropPayload {
-  readonly component: ComponentId;
-  readonly libraryId?: string;
-}
-
-export type DropOutcome = "merge" | "link" | "link-reverse" | "insert";
-
-export interface DropPreview {
-  /** Bersaglio da passare ad `addNode`, se ce n'è uno valido. */
-  readonly target: DropTarget | null;
-  /** Cosa succederebbe al rilascio, o `null` (nel vuoto). */
-  readonly outcome: DropOutcome | null;
-  readonly nodeId?: string;
-  readonly linkKey?: string;
-}
-
-const NEW_NODE = "__nuovo__";
-
-function kindOf(component: ComponentId): Card["kind"] {
-  return component === "dataset" ? "dataset" : "op";
-}
-
-function linkByKey(graph: Graph, key: string): Link | undefined {
-  return graph.links.find((l) => l.from + "|" + l.to === key);
-}
-
-/** Cosa troverebbe un rilascio in `point` (coordinate del mondo), senza modificare nulla. */
-export function previewCanvasDrop(
-  store: EtlStore,
-  payload: CanvasDropPayload,
-  point: Point,
-): DropPreview {
-  const graph = store.getState().graph;
-  const kind = kindOf(payload.component);
-  const nodeId = nodeAt(graph, point);
-  if (nodeId) {
-    const rel = paletteRelation(graph, kind, nodeId);
-    // senza una relazione possibile `addNode` rilascia come nel vuoto (prototipo, riga 5046)
-    return rel
-      ? { target: { node: nodeId }, outcome: rel, nodeId }
-      : { target: null, outcome: null };
-  }
-  if (kind === "op") {
-    const key = linkAt(store.getRoutes(), point);
-    const link = key ? linkByKey(graph, key) : undefined;
-    if (key && link && insertable(graph, link, NEW_NODE)) {
-      return { target: { link }, outcome: "insert", linkKey: key };
-    }
-  }
-  return { target: null, outcome: null };
-}
-
-/**
- * Rilascia `payload` in `point` (coordinate del mondo): crea il nodo e, se il
- * punto è su un nodo o su un cavo, lo fonde, lo collega o lo inserisce.
- * Un solo comando `addNode`: un solo passo di cronologia.
- */
-export function handleCanvasDrop(
-  store: EtlStore,
-  payload: CanvasDropPayload,
-  point: Point,
-): CommandResult {
-  const { target } = previewCanvasDrop(store, payload, point);
-  return store.dispatch({
-    type: "addNode",
-    payload: {
-      component: payload.component,
-      ...(payload.libraryId !== undefined ? { libraryId: payload.libraryId } : {}),
-      point,
-      ...(target ? { target } : {}),
-    },
-  });
-}
 ```
 

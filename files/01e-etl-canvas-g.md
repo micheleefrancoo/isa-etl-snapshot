@@ -2,16 +2,1027 @@
 
 File in questo blocco:
 
+- `src/etl-canvas/inspector/ColumnPicker.tsx`
+- `src/etl-canvas/inspector/ExpandedPanel.tsx`
+- `src/etl-canvas/inspector/Field.tsx`
+- `src/etl-canvas/inspector/Header.tsx`
+- `src/etl-canvas/inspector/Inspector.tsx`
+- `src/etl-canvas/inspector/Menu.tsx`
 - `src/etl-canvas/inspector/MultiList.tsx`
 - `src/etl-canvas/inspector/NameInput.tsx`
 - `src/etl-canvas/inspector/StepList.tsx`
-- `src/etl-canvas/inspector/StyledSelect.tsx`
-- `src/etl-canvas/inspector/ValuePicker.tsx`
-- `src/etl-canvas/inspector/copy.ts`
-- `src/etl-canvas/inspector/family.ts`
-- `src/etl-canvas/inspector/icons.tsx`
 
 ---
+
+### `src/etl-canvas/inspector/ColumnPicker.tsx`
+
+342 righe
+
+```tsx
+/**
+ * Selettore multiplo di colonne: le scelte sono etichette rimovibili, NELL'ORDINE
+ * DI SCELTA (conta per Ordina, Rimuovi duplicati, Raggruppa), riordinabili con
+ * il trascinamento e con Alt+←/→. Il menu (in un portale) ha ricerca, ogni
+ * colonna col suo tipo, «Tutte» e «Nessuna» (sulle sole colonne visibili dopo
+ * la ricerca) e il conteggio «N colonne su M», annunciato ai lettori di schermo.
+ */
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent, PointerEvent } from "react";
+import type { ColumnDef } from "../../etl-core";
+import { copy } from "./copy";
+import { CheckIcon, PlusIcon, XIcon } from "./icons";
+import {
+  addVisible,
+  canonicalName,
+  clampActive,
+  comboAction,
+  filterByQuery,
+  fold,
+  moveItem,
+  moveTarget,
+  nearestIndex,
+  removeVisible,
+  toggleColumn,
+} from "./logic";
+import { Menu } from "./Menu";
+
+export interface ColumnPickerProps {
+  readonly value: readonly string[];
+  readonly schema: readonly ColumnDef[];
+  readonly onChange: (columns: string[]) => void;
+  readonly labelledBy?: string | undefined;
+  readonly ariaLabel?: string | undefined;
+}
+
+interface Row {
+  readonly name: string;
+  readonly label: string;
+  readonly hint?: string;
+  readonly free?: boolean;
+}
+
+/** Spostamento minimo prima che un clic su un'etichetta diventi un trascinamento. */
+const DRAG_START_PX = 4;
+
+export function ColumnPicker(props: ColumnPickerProps) {
+  const { value, schema, onChange } = props;
+  const id = useId();
+  const listId = `${id}-list`;
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const addRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const chipRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const focusIndex = useRef<number | null>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const [drag, setDrag] = useState<{ index: number; dx: number; dy: number } | null>(null);
+  const names = useMemo(() => schema.map((c) => c.name), [schema]);
+
+  const rows = useMemo<Row[]>(() => {
+    const found: Row[] = filterByQuery(
+      schema.map((c) => ({ name: c.name, label: c.name, hint: c.type })),
+      query,
+    );
+    const typed = query.trim();
+    const exists =
+      names.some((n) => fold(n) === fold(typed)) || value.some((v) => fold(v) === fold(typed));
+    if (typed && !exists)
+      found.push({ name: typed, label: copy.columnsAddTyped(typed), free: true });
+    return found;
+  }, [schema, names, query, value]);
+  const act = clampActive(active, rows.length);
+  const visibleNames = rows.filter((r) => !r.free).map((r) => r.name);
+
+  const setColumns = (next: string[]) => onChange(next);
+  const close = (returnFocus: boolean) => {
+    setOpen(false);
+    setQuery("");
+    if (returnFocus) addRef.current?.focus();
+  };
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+  useEffect(() => {
+    if (!open || act < 0) return;
+    listRef.current?.querySelector(`[data-index="${act}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [open, act, rows.length]);
+  // dopo un riordino da tastiera il focus segue l'etichetta spostata
+  useEffect(() => {
+    if (focusIndex.current !== null) {
+      chipRefs.current[focusIndex.current]?.focus();
+      focusIndex.current = null;
+    }
+  });
+
+  const toggleRow = (r: Row) => {
+    if (r.free) {
+      setColumns([...value, canonicalName(names, r.name)]);
+      setQuery("");
+    } else setColumns(toggleColumn(value, r.name));
+  };
+
+  // il Tab resta nel menu (Tutte, Nessuna); alla fine il menu si chiude da solo
+  const onInputKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    const a = comboAction(e.key, act, rows.length);
+    if (a.kind === "move") {
+      e.preventDefault();
+      setActive(a.to);
+    } else if (a.kind === "commit") {
+      e.preventDefault();
+      const r = rows[act];
+      if (r) toggleRow(r);
+    } else if (a.kind === "close") {
+      e.preventDefault();
+      e.stopPropagation();
+      close(true);
+    }
+  };
+
+  // --- etichette: tastiera e trascinamento -----------------------------------
+  const onChipKey = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
+    if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      const to = moveTarget(i, value.length, e.key);
+      if (to !== null) {
+        focusIndex.current = to;
+        setColumns(moveItem(value, i, to));
+      }
+    } else if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault();
+      setColumns(value.filter((_, k) => k !== i));
+      focusIndex.current = Math.max(0, Math.min(i, value.length - 2));
+      if (value.length <= 1) addRef.current?.focus();
+    }
+  };
+  const onChipPointerDown = (e: PointerEvent<HTMLButtonElement>, i: number) => {
+    if (e.button !== 0) return;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    let moved = false;
+    const el = e.currentTarget;
+    // i centri delle etichette prima che quella trascinata si muova: il suo centro seguirebbe il puntatore
+    const centers = chipRefs.current.slice(0, value.length).map((c) => {
+      const r = c?.getBoundingClientRect();
+      return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : { x: 0, y: 0 };
+    });
+    el.setPointerCapture(e.pointerId);
+    const move = (ev: globalThis.PointerEvent) => {
+      const dx = ev.clientX - sx;
+      const dy = ev.clientY - sy;
+      if (!moved && Math.hypot(dx, dy) < DRAG_START_PX) return;
+      moved = true;
+      setDrag({ index: i, dx, dy });
+    };
+    const up = (ev: globalThis.PointerEvent) => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      setDrag(null);
+      if (!moved) return;
+      const to = nearestIndex(centers, { x: ev.clientX, y: ev.clientY });
+      // il clic che segue un trascinamento non deve fare altro
+      el.addEventListener("click", (c) => c.stopPropagation(), { once: true, capture: true });
+      if (to !== i) {
+        focusIndex.current = to;
+        setColumns(moveItem(value, i, to));
+      }
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  };
+
+  const countText = copy.columnsCount(value.length, schema.length);
+
+  return (
+    <>
+      <div
+        ref={fieldRef}
+        className="ei-field ei-chipsfield"
+        data-picker="columns"
+        data-selected={value.length}
+        data-total={schema.length}
+        role="group"
+        aria-labelledby={props.labelledBy}
+        aria-label={props.labelledBy ? undefined : props.ariaLabel}
+        data-open={open || undefined}
+      >
+        {value.length === 0 ? (
+          <span className="ei-placeholder">{copy.columnsPlaceholder}</span>
+        ) : null}
+        <ul className="ei-chips">
+          {value.map((name, i) => {
+            const known = names.includes(name);
+            const dragging = drag?.index === i;
+            return (
+              <li
+                key={name}
+                className={"ei-chip" + (known ? "" : " ei-free") + (dragging ? " ei-dragging" : "")}
+                style={
+                  dragging && drag
+                    ? { transform: `translate(${drag.dx}px, ${drag.dy}px)` }
+                    : undefined
+                }
+              >
+                <button
+                  ref={(el) => {
+                    chipRefs.current[i] = el;
+                  }}
+                  type="button"
+                  className="ei-chip-label"
+                  title={known ? copy.columnsMoveHelp : copy.columnsFree}
+                  aria-label={copy.columnsPosition(name, i + 1, value.length)}
+                  onKeyDown={(e) => onChipKey(e, i)}
+                  onPointerDown={(e) => onChipPointerDown(e, i)}
+                >
+                  {name}
+                </button>
+                <button
+                  type="button"
+                  className="ei-chip-x"
+                  aria-label={copy.columnsRemove(name)}
+                  onClick={() => setColumns(value.filter((_, k) => k !== i))}
+                >
+                  <XIcon />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <button
+          ref={addRef}
+          type="button"
+          className="ei-add"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={open ? listId : undefined}
+          onClick={() => (open ? close(false) : setOpen(true))}
+        >
+          <PlusIcon />
+          <span>{copy.columnsAdd}</span>
+        </button>
+      </div>
+      {open ? (
+        <Menu
+          anchor={fieldRef}
+          onClose={() => close(false)}
+          onEscape={() => close(true)}
+          ariaLabel={copy.columnsMenu}
+        >
+          <div className="ei-menu-head">
+            <input
+              ref={inputRef}
+              type="text"
+              className="ei-search"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls={listId}
+              aria-autocomplete="list"
+              aria-activedescendant={act >= 0 ? `${id}-opt-${act}` : undefined}
+              aria-label={copy.columnsSearch}
+              placeholder={copy.columnsSearch}
+              autoComplete="off"
+              spellCheck={false}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
+              onKeyDown={onInputKey}
+            />
+          </div>
+          <div
+            ref={listRef}
+            id={listId}
+            className="ei-menu-scroll"
+            role="listbox"
+            aria-multiselectable="true"
+            aria-label={copy.columnsMenu}
+            data-scroll=""
+          >
+            {rows.length === 0 ? <div className="ei-menu-empty">{copy.noResults}</div> : null}
+            {rows.map((r, i) => {
+              const on = !r.free && value.includes(r.name);
+              return (
+                <div
+                  key={`${r.free ? "free:" : ""}${r.name}`}
+                  id={`${id}-opt-${i}`}
+                  data-index={i}
+                  role="option"
+                  aria-selected={on}
+                  className={
+                    "ei-option" +
+                    (i === act ? " ei-active" : "") +
+                    (on ? " ei-selected" : "") +
+                    (r.free ? " ei-free" : "")
+                  }
+                  onPointerDown={(e) => e.preventDefault()}
+                  onPointerMove={() => setActive(i)}
+                  onClick={() => toggleRow(r)}
+                >
+                  {r.free ? null : (
+                    <span className="ei-checkbox" data-on={on || undefined} aria-hidden="true">
+                      {on ? <CheckIcon /> : null}
+                    </span>
+                  )}
+                  <span className="ei-option-label">{r.label}</span>
+                  {r.hint ? <span className="ei-option-hint">{r.hint}</span> : null}
+                </div>
+              );
+            })}
+          </div>
+          <div className="ei-menu-foot">
+            <span className="ei-count" role="status" aria-live="polite">
+              {countText}
+            </span>
+            <span className="ei-menu-actions">
+              <button
+                type="button"
+                className="ei-link-btn"
+                onClick={() => setColumns(addVisible(value, visibleNames))}
+              >
+                {copy.columnsAll}
+              </button>
+              <button
+                type="button"
+                className="ei-link-btn"
+                onClick={() => setColumns(removeVisible(value, visibleNames))}
+              >
+                {copy.columnsNone2}
+              </button>
+            </span>
+          </div>
+        </Menu>
+      ) : null}
+    </>
+  );
+}
+```
+
+### `src/etl-canvas/inspector/ExpandedPanel.tsx`
+
+115 righe
+
+```tsx
+/**
+ * Il pannello espanso di un box combinato (prototipo, righe 855-866, 2117-2135 e
+ * 2250-2400): i passaggi in sequenza, riordinabili; ognuno ha un menu
+ * («Configura parametri», «Sgancia», «Elimina passaggio») e trascinarlo fuori dal
+ * pannello lo sgancia sul canvas, nel punto di rilascio. Si chiude con Esc, con
+ * il pulsante o con un clic sullo sfondo, e da solo se il box non è più combinato.
+ */
+import { useEffect, useRef } from "react";
+import type { KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
+import type { EtlStore } from "../../etl-store";
+import { useEtlState } from "../../etl-store/react";
+import { copy } from "./copy";
+import { XIcon } from "./icons";
+import { NameInput } from "./NameInput";
+import { StepList } from "./StepList";
+
+export function ExpandedPanel(props: {
+  readonly store: EtlStore;
+  readonly nodeId: string;
+  readonly onClose: () => void;
+  /** «Configura parametri»: apre l'Inspector su quel passaggio. */
+  readonly onConfigure: (index: number) => void;
+  /** Rilascio fuori dal pannello: sgancia il passaggio nel punto indicato (coordinate della finestra). */
+  readonly onDetachOutside: (index: number, clientX: number, clientY: number) => void;
+}) {
+  const { store, nodeId } = props;
+  const card = useEtlState((s) => s.graph.cards[nodeId], store);
+  const step = useEtlState((s) => s.inspector.step, store);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const combined = !!card && card.kind === "op" && card.components.length > 1;
+
+  // non più combinato (sgancio dell'ultimo passaggio, eliminazione): si chiude da solo
+  useEffect(() => {
+    if (!combined) props.onClose();
+  }, [combined, props]);
+  useEffect(() => {
+    closeRef.current?.focus();
+  }, []);
+
+  if (!card || !combined || typeof document === "undefined") return null;
+
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      props.onClose();
+    } else if (e.key === "Tab") {
+      // il focus resta dentro il pannello
+      const items = Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), input:not([disabled])",
+        ) ?? [],
+      );
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last?.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first?.focus();
+      }
+    }
+  };
+
+  return createPortal(
+    <div
+      className="ei-expanded-backdrop"
+      data-testid="ei-expanded"
+      onKeyDown={onKey}
+      onPointerDown={(e) => {
+        if (e.target === e.currentTarget) props.onClose();
+      }}
+    >
+      <div
+        ref={panelRef}
+        className="ei-expanded ei-root"
+        role="dialog"
+        aria-modal="true"
+        aria-label={copy.expandedTitle}
+      >
+        <div className="ei-expanded-head">
+          <div>
+            <NameInput store={store} card={card} className="ei-name" testId="ei-expanded-name" />
+            <div className="ei-help">{copy.expandedSub(card.components.length)}</div>
+          </div>
+          <button
+            ref={closeRef}
+            type="button"
+            className="ei-icon-btn"
+            aria-label={copy.expandedClose}
+            onClick={props.onClose}
+          >
+            <XIcon />
+          </button>
+        </div>
+        <div className="ei-help">{copy.expandedNote}</div>
+        <StepList
+          store={store}
+          card={card}
+          selectedStep={step}
+          variant="expanded"
+          containerRef={panelRef}
+          onSelect={() => {}}
+          onConfigure={props.onConfigure}
+          onDetachOutside={props.onDetachOutside}
+        />
+      </div>
+    </div>,
+    document.getElementById("ei-portal") ?? document.body,
+  );
+}
+```
+
+### `src/etl-canvas/inspector/Field.tsx`
+
+47 righe
+
+```tsx
+/** Un campo dell'Inspector: etichetta, controllo, nota; più il campo di testo (senza frecce native). */
+import { useId } from "react";
+import type { ReactNode } from "react";
+
+export function Field(props: {
+  readonly label: string;
+  readonly children: (labelId: string) => ReactNode;
+  readonly help?: ReactNode;
+}) {
+  const labelId = useId();
+  return (
+    <div className="ei-fieldgroup">
+      <div id={labelId} className="ei-label">
+        {props.label}
+      </div>
+      {props.children(labelId)}
+      {props.help ? <div className="ei-help">{props.help}</div> : null}
+    </div>
+  );
+}
+
+export function TextField(props: {
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+  readonly labelledBy?: string | undefined;
+  readonly ariaLabel?: string | undefined;
+  readonly inputMode?: "text" | "numeric" | "decimal";
+  readonly disabled?: boolean;
+  readonly placeholder?: string;
+}) {
+  return (
+    <input
+      type="text"
+      className="ei-field ei-input"
+      inputMode={props.inputMode ?? "text"}
+      aria-labelledby={props.labelledBy}
+      aria-label={props.labelledBy ? undefined : props.ariaLabel}
+      autoComplete="off"
+      spellCheck={false}
+      disabled={props.disabled}
+      placeholder={props.placeholder}
+      value={props.value}
+      onChange={(e) => props.onChange(e.target.value)}
+    />
+  );
+}
+```
+
+### `src/etl-canvas/inspector/Header.tsx`
+
+22 righe
+
+```tsx
+/** Intestazione dell'Inspector: la famiglia del nodo (testo piccolo in maiuscolo) e il nome, modificabile in linea. */
+import type { Card } from "../../etl-core";
+import type { EtlStore } from "../../etl-store";
+import { familyLabel } from "./family";
+import { NameInput } from "./NameInput";
+
+export function Header(props: { readonly store: EtlStore; readonly card: Card }) {
+  return (
+    <div className="ei-header">
+      <div className="ei-overline" data-testid="ei-family">
+        {familyLabel(props.card)}
+      </div>
+      <NameInput
+        store={props.store}
+        card={props.card}
+        className="ei-name"
+        testId="ec-inspector-name"
+      />
+    </div>
+  );
+}
+```
+
+### `src/etl-canvas/inspector/Inspector.tsx`
+
+287 righe
+
+```tsx
+/**
+ * Il contenuto dell'Inspector (Fase 6b.1), montato da `panels/InspectorShell`.
+ * Legge il nodo di `etl-store` (`inspector`) e mostra, per tipo di nodo:
+ * stato bloccato (lavorazione senza ingresso), dataset e output (nome, origine,
+ * colonne in sola lettura), lavorazioni (campi e liste del catalogo, con colonne
+ * e valori dallo schema in ingresso) e box combinati (elenco dei passaggi).
+ * Le condizioni di filtro e join sono della Fase 6b.2.
+ *
+ * Scrive solo con i comandi `setParams`, `renameNode`, `inspect` e quelli dei
+ * passaggi; legge e scrive SOLO `columns` (mai `flattenRows`). Il focus non si
+ * perde mai scrivendo: i campi hanno chiavi stabili e nulla viene ricreato.
+ */
+import type { KeyboardEvent } from "react";
+import { MERGE_OPS, PARAM_DEFS, boxCapacity, inputsOf } from "../../etl-core";
+import type { Card, Graph, Params, SimpleFieldDef } from "../../etl-core";
+import type { EtlStore } from "../../etl-store";
+import { useEtlState } from "../../etl-store/react";
+import { BlockedNotice } from "./BlockedNotice";
+import { copy } from "./copy";
+import { Field, TextField } from "./Field";
+import { Header } from "./Header";
+import { MultiList } from "./MultiList";
+import { NUMERIC_KEYS, isMulti, textParam, withParam } from "./params";
+import { StepList } from "./StepList";
+import { StyledSelect } from "./StyledSelect";
+import { useActiveSchema } from "./useActiveSchema";
+import "./inspector.css";
+
+/** Esc nel pannello riporta il focus al canvas, senza deselezionare. */
+function returnToCanvas(e: KeyboardEvent<HTMLElement>): void {
+  if (e.key !== "Escape" || e.defaultPrevented) return;
+  e.stopPropagation();
+  document.querySelector<HTMLElement>(".ec-stage")?.focus();
+}
+
+export function Inspector(props: { readonly store: EtlStore }) {
+  const { store } = props;
+  const nodeId = useEtlState((s) => s.inspector.nodeId, store);
+  const step = useEtlState((s) => s.inspector.step, store);
+  const card = useEtlState(
+    (s) => (s.inspector.nodeId ? s.graph.cards[s.inspector.nodeId] : undefined),
+    store,
+  );
+  const graph = useEtlState((s) => s.graph, store);
+  const schema = useActiveSchema(store, nodeId);
+
+  if (!card) {
+    return (
+      <div className="ei-root" data-testid="ei-root" onKeyDown={returnToCanvas}>
+        <div className="ei-help ei-empty">{copy.emptyInspector}</div>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="ei-root"
+      data-testid="ei-root"
+      data-kind={kindOf(card)}
+      onKeyDown={returnToCanvas}
+    >
+      <Header store={store} card={card} />
+      <Body store={store} card={card} graph={graph} step={step} schema={schema} />
+    </div>
+  );
+}
+
+function kindOf(card: Card): string {
+  if (card.kind === "dataset") return card.isOutput ? "output" : "dataset";
+  return card.components.length > 1 ? "box" : "op";
+}
+
+function Body(props: {
+  store: EtlStore;
+  card: Card;
+  graph: Graph;
+  step: number;
+  schema: ReturnType<typeof useActiveSchema>;
+}) {
+  const { store, card, graph, schema } = props;
+
+  if (card.kind === "dataset" && card.isOutput) {
+    const producer = graph.links.find((l) => l.to === card.id);
+    const producerName = (producer && graph.cards[producer.from]?.name) || copy.producerFallback;
+    const incomplete =
+      card.capacity !== undefined && card.capacity > 1 && (card.filled ?? 0) < card.capacity;
+    return (
+      <>
+        <div className="ei-help">{copy.resultNote(producerName)}</div>
+        {incomplete ? <div className="ei-help">{copy.resultIncomplete}</div> : null}
+        <ColumnsReadOnly schema={schema} />
+      </>
+    );
+  }
+
+  if (card.kind === "dataset") {
+    const par = card.params[0] ?? {};
+    return (
+      <>
+        <SimpleFields
+          defs={PARAM_DEFS.dataset as readonly SimpleFieldDef[]}
+          par={par}
+          names={[]}
+          onChange={(p) =>
+            store.dispatch({ type: "setParams", payload: { node: card.id, index: 0, params: p } })
+          }
+        />
+        <ColumnsReadOnly schema={schema} />
+      </>
+    );
+  }
+
+  // lavorazione senza tabella in ingresso: stato bloccato, nessun campo
+  const inputs = inputsOf(graph, card.id);
+  if (inputs.length === 0) return <BlockedNotice capacity={boxCapacity(card)} />;
+
+  const step = Math.max(0, Math.min(props.step, card.components.length - 1));
+  const type = card.components[step] ?? card.components[0];
+  const par: Params = card.params[step] ?? {};
+  const setParams = (p: Params) =>
+    store.dispatch({ type: "setParams", payload: { node: card.id, index: step, params: p } });
+  const names = schema.map((c) => c.name);
+
+  return (
+    <>
+      {card.components.length > 1 ? (
+        <StepList
+          store={store}
+          card={card}
+          selectedStep={step}
+          variant="inspector"
+          onSelect={(i) => store.dispatch({ type: "inspect", payload: { node: card.id, step: i } })}
+        />
+      ) : null}
+      <JoinTables card={card} graph={graph} step={step} par={par} onChange={setParams} />
+      {type === "filter" || type === "join" ? (
+        <div className="ei-help" data-testid="ei-conditions-soon">
+          {copy.conditionsSoon}
+        </div>
+      ) : type && isMulti(type) ? (
+        <MultiList type={type} par={par} schema={schema} onChange={setParams} />
+      ) : (
+        <SimpleFields
+          defs={
+            (Array.isArray(PARAM_DEFS[type as keyof typeof PARAM_DEFS])
+              ? PARAM_DEFS[type as keyof typeof PARAM_DEFS]
+              : []) as readonly SimpleFieldDef[]
+          }
+          par={par}
+          names={names}
+          onChange={setParams}
+        />
+      )}
+      <div className="ei-help">{copy.inputsCount(inputs.length, boxCapacity(card))}</div>
+    </>
+  );
+}
+
+/** Campi semplici del catalogo (`PARAM_DEFS`): testo, scelta, colonna. */
+function SimpleFields(props: {
+  defs: readonly SimpleFieldDef[];
+  par: Params;
+  names: readonly string[];
+  onChange: (par: Params) => void;
+}) {
+  const { defs, par, names, onChange } = props;
+  return (
+    <>
+      {defs.map((f) => (
+        <Field key={f.k} label={f.label}>
+          {(labelId) => {
+            const value = textParam(par, f.k);
+            if (f.type === "select")
+              return (
+                <StyledSelect
+                  labelledBy={labelId}
+                  value={value || f.def}
+                  options={(f.opts ?? []).map((o) => ({ value: o, label: o }))}
+                  onChange={(v) => onChange(withParam(par, f.k, v))}
+                />
+              );
+            if (f.type === "column")
+              return (
+                <StyledSelect
+                  labelledBy={labelId}
+                  allowFree
+                  value={value}
+                  options={names.map((n) => ({ value: n, label: n }))}
+                  onChange={(v) => onChange(withParam(par, f.k, v))}
+                />
+              );
+            return (
+              <TextField
+                labelledBy={labelId}
+                inputMode={NUMERIC_KEYS.has(f.k) ? "numeric" : "text"}
+                value={value}
+                onChange={(v) => onChange(withParam(par, f.k, v))}
+              />
+            );
+          }}
+        </Field>
+      ))}
+    </>
+  );
+}
+
+/** Dataset e output: le colonne, in sola lettura, col tipo. */
+function ColumnsReadOnly(props: { schema: ReturnType<typeof useActiveSchema> }) {
+  const { schema } = props;
+  return (
+    <section className="ei-list" aria-label={copy.columnsTitle}>
+      <div className="ei-label">{copy.columnsTitle}</div>
+      {schema.length === 0 ? (
+        <div className="ei-help">{copy.columnsNone}</div>
+      ) : (
+        <ul className="ei-colist" data-testid="ei-columns">
+          {schema.map((c) => (
+            <li key={c.name} className="ei-colrow">
+              <span className="ei-colname">{c.name}</span>
+              <span className="ei-coltype">{c.type}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Le tabelle su cui agisce un passaggio (prototipo, righe 3747-3774): i join si
+ * applicano nell'ordine in cui compaiono e ognuno consuma una tabella in più.
+ * Prima di un join: tabella di riferimento; dopo: la nota «tabella unica».
+ */
+function JoinTables(props: {
+  card: Card;
+  graph: Graph;
+  step: number;
+  par: Params;
+  onChange: (par: Params) => void;
+}) {
+  const { card, graph, step, par, onChange } = props;
+  const joinPos: number[] = [];
+  card.components.forEach((c, i) => {
+    if ((MERGE_OPS as readonly string[]).includes(c)) joinPos.push(i);
+  });
+  if (joinPos.length === 0) return null;
+  const names = inputsOf(graph, card.id).map(
+    (l) => graph.cards[l.from]?.name ?? copy.tableFallback,
+  );
+  if (names.length === 0) return <div className="ei-help">{copy.tableLinkFirst}</div>;
+
+  const field = (key: string, label: string) => {
+    const stored = textParam(par, key);
+    const fallback = key === "rightTable" && names[1] ? names[1] : names[0];
+    const value = stored && names.includes(stored) ? stored : (fallback ?? "");
+    return (
+      <Field key={key} label={label}>
+        {(labelId) => (
+          <StyledSelect
+            labelledBy={labelId}
+            value={value}
+            options={names.map((n) => ({ value: n, label: n }))}
+            onChange={(v) => onChange(withParam(par, key, v))}
+          />
+        )}
+      </Field>
+    );
+  };
+
+  const type = card.components[step];
+  const joinsBefore = joinPos.filter((p) => p < step).length;
+  if (type && (MERGE_OPS as readonly string[]).includes(type)) {
+    const j = joinPos.indexOf(step);
+    return (
+      <>
+        {j === 0 ? (
+          field("leftTable", copy.tableLeft)
+        ) : (
+          <div className="ei-help">{copy.tableLeftResult(j)}</div>
+        )}
+        {field("rightTable", copy.tableRight)}
+      </>
+    );
+  }
+  if (joinsBefore === 0) return field("table", copy.tableReference);
+  return <div className="ei-help">{copy.tableSingle(joinsBefore)}</div>;
+}
+```
+
+### `src/etl-canvas/inspector/Menu.tsx`
+
+161 righe
+
+```tsx
+/**
+ * Il menu dell'Inspector: sempre un nostro componente (mai un menu del
+ * sistema), in un portale sul corpo della pagina, posizionato da `placeMenu`
+ * (menu.ts). Si chiude con Esc (a cura di chi lo usa), clic fuori, scorrimento
+ * del pannello e ridimensionamento della finestra.
+ */
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
+import { createPortal } from "react-dom";
+import { placeMenu } from "./menu";
+import type { MenuPlacement } from "./menu";
+
+const PORTAL_ID = "ei-portal";
+
+/** Il contenitore dei menu, creato alla prima richiesta (solo nel browser). */
+function portalRoot(): HTMLElement {
+  let el = document.getElementById(PORTAL_ID);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = PORTAL_ID;
+    el.className = "ei-portal";
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+/** Altezza naturale del menu: il suo riempimento più i figli (l'elenco scorrevole conta per intero, fino al suo tetto). */
+function naturalHeight(menu: HTMLElement): number {
+  const cs = getComputedStyle(menu);
+  let h =
+    parseFloat(cs.paddingTop) +
+    parseFloat(cs.paddingBottom) +
+    parseFloat(cs.borderTopWidth) +
+    parseFloat(cs.borderBottomWidth);
+  for (const kid of Array.from(menu.children) as HTMLElement[]) {
+    if (kid.dataset["scroll"] !== undefined) {
+      const cap = parseFloat(getComputedStyle(kid).maxHeight);
+      h += Number.isFinite(cap) ? Math.min(kid.scrollHeight, cap) : kid.scrollHeight;
+    } else h += kid.offsetHeight;
+  }
+  return Math.ceil(h);
+}
+
+export interface MenuProps {
+  /** L'elemento a cui si ancora (il campo). */
+  readonly anchor: RefObject<HTMLElement | null>;
+  readonly onClose: () => void;
+  readonly children: ReactNode;
+  readonly className?: string;
+  /** Altri elementi che contano come «dentro» per il clic fuori (di solito il campo). */
+  readonly inside?: readonly RefObject<HTMLElement | null>[];
+  readonly id?: string;
+  readonly ariaLabel?: string;
+  readonly role?: "menu" | "dialog" | "presentation";
+  /** Esc con il focus dentro il menu (fuori dal campo di ricerca): chiude e riporta il focus al campo. */
+  readonly onEscape?: () => void;
+  /** Larghezza naturale del contenuto, se maggiore di quella del campo. */
+  readonly naturalWidth?: number;
+}
+
+export function Menu(props: MenuProps) {
+  const { anchor, onClose, children, inside } = props;
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<MenuPlacement | null>(null);
+  // il portale esiste subito (il menu si monta solo nel browser, dopo un'azione dell'utente):
+  // così chi lo usa può dare il focus al campo di ricerca già al primo effetto
+  const [root] = useState<HTMLElement | null>(() =>
+    typeof document === "undefined" ? null : portalRoot(),
+  );
+
+  const place = useCallback(() => {
+    const a = anchor.current;
+    const m = menuRef.current;
+    if (!a || !m) return;
+    const r = a.getBoundingClientRect();
+    setPlacement(
+      placeMenu({
+        field: { x: r.left, y: r.top, w: r.width, h: r.height },
+        win: { w: window.innerWidth, h: window.innerHeight },
+        naturalHeight: naturalHeight(m),
+        ...(props.naturalWidth !== undefined ? { naturalWidth: props.naturalWidth } : {}),
+      }),
+    );
+  }, [anchor, props.naturalWidth]);
+
+  // prima misura, e nuova misura quando il contenuto cambia (ricerca, voci aggiunte)
+  useLayoutEffect(() => {
+    if (!root) return;
+    place();
+    const m = menuRef.current;
+    if (!m) return;
+    const ro = new ResizeObserver(() => place());
+    for (const kid of Array.from(m.children)) ro.observe(kid);
+    return () => ro.disconnect();
+  }, [root, place, children]);
+
+  // chiusura: clic fuori, scorrimento del pannello, ridimensionamento
+  useEffect(() => {
+    const away = (e: Event) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (menuRef.current?.contains(t)) return;
+      if (anchor.current?.contains(t)) return;
+      if (inside?.some((r) => r.current?.contains(t))) return;
+      onClose();
+    };
+    const scrolled = (e: Event) => {
+      const t = e.target as Node | null;
+      if (t && menuRef.current?.contains(t)) return;
+      onClose();
+    };
+    document.addEventListener("pointerdown", away, true);
+    window.addEventListener("scroll", scrolled, true);
+    window.addEventListener("resize", onClose);
+    return () => {
+      document.removeEventListener("pointerdown", away, true);
+      window.removeEventListener("scroll", scrolled, true);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [anchor, inside, onClose]);
+
+  if (!root) return null;
+  const style: CSSProperties = placement
+    ? {
+        left: placement.left,
+        top: placement.top,
+        width: placement.width,
+        maxHeight: placement.maxHeight,
+      }
+    : { left: 0, top: 0, opacity: 0, pointerEvents: "none", width: anchor.current?.offsetWidth };
+  return createPortal(
+    <div
+      ref={menuRef}
+      id={props.id}
+      className={"ei-menu" + (props.className ? ` ${props.className}` : "")}
+      data-side={placement?.side}
+      role={props.role ?? "presentation"}
+      aria-label={props.ariaLabel}
+      style={style}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && props.onEscape) {
+          e.preventDefault();
+          e.stopPropagation();
+          props.onEscape();
+        }
+      }}
+      onBlur={(e) => {
+        // il focus esce dal menu verso altro (non dal campo): il menu si chiude
+        const next = e.relatedTarget as Node | null;
+        if (!next) return;
+        if (menuRef.current?.contains(next) || anchor.current?.contains(next)) return;
+        if (inside?.some((r) => r.current?.contains(next))) return;
+        onClose();
+      }}
+    >
+      {children}
+    </div>,
+    root,
+  );
+}
+```
 
 ### `src/etl-canvas/inspector/MultiList.tsx`
 
@@ -612,754 +1623,5 @@ export function StepList(props: StepListProps) {
     </div>
   );
 }
-```
-
-### `src/etl-canvas/inspector/StyledSelect.tsx`
-
-212 righe
-
-```tsx
-/**
- * Scelta singola con ricerca (sostituisce `<select>` e `<datalist>`): un campo
- * che apre il nostro menu in un portale. Il menu ha un campo di ricerca che è
- * il combobox ARIA (frecce, Home, Fine, Invio, Esc, digitazione) e un elenco
- * listbox; con `allowFree` si può anche scrivere un valore non presente
- * («oppure scrivi», in corsivo). Il focus torna al campo alla chiusura.
- */
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
-import { copy } from "./copy";
-import { ChevronDown } from "./icons";
-import { clampActive, comboAction, filterByQuery, fold } from "./logic";
-import { Menu } from "./Menu";
-
-export interface SelectOption {
-  readonly value: string;
-  readonly label: string;
-  /** Testo discreto a destra (per esempio il tipo di una colonna). */
-  readonly hint?: string;
-}
-
-export interface StyledSelectProps {
-  readonly value: string;
-  readonly options: readonly SelectOption[];
-  readonly onChange: (value: string) => void;
-  readonly labelledBy?: string | undefined;
-  readonly ariaLabel?: string | undefined;
-  /** Si può scrivere un valore non presente nell'elenco. */
-  readonly allowFree?: boolean;
-  readonly placeholder?: string;
-  readonly disabled?: boolean;
-}
-
-interface Row {
-  readonly value: string;
-  readonly label: string;
-  readonly hint?: string | undefined;
-  readonly free?: boolean;
-}
-
-export function StyledSelect(props: StyledSelectProps) {
-  const { value, options, onChange, allowFree, disabled } = props;
-  const id = useId();
-  const listId = `${id}-list`;
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(-1);
-
-  const rows = useMemo<Row[]>(() => {
-    const found: Row[] = filterByQuery(options, query).map((o) => ({
-      value: o.value,
-      label: o.label,
-      hint: o.hint,
-    }));
-    const typed = query.trim();
-    const exact = options.some((o) => fold(o.label) === fold(typed) || o.value === typed);
-    if (allowFree && typed && !exact) {
-      found.push({ value: typed, label: copy.useTyped(typed), free: true });
-    }
-    return found;
-  }, [options, query, allowFree]);
-  const act = clampActive(active, rows.length);
-
-  const close = useCallback((returnFocus: boolean) => {
-    setOpen(false);
-    setQuery("");
-    if (returnFocus) triggerRef.current?.focus();
-  }, []);
-  const openWith = (seed: string) => {
-    if (disabled) return;
-    setQuery(seed);
-    const i = options.findIndex((o) => o.value === value);
-    setActive(seed ? 0 : i);
-    setOpen(true);
-  };
-  const choose = (v: string) => {
-    onChange(v);
-    close(true);
-  };
-
-  // il focus passa al campo di ricerca; la voce attiva resta in vista
-  useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
-  useEffect(() => {
-    if (!open || act < 0) return;
-    listRef.current?.querySelector(`[data-index="${act}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [open, act, rows.length]);
-
-  const onTriggerKey = (e: KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      openWith("");
-    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== " ") {
-      e.preventDefault();
-      openWith(e.key);
-    }
-  };
-  const onInputKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    const a = comboAction(e.key, act, rows.length);
-    if (a.kind === "move") {
-      e.preventDefault();
-      setActive(a.to);
-    } else if (a.kind === "commit") {
-      e.preventDefault();
-      const row = rows[act];
-      if (row) choose(row.value);
-      else if (allowFree && query.trim()) choose(query.trim());
-    } else if (a.kind === "close") {
-      e.preventDefault();
-      e.stopPropagation();
-      close(true);
-    } else if (e.key === "Tab") {
-      close(false);
-    }
-  };
-
-  const current = options.find((o) => o.value === value);
-  const shown = current?.label ?? value;
-  const isFree = value !== "" && !current;
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="ei-field ei-select"
-        data-picker="select"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? listId : undefined}
-        aria-labelledby={props.labelledBy}
-        aria-label={props.labelledBy ? undefined : props.ariaLabel}
-        disabled={disabled}
-        data-open={open || undefined}
-        onClick={() => (open ? close(false) : openWith(""))}
-        onKeyDown={onTriggerKey}
-      >
-        <span className={"ei-select-value" + (isFree ? " ei-free" : "")}>
-          {shown || <span className="ei-placeholder">{props.placeholder ?? copy.pickOrType}</span>}
-        </span>
-        <span className="ei-select-chevron">
-          <ChevronDown />
-        </span>
-      </button>
-      {open ? (
-        <Menu anchor={triggerRef} onClose={() => close(false)} onEscape={() => close(true)}>
-          <div className="ei-menu-head">
-            <input
-              ref={inputRef}
-              type="text"
-              className="ei-search"
-              role="combobox"
-              aria-expanded="true"
-              aria-controls={listId}
-              aria-autocomplete="list"
-              aria-activedescendant={act >= 0 ? `${id}-opt-${act}` : undefined}
-              aria-label={copy.searchPlaceholder}
-              placeholder={copy.searchPlaceholder}
-              autoComplete="off"
-              spellCheck={false}
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setActive(0);
-              }}
-              onKeyDown={onInputKey}
-            />
-          </div>
-          <div
-            ref={listRef}
-            id={listId}
-            className="ei-menu-scroll"
-            role="listbox"
-            aria-label={copy.menuLabel}
-            data-scroll=""
-          >
-            {rows.length === 0 ? <div className="ei-menu-empty">{copy.noResults}</div> : null}
-            {rows.map((r, i) => (
-              <div
-                key={`${r.free ? "free:" : ""}${r.value}`}
-                id={`${id}-opt-${i}`}
-                data-index={i}
-                role="option"
-                aria-selected={!r.free && r.value === value}
-                className={
-                  "ei-option" +
-                  (i === act ? " ei-active" : "") +
-                  (!r.free && r.value === value ? " ei-selected" : "") +
-                  (r.free ? " ei-free" : "")
-                }
-                onPointerDown={(e) => e.preventDefault()}
-                onPointerMove={() => setActive(i)}
-                onClick={() => choose(r.value)}
-              >
-                <span className="ei-option-label">{r.label}</span>
-                {r.hint ? <span className="ei-option-hint">{r.hint}</span> : null}
-              </div>
-            ))}
-          </div>
-          {allowFree && !query.trim() ? (
-            <div className="ei-menu-foot ei-help">{copy.typeOr}</div>
-          ) : null}
-        </Menu>
-      ) : null}
-    </>
-  );
-}
-```
-
-### `src/etl-canvas/inspector/ValuePicker.tsx`
-
-293 righe
-
-```tsx
-/**
- * Selettore di valori (versione finale del prototipo, `pickerHtml`): i valori
- * scelti sono etichette rimovibili (in corsivo quelli assenti dai dati); il
- * menu (in un portale) ha ricerca che filtra, «+ Aggiungi “x”» per ciò che non
- * esiste (Invio), incolla di più valori (virgola, punto e virgola, barra
- * verticale, a capo), elenco a spunta con scorrimento (max 170 px), «Tutti» e
- * «Nessuno» sui soli valori visibili e il conteggio annunciato.
- *
- * L'elenco proposto è `columnsDomain` delle colonne della riga (lo calcola chi
- * lo usa). Cambiando le colonne i valori NON si azzerano: quelli fuori dominio
- * restano in corsivo, con l'avviso e l'azione «Rimuovi». I valori stanno solo
- * in `values`.
- */
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { ClipboardEvent, KeyboardEvent } from "react";
-import { valuesOutsideDomain } from "../../etl-core";
-import type { ValuesField } from "../../etl-core";
-import { copy } from "./copy";
-import { CheckIcon, PlusIcon, XIcon } from "./icons";
-import {
-  addTokens,
-  addVisibleValues,
-  clampActive,
-  comboAction,
-  filterByQuery,
-  pendingTokens,
-  removeVisibleValues,
-  toggleValue,
-  withValues,
-} from "./logic";
-import { Menu } from "./Menu";
-
-export interface ValuePickerProps {
-  readonly value: ValuesField | undefined;
-  readonly domain: readonly string[];
-  readonly onChange: (field: ValuesField) => void;
-  readonly labelledBy?: string | undefined;
-  readonly ariaLabel?: string | undefined;
-}
-
-type Row =
-  | { readonly kind: "add"; readonly tokens: readonly string[]; readonly label: string }
-  | {
-      readonly kind: "value";
-      readonly value: string;
-      readonly label: string;
-      readonly free: boolean;
-    };
-
-const NO_VALUES: readonly string[] = [];
-const SEPARATORS = /[,;|\n]/;
-
-export function ValuePicker(props: ValuePickerProps) {
-  const { value: field, domain, onChange } = props;
-  const values = useMemo(() => field?.values ?? NO_VALUES, [field]);
-  const id = useId();
-  const listId = `${id}-list`;
-  const fieldRef = useRef<HTMLDivElement>(null);
-  const addRef = useRef<HTMLButtonElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
-
-  const outside = useMemo(
-    () => (domain.length > 0 ? valuesOutsideDomain(values, domain) : []),
-    [values, domain],
-  );
-  const set = (next: string[]) => onChange(withValues(field, next));
-
-  // elenco: i valori dei dati, poi quelli scelti ma assenti dai dati (si possono togliere)
-  const rows = useMemo<Row[]>(() => {
-    const extra = values.filter((v) => !domain.includes(v));
-    const all = [...domain, ...extra].map((v) => ({ label: v, free: !domain.includes(v) }));
-    const list: Row[] = filterByQuery(all, query).map((r) => ({
-      kind: "value",
-      value: r.label,
-      label: r.label,
-      free: r.free,
-    }));
-    const tokens = pendingTokens(values, domain, query);
-    if (tokens.length) list.unshift({ kind: "add", tokens, label: copy.valuesAddTyped(tokens) });
-    return list;
-  }, [domain, values, query]);
-  const act = clampActive(active, rows.length);
-  const visible = rows.flatMap((r) => (r.kind === "value" ? [r.value] : []));
-
-  const close = (returnFocus: boolean) => {
-    setOpen(false);
-    setQuery("");
-    if (returnFocus) addRef.current?.focus();
-  };
-  useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
-  useEffect(() => {
-    if (!open || act < 0) return;
-    listRef.current?.querySelector(`[data-index="${act}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [open, act, rows.length]);
-
-  const activate = (r: Row) => {
-    if (r.kind === "add") {
-      set(addTokens(values, domain, query));
-      setQuery("");
-      setActive(0);
-    } else set(toggleValue(values, r.value));
-  };
-  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    const a = comboAction(e.key, act, rows.length);
-    if (a.kind === "move") {
-      e.preventDefault();
-      setActive(a.to);
-    } else if (a.kind === "commit") {
-      e.preventDefault();
-      const r = rows[act];
-      if (r) activate(r);
-    } else if (a.kind === "close") {
-      e.preventDefault();
-      e.stopPropagation();
-      close(true);
-    }
-  };
-  // incollando più valori insieme si aggiungono subito, con la grafia dei dati
-  const onPaste = (e: ClipboardEvent<HTMLInputElement>) => {
-    const text = e.clipboardData.getData("text");
-    if (!SEPARATORS.test(text)) return;
-    e.preventDefault();
-    set(addTokens(values, domain, text));
-    setQuery("");
-  };
-
-  return (
-    <>
-      <div
-        ref={fieldRef}
-        className="ei-field ei-chipsfield"
-        data-picker="values"
-        data-selected={values.length}
-        data-total={domain.length}
-        role="group"
-        aria-labelledby={props.labelledBy}
-        aria-label={props.labelledBy ? undefined : props.ariaLabel}
-        data-open={open || undefined}
-      >
-        {values.length === 0 ? (
-          <span className="ei-placeholder">{copy.valuesPlaceholder}</span>
-        ) : null}
-        <ul className="ei-chips">
-          {values.map((v) => {
-            const free = domain.length > 0 ? !domain.includes(v) : false;
-            return (
-              <li
-                key={v}
-                className={"ei-chip" + (free ? " ei-free" : "")}
-                title={free ? copy.valuesFree : undefined}
-              >
-                <span className="ei-chip-text">{v}</span>
-                <button
-                  type="button"
-                  className="ei-chip-x"
-                  aria-label={copy.valuesRemove(v)}
-                  onClick={() => set(values.filter((x) => x !== v))}
-                >
-                  <XIcon />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        <button
-          ref={addRef}
-          type="button"
-          className="ei-add"
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-controls={open ? listId : undefined}
-          onClick={() => (open ? close(false) : setOpen(true))}
-        >
-          <PlusIcon />
-          <span>{copy.valuesAdd}</span>
-        </button>
-      </div>
-      {outside.length > 0 ? (
-        <div className="ei-warn" role="status">
-          <span>{copy.valuesOutside(outside.length)}</span>
-          <button
-            type="button"
-            className="ei-link-btn"
-            onClick={() => set(values.filter((v) => !outside.includes(v)))}
-          >
-            {copy.valuesOutsideRemove}
-          </button>
-        </div>
-      ) : null}
-      {open ? (
-        <Menu
-          anchor={fieldRef}
-          onClose={() => close(false)}
-          onEscape={() => close(true)}
-          ariaLabel={copy.valuesMenu}
-        >
-          <div className="ei-menu-head">
-            <input
-              ref={inputRef}
-              type="text"
-              className="ei-search"
-              role="combobox"
-              aria-expanded="true"
-              aria-controls={listId}
-              aria-autocomplete="list"
-              aria-activedescendant={act >= 0 ? `${id}-opt-${act}` : undefined}
-              aria-label={domain.length ? copy.valuesSearch : copy.valuesSearchFree}
-              placeholder={domain.length ? copy.valuesSearch : copy.valuesSearchFree}
-              autoComplete="off"
-              spellCheck={false}
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setActive(0);
-              }}
-              onKeyDown={onKey}
-              onPaste={onPaste}
-            />
-          </div>
-          <div
-            ref={listRef}
-            id={listId}
-            className="ei-menu-scroll ei-values-list"
-            role="listbox"
-            aria-multiselectable="true"
-            aria-label={copy.valuesMenu}
-            data-scroll=""
-          >
-            {rows.length === 0 ? <div className="ei-menu-empty">{copy.noResults}</div> : null}
-            {rows.map((r, i) => {
-              const on = r.kind === "value" && values.includes(r.value);
-              return (
-                <div
-                  key={r.kind === "add" ? "add" : r.value}
-                  id={`${id}-opt-${i}`}
-                  data-index={i}
-                  role="option"
-                  aria-selected={on}
-                  className={
-                    "ei-option" +
-                    (i === act ? " ei-active" : "") +
-                    (on ? " ei-selected" : "") +
-                    (r.kind === "add" || r.free ? " ei-free" : "")
-                  }
-                  onPointerDown={(e) => e.preventDefault()}
-                  onPointerMove={() => setActive(i)}
-                  onClick={() => activate(r)}
-                >
-                  {r.kind === "add" ? null : (
-                    <span className="ei-checkbox" data-on={on || undefined} aria-hidden="true">
-                      {on ? <CheckIcon /> : null}
-                    </span>
-                  )}
-                  <span className="ei-option-label">{r.label}</span>
-                </div>
-              );
-            })}
-          </div>
-          <div className="ei-menu-foot">
-            <span className="ei-count" role="status" aria-live="polite">
-              {copy.valuesCount(values.length, domain.length)}
-            </span>
-            {domain.length > 0 ? (
-              <span className="ei-menu-actions">
-                <button
-                  type="button"
-                  className="ei-link-btn"
-                  onClick={() => set(addVisibleValues(values, visible))}
-                >
-                  {copy.valuesAll}
-                </button>
-                <button
-                  type="button"
-                  className="ei-link-btn"
-                  onClick={() => set(removeVisibleValues(values, visible))}
-                >
-                  {copy.valuesNone}
-                </button>
-              </span>
-            ) : null}
-          </div>
-        </Menu>
-      ) : null}
-    </>
-  );
-}
-```
-
-### `src/etl-canvas/inspector/copy.ts`
-
-114 righe
-
-```ts
-/**
- * Tutti i testi dell'Inspector, in italiano e con la sola maiuscola iniziale.
- * Nessuna stringa italiana sparsa nei componenti: un test lo verifica. Le
- * etichette dei campi e delle operazioni vengono dal catalogo di etl-core.
- */
-export const copy = {
-  // intestazione
-  kindSource: "Sorgente",
-  kindResult: "Risultato",
-  kindBox: "Box combinato",
-  kindOperation: "Lavorazione",
-  nameLabel: "Nome del nodo",
-
-  // stati
-  emptyInspector: "Nessun nodo selezionato",
-  lockedText:
-    "Collega una tabella a questo nodo per configurarne i parametri: colonne, chiavi e valori dipendono dai dati in ingresso.",
-  lockedJoin: (n: number) => `Serve un Join completo: ${n} tabelle in ingresso.`,
-  resultNote: (producer: string) =>
-    `Risultato generato da ${producer}. I suoi parametri si configurano nei passaggi che lo producono.`,
-  producerFallback: "una lavorazione",
-  resultIncomplete: "Incompleto: al join manca una tabella.",
-  inputsCount: (got: number, cap: number) => `Tabelle in ingresso: ${got} su ${cap}.`,
-  conditionsSoon: "Le condizioni arrivano nella prossima fase",
-  columnsTitle: "Colonne",
-  columnsNone: "Nessuna colonna nota: carica un dataset con colonne.",
-  closeInspector: "Nascondi l’inspector",
-
-  // box combinato
-  sequenceTitle: "Sequenza di esecuzione",
-  sequenceCount: (n: number) => `${n} passaggi`,
-  stepLabel: (n: number, name: string) => `Passaggio ${n}: ${name}`,
-  stepReorderHelp: "Trascina il passaggio o usa Alt con le frecce su e giù per cambiarne l’ordine.",
-  stepDetach: "Sgancia sul canvas",
-  stepDelete: "Elimina passaggio",
-  stepConfigure: "Configura parametri",
-  stepMenu: "Impostazioni del passaggio",
-  stepsMenuLabel: "Azioni del passaggio",
-  tableReference: "Tabella di riferimento",
-  tableLeft: "Tabella sinistra",
-  tableRight: "Tabella destra",
-  tableLinkFirst: "Collega le tabelle per scegliere su quale agisce questo passaggio.",
-  tableLeftResult: (j: number) =>
-    `Tabella sinistra: risultato del join ${j}, già unito nei passaggi precedenti.`,
-  tableSingle: (j: number) => `Opera sul risultato del join ${j}: da qui la tabella è una sola.`,
-  tableFallback: "tabella",
-
-  // campi e menu
-  pickOrType: "Scegli o scrivi",
-  typeOr: "Oppure scrivi",
-  typePlaceholder: "Scrivi un valore",
-  searchPlaceholder: "Cerca",
-  noResults: "Nessun risultato",
-  useTyped: (text: string) => `Usa “${text}”`,
-  menuLabel: "Scelte disponibili",
-
-  // colonne
-  columnsPlaceholder: "Nessuna colonna scelta",
-  columnsAdd: "Aggiungi colonne",
-  columnsSearch: "Cerca una colonna",
-  columnsAll: "Tutte",
-  columnsNone2: "Nessuna",
-  columnsCount: (n: number, m: number) => `${n} ${n === 1 ? "colonna" : "colonne"} su ${m}`,
-  columnsRemove: (name: string) => `Rimuovi ${name}`,
-  columnsMoveHelp: "Alt con le frecce sinistra e destra cambia l’ordine; si può anche trascinare.",
-  columnsAddTyped: (name: string) => `+ Aggiungi “${name}”`,
-  columnsFree: "Non presente nei dati",
-  columnsMenu: "Colonne",
-  columnsPosition: (name: string, i: number, n: number) => `${name}, posizione ${i} di ${n}`,
-
-  // valori
-  valuesPlaceholder: "Nessun valore scelto",
-  valuesAdd: "Scegli i valori",
-  valuesSearch: "Cerca tra i valori o scrivine di nuovi",
-  valuesSearchFree: "Scrivi i valori, anche più insieme",
-  valuesAll: "Tutti",
-  valuesNone: "Nessuno",
-  valuesCount: (n: number, m: number) =>
-    m > 0
-      ? `${n} ${n === 1 ? "selezionato" : "selezionati"} su ${m}`
-      : `${n} ${n === 1 ? "selezionato" : "selezionati"}`,
-  valuesAddTyped: (tokens: readonly string[]) =>
-    `+ Aggiungi ${tokens.map((t) => `“${t}”`).join(", ")}`,
-  valuesRemove: (v: string) => `Rimuovi ${v}`,
-  valuesOutside: (n: number) =>
-    `${n} ${n === 1 ? "valore non presente" : "valori non presenti"} nelle colonne scelte`,
-  valuesOutsideRemove: "Rimuovi",
-  valuesMenu: "Valori",
-  valuesFree: "Non presente nei dati",
-
-  // voci multiple
-  rowToggle: "Mostra o nascondi i campi",
-  rowTodo: "Da configurare",
-  rowRemove: "Rimuovi voce",
-  rowNote: "",
-  resultNameAuto: (names: readonly string[]) => `Nome automatico: ${names.join(", ")}`,
-  resultNameNone: "Il nome compare quando scegli le colonne",
-
-  // pulsanti sul nodo
-  nodeDelete: "Elimina nodo",
-  nodeExpand: "Espandi sequenza",
-
-  // pannello espanso
-  expandedSub: (n: number) => `${n} passaggi in sequenza`,
-  expandedNote: "Trascina le righe per cambiare l’ordine di esecuzione.",
-  expandedNoteOutside: "Rilascia qui fuori per sganciare il passaggio sul canvas",
-  expandedClose: "Chiudi",
-  expandedTitle: "Sequenza del box",
-
-  // conferme e annunci
-  announceMoved: (name: string, pos: number, n: number) =>
-    `${name} spostato in posizione ${pos} di ${n}`,
-} as const;
-```
-
-### `src/etl-canvas/inspector/family.ts`
-
-13 righe
-
-```ts
-/** La famiglia di un nodo, per l'intestazione dell'Inspector. */
-import { sectionOf } from "../../etl-core";
-import type { Card } from "../../etl-core";
-import { copy } from "./copy";
-
-/** La famiglia da mostrare: il tipo di nodo, o la sezione della cassetta per una lavorazione semplice. */
-export function familyLabel(card: Card): string {
-  if (card.kind === "dataset") return card.isOutput ? copy.kindResult : copy.kindSource;
-  if (card.components.length > 1) return copy.kindBox;
-  const first = card.components[0];
-  return (first ? sectionOf(first)?.name : undefined) ?? copy.kindOperation;
-}
-```
-
-### `src/etl-canvas/inspector/icons.tsx`
-
-87 righe
-
-```tsx
-/** Icone dell'Inspector: tracciati statici, ereditano il colore del testo. */
-import type { ReactNode } from "react";
-
-function Svg(props: { children: ReactNode; strokeWidth?: number }) {
-  return (
-    <svg
-      className="ei-icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={props.strokeWidth ?? 2.4}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      {props.children}
-    </svg>
-  );
-}
-
-export const ChevronDown = () => (
-  <Svg strokeWidth={2.6}>
-    <polyline points="6 9 12 15 18 9" />
-  </Svg>
-);
-export const ChevronRight = () => (
-  <Svg strokeWidth={2.6}>
-    <polyline points="9 18 15 12 9 6" />
-  </Svg>
-);
-export const XIcon = () => (
-  <Svg>
-    <line x1="17" y1="7" x2="7" y2="17" />
-    <line x1="7" y1="7" x2="17" y2="17" />
-  </Svg>
-);
-export const LockIcon = () => (
-  <Svg strokeWidth={2}>
-    <rect x="4" y="11" width="16" height="9" rx="2" />
-    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
-  </Svg>
-);
-export const GripIcon = () => (
-  <Svg strokeWidth={2.6}>
-    <circle cx="9" cy="6" r="0.6" />
-    <circle cx="15" cy="6" r="0.6" />
-    <circle cx="9" cy="12" r="0.6" />
-    <circle cx="15" cy="12" r="0.6" />
-    <circle cx="9" cy="18" r="0.6" />
-    <circle cx="15" cy="18" r="0.6" />
-  </Svg>
-);
-export const PlusIcon = () => (
-  <Svg>
-    <line x1="12" y1="5" x2="12" y2="19" />
-    <line x1="5" y1="12" x2="19" y2="12" />
-  </Svg>
-);
-export const CheckIcon = () => (
-  <Svg strokeWidth={3}>
-    <polyline points="5 12.5 10 17.5 19 7" />
-  </Svg>
-);
-export const DetachIcon = () => (
-  <Svg strokeWidth={2.2}>
-    <path d="M14 3h7v7" />
-    <path d="M21 3l-9 9" />
-    <path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5" />
-  </Svg>
-);
-export const MoreIcon = () => (
-  <Svg strokeWidth={2.6}>
-    <circle cx="5" cy="12" r="1" />
-    <circle cx="12" cy="12" r="1" />
-    <circle cx="19" cy="12" r="1" />
-  </Svg>
-);
-export const ExpandIcon = () => (
-  <Svg strokeWidth={2.2}>
-    <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-    <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
-    <path d="M3 16v3a2 2 0 0 0 2 2h3" />
-    <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-  </Svg>
-);
 ```
 

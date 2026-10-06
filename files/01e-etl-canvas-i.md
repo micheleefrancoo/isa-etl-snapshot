@@ -2,20 +2,817 @@
 
 File in questo blocco:
 
+- `src/etl-canvas/interaction.ts`
+- `src/etl-canvas/loop.ts`
 - `src/etl-canvas/model.ts`
 - `src/etl-canvas/motion.tsx`
 - `src/etl-canvas/panels/ControlBar.tsx`
 - `src/etl-canvas/panels/Dock.tsx`
 - `src/etl-canvas/panels/EtlWorkspace.tsx`
 - `src/etl-canvas/panels/InspectorShell.tsx`
-- `src/etl-canvas/panels/Toolbox.tsx`
-- `src/etl-canvas/panels/actions.ts`
-- `src/etl-canvas/panels/csv.ts`
-- `src/etl-canvas/panels/families.ts`
-- `src/etl-canvas/panels/layout.ts`
-- `src/etl-canvas/panels/overlayLayout.ts`
 
 ---
+
+### `src/etl-canvas/interaction.ts`
+
+671 righe
+
+```ts
+/**
+ * Il livello dei gesti del canvas: dal puntatore e dalla tastiera ai comandi
+ * di etl-store. TypeScript puro, senza DOM né React: gli eventi arrivano già
+ * tradotti (coordinate relative all'area, bersaglio classificato), così si
+ * può provare con eventi simulati.
+ *
+ * Questo livello NON contiene logica di dominio. Ogni gesto chiama una
+ * funzione che esiste già:
+ *   trascinamento     → store.beginGesture / updateGesture / commitGesture / cancelGesture
+ *   esito del rilascio → etl-core `relation`, `insertable`; etl-layout `nodeAt`, `linkAt`
+ *   porte             → comando `connect`; geometria `nodePorts`
+ *   selezione         → comandi `select` e `inspect`; geometria `nodeRect`
+ *   tastiera          → comandi `deleteNodes`, `duplicate`, `moveNodes`, `select`; `undo`/`redo`
+ *   anteprima eliminazione → etl-core `nodesRemovedBy`
+ * Vedi la tabella nel README.
+ */
+import { boxCapacity, inputsOf, insertable, nodesRemovedBy, relation } from "../etl-core";
+import type { Graph, Link } from "../etl-core";
+import {
+  DRAG_THRESHOLD_PX,
+  GRID,
+  linkAt,
+  linkKey,
+  nodeAt,
+  nodePorts,
+  nodeRect,
+} from "../etl-layout";
+import type { LinkRoutes, Point, Rect } from "../etl-layout";
+import type { CommandResult, EtlStore } from "../etl-store";
+import { handleCanvasDrop, previewCanvasDrop } from "./drop";
+import type { CanvasDropPayload, DropPreview } from "./drop";
+import { toWorld } from "./view";
+
+/** Soglia del riquadro di selezione (prototipo, riga 4064). */
+export const MARQUEE_THRESHOLD = 4;
+/** Passo singolo delle frecce (prototipo, riga 4638: `GRID` con Maiusc, altrimenti 2). */
+export const NUDGE_STEP = 2;
+
+/** Esito mostrato su un nodo durante un trascinamento. */
+export type DragOutcome = "merge" | "link" | "link-reverse" | "displace" | "reject";
+
+/** Dove è iniziato il gesto, classificato dal livello che legge il DOM. */
+export type DownTarget =
+  | { readonly kind: "node"; readonly id: string }
+  | { readonly kind: "port"; readonly id: string; readonly side: PortSide }
+  | { readonly kind: "background" }
+  | { readonly kind: "ignore" };
+
+export type PortSide = "r" | "b" | "l" | "t";
+/** Ordine di `PORTS` (etl-layout): destra, sotto, sinistra, sopra. */
+const PORT_INDEX: Readonly<Record<PortSide, number>> = { r: 0, b: 1, l: 2, t: 3 };
+
+/** Puntatore in coordinate dell'area (pixel dello schermo relativi in alto a sinistra dell'area). */
+export interface PointerInput {
+  readonly x: number;
+  readonly y: number;
+  readonly shiftKey?: boolean;
+  readonly button?: number;
+}
+
+export interface KeyInput {
+  readonly key: string;
+  readonly metaKey?: boolean;
+  readonly ctrlKey?: boolean;
+  readonly shiftKey?: boolean;
+  /** Il fuoco è in un campo di testo: le scorciatoie non si applicano. */
+  readonly typing?: boolean;
+}
+
+export interface ConfirmState {
+  /** «delete» (Canc, Fase 5) o «clear» (Svuota, Fase 6a.2: `ids` è vuoto, tutto il canvas sparisce). */
+  readonly kind?: "delete" | "clear";
+  readonly ids: readonly string[];
+  /** Tutto ciò che sparirebbe: i nodi scelti e gli output a valle (etl-core `nodesRemovedBy`). */
+  readonly removed: readonly string[];
+  readonly title: string;
+  readonly text: string;
+}
+
+export interface InteractionUi {
+  /** Nodi in movimento. */
+  readonly dragging: readonly string[];
+  /** Nodo sotto il puntatore e cosa succederebbe al rilascio. */
+  readonly drop: { readonly id: string; readonly outcome: DragOutcome } | null;
+  /** Chiave (`da|a`) del cavo in cui si inserirebbe la lavorazione. */
+  readonly insertLink: string | null;
+  /** Cavo provvisorio tirato da una porta (coordinate del mondo). */
+  readonly tempLink: { readonly from: Point; readonly to: Point; readonly valid: boolean } | null;
+  /** Riquadro di selezione (coordinate dell'area) e nodi che comprende. */
+  readonly marquee: { readonly rect: Rect; readonly ids: readonly string[] } | null;
+  readonly confirm: ConfirmState | null;
+  readonly hint: string | null;
+}
+
+export const IDLE_UI: InteractionUi = {
+  dragging: [],
+  drop: null,
+  insertLink: null,
+  tempLink: null,
+  marquee: null,
+  confirm: null,
+  hint: null,
+};
+
+type Active =
+  | {
+      readonly kind: "node";
+      readonly id: string;
+      readonly start: Point;
+      readonly shift: boolean;
+      readonly group: readonly string[] | null;
+      readonly canInsert: boolean;
+      moved: boolean;
+      /** Esito mostrato nell'ultimo aggiornamento: è quello applicato al rilascio. */
+      drop: { id: string; outcome: DragOutcome } | null;
+      insertLink: Link | null;
+      /** Percorsi dei cavi prima del gesto (vedi `moveNode`). */
+      startRoutes: LinkRoutes | null;
+    }
+  | {
+      readonly kind: "port";
+      readonly id: string;
+      readonly from: Point;
+      rel: "link" | "link-reverse" | null;
+      target: string | null;
+    }
+  | {
+      /** Pressione su un cavo: un click lo elimina (prototipo, righe 4575-4580). */
+      readonly kind: "link";
+      readonly link: Link;
+      readonly start: Point;
+      moved: boolean;
+    }
+  | {
+      readonly kind: "marquee";
+      readonly start: Point;
+      readonly base: readonly string[];
+      moved: boolean;
+      ids: readonly string[];
+    };
+
+export interface InteractionController {
+  getUi(): InteractionUi;
+  subscribe(listener: () => void): () => void;
+  /** Un gesto è in corso (il livello DOM ascolta i movimenti finché è vero). */
+  isActive(): boolean;
+  /** Barra spaziatrice premuta: navigazione, nessun gesto di selezione. */
+  setSpace(down: boolean): void;
+  down(target: DownTarget, input: PointerInput): boolean;
+  move(input: PointerInput): void;
+  up(input: PointerInput): void;
+  /** Interrompe il gesto (pointercancel, Esc). */
+  cancel(): void;
+  key(input: KeyInput): boolean;
+  confirmDelete(): CommandResult | null;
+  cancelConfirm(): void;
+  /** Elimina i nodi indicati (pulsante × sul nodo): subito se isolati, altrimenti con la conferma di `nodesRemovedBy`. */
+  requestDeleteNodes(ids: readonly string[]): void;
+  /** Chiede conferma per svuotare il canvas (comando `clearAll`); non fa nulla se è già vuoto. */
+  requestClearAll(): void;
+  /**
+   * Un clic su un nodo (rilascio senza trascinamento) che lascia selezionato
+   * solo quel nodo: è l'unico evento che apre l'Inspector. `id` è il nodo.
+   */
+  subscribeClick(listener: (id: string) => void): () => void;
+  /** Punto dell'area → coordinate del mondo (per chi rilascia dalla cassetta). */
+  toWorld(x: number, y: number): Point;
+  /** Rilascio di un nuovo elemento: vedi drop.ts. */
+  handleCanvasDrop(payload: CanvasDropPayload, point: Point): CommandResult;
+  previewCanvasDrop(payload: CanvasDropPayload, point: Point): DropPreview;
+  /**
+   * Un elemento trascinato da fuori (la cassetta) passa sopra il canvas:
+   * mostra gli stessi contorni del trascinamento tra nodi. `point` è in
+   * coordinate dell'area, `null` se il puntatore è fuori dall'area.
+   */
+  hoverExternal(payload: CanvasDropPayload, point: Point | null): void;
+  /** Rilascio dell'elemento trascinato da fuori; `null` se il puntatore è fuori dall'area. */
+  dropExternal(payload: CanvasDropPayload, point: Point | null): CommandResult | null;
+}
+
+function sameIds(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
+}
+
+/** Testi della conferma (prototipo, righe 4509-4552). */
+function confirmCopy(
+  ids: readonly string[],
+  removedCount: number,
+): { title: string; text: string } {
+  const downstream = removedCount - ids.length;
+  if (ids.length === 1) {
+    const n = downstream;
+    return {
+      title: "Eliminare il nodo?",
+      text:
+        n > 0
+          ? `Fa parte del flusso. Verranno rimossi i suoi collegamenti e ${n}${n > 1 ? " risultati a valle." : " risultato a valle."}`
+          : "Fa parte del flusso: i suoi collegamenti verranno rimossi.",
+    };
+  }
+  return {
+    title: `Eliminare ${ids.length} nodi?`,
+    text:
+      "Alcuni fanno parte del flusso: verranno rimossi i loro collegamenti" +
+      (downstream > 0
+        ? ` e ${downstream} ${downstream > 1 ? "risultati" : "risultato"} a valle.`
+        : "."),
+  };
+}
+
+export function createInteractionController(store: EtlStore): InteractionController {
+  let ui: InteractionUi = IDLE_UI;
+  let active: Active | null = null;
+  let space = false;
+  const listeners = new Set<() => void>();
+  const clickListeners = new Set<(id: string) => void>();
+
+  const setUi = (patch: Partial<InteractionUi>): void => {
+    const next = { ...ui, ...patch };
+    const keys = Object.keys(next) as (keyof InteractionUi)[];
+    if (keys.every((k) => next[k] === ui[k])) return;
+    ui = next;
+    for (const l of [...listeners]) l();
+  };
+  const graph = (): Graph => store.getState().graph;
+  const worldOf = (p: Point): Point => toWorld(store.getState().view, p.x, p.y);
+  const linkOfKey = (key: string): Link | null =>
+    graph().links.find((l) => linkKey(l) === key) ?? null;
+
+  /** `select` + `inspect`: l'Inspector segue la selezione (nessun pannello, solo stato). */
+  const applySelection = (ids: readonly string[]): void => {
+    const s = store.getState();
+    const unique = Array.from(new Set(ids));
+    if (!sameIds(s.selection, unique)) store.dispatch({ type: "select", payload: { ids: unique } });
+    const keep = s.inspector.nodeId && unique.includes(s.inspector.nodeId);
+    const node = unique.length ? (keep ? s.inspector.nodeId : (unique[0] as string)) : null;
+    if (node !== s.inspector.nodeId || (node !== null && s.inspector.step !== 0 && !keep)) {
+      store.dispatch({ type: "inspect", payload: { node, step: 0 } });
+    }
+  };
+
+  const hintForLink = (g: Graph, dragged: string, over: string): string => {
+    const boxId = relation(g, dragged, over).relation === "link" ? over : dragged;
+    const box = g.cards[boxId];
+    const need = box ? boxCapacity(box) - inputsOf(g, boxId).length : 1;
+    return need > 1
+      ? "Rilascia: sarà la tabella di sinistra, poi servirà la seconda"
+      : "Rilascia per collegare e generare l’output";
+  };
+
+  // --- trascinamento di un nodo ---------------------------------------------------
+
+  const moveNode = (a: Extract<Active, { kind: "node" }>, input: PointerInput): void => {
+    const view = store.getState().view;
+    const sx = input.x - a.start.x;
+    const sy = input.y - a.start.y;
+    if (!a.moved) {
+      if (Math.hypot(sx, sy) < DRAG_THRESHOLD_PX) return;
+      const ids = a.group ?? [a.id];
+      if (a.canInsert) a.startRoutes = store.getRoutes();
+      const r = store.beginGesture({ ids });
+      if (!r.ok) {
+        active = null;
+        return;
+      }
+      a.moved = true;
+      setUi({ dragging: ids });
+    }
+    const dx = sx / view.zoom;
+    const dy = sy / view.zoom;
+    if (a.group) {
+      store.updateGesture({ dx, dy });
+      return;
+    }
+    const p = worldOf(input);
+    const over = nodeAt(graph(), p, a.id);
+    // l'esito si calcola sul grafo PRIMA dell'aggiornamento: l'aggiornamento può spingere via l'altro nodo
+    const rel = over ? relation(graph(), a.id, over) : null;
+    store.updateGesture({ dx, dy, over });
+
+    if (over && rel) {
+      const outcome: DragOutcome = rel.relation ?? "reject";
+      a.drop = { id: over, outcome };
+      a.insertLink = null;
+      setUi({
+        drop: a.drop,
+        insertLink: null,
+        hint:
+          outcome === "merge"
+            ? "Rilascia per fondere le lavorazioni"
+            : outcome === "link" || outcome === "link-reverse"
+              ? hintForLink(graph(), a.id, over)
+              : (rel.displaceReason ?? null),
+      });
+      return;
+    }
+    a.drop = null;
+    // sopra un cavo, senza un nodo sotto: una lavorazione slegata si inserisce nel collegamento
+    let insert: Link | null = null;
+    if (a.canInsert) {
+      // il nodo in mano è un ostacolo e fa scansare i cavi: si prova anche sui percorsi di prima del gesto
+      const key = linkAt(store.getRoutes(), p) ?? (a.startRoutes ? linkAt(a.startRoutes, p) : null);
+      const link = key ? linkOfKey(key) : null;
+      if (link && insertable(graph(), link, a.id)) insert = link;
+    }
+    a.insertLink = insert;
+    setUi({
+      drop: null,
+      insertLink: insert ? linkKey(insert) : null,
+      hint: insert ? "Rilascia per inserire la lavorazione nel collegamento" : null,
+    });
+  };
+
+  const releaseNode = (a: Extract<Active, { kind: "node" }>, input: PointerInput): void => {
+    if (!a.moved) {
+      // un click: Maiusc aggiunge o toglie; altrimenti seleziona solo questo (riga 2069)
+      if (a.shift || input.shiftKey) {
+        const sel = store.getState().selection;
+        applySelection(sel.includes(a.id) ? sel.filter((x) => x !== a.id) : [...sel, a.id]);
+      } else applySelection([a.id]);
+      const sel = store.getState().selection;
+      if (!a.shift && !input.shiftKey && sel.length === 1 && sel[0] === a.id)
+        for (const l of [...clickListeners]) l(a.id);
+      return;
+    }
+    const outcome = a.drop?.outcome;
+    const target =
+      a.drop && (outcome === "merge" || outcome === "link" || outcome === "link-reverse")
+        ? { node: a.drop.id }
+        : a.insertLink
+          ? { link: a.insertLink }
+          : undefined;
+    store.commitGesture(target ? { target } : {});
+  };
+
+  // --- porte ----------------------------------------------------------------------
+
+  const movePort = (a: Extract<Active, { kind: "port" }>, input: PointerInput): void => {
+    const p = worldOf(input);
+    const g = graph();
+    const over = nodeAt(g, p, a.id);
+    const r = over ? relation(g, a.id, over) : null;
+    // dalle porte si collega soltanto: fusione e spostamento diventano rifiuto (riga 3990)
+    const rel = r && (r.relation === "link" || r.relation === "link-reverse") ? r.relation : null;
+    a.rel = rel;
+    a.target = rel ? over : null;
+    setUi({
+      tempLink: { from: a.from, to: p, valid: !!rel },
+      drop: over ? { id: over, outcome: rel ?? "reject" } : null,
+      hint: rel
+        ? "Rilascia per collegare"
+        : over
+          ? (r?.displaceReason ?? "Questi due nodi non si possono collegare")
+          : "Trascina fino al nodo da collegare",
+    });
+  };
+
+  const releasePort = (a: Extract<Active, { kind: "port" }>): void => {
+    if (a.rel && a.target) {
+      if (a.rel === "link")
+        store.dispatch({ type: "connect", payload: { from: a.id, to: a.target } });
+      else store.dispatch({ type: "connect", payload: { from: a.target, to: a.id } });
+    }
+  };
+
+  // --- riquadro di selezione ------------------------------------------------------
+
+  const marqueeRect = (a: Extract<Active, { kind: "marquee" }>, input: PointerInput): Rect => ({
+    x: Math.min(a.start.x, input.x),
+    y: Math.min(a.start.y, input.y),
+    w: Math.abs(input.x - a.start.x),
+    h: Math.abs(input.y - a.start.y),
+  });
+
+  /** Nodi il cui quadrato tocca il riquadro (prototipo, righe 4071-4076: il riquadro è in coordinate dello schermo). */
+  const idsInRect = (rect: Rect): string[] => {
+    const a = worldOf({ x: rect.x, y: rect.y });
+    const b = worldOf({ x: rect.x + rect.w, y: rect.y + rect.h });
+    const out: string[] = [];
+    for (const c of Object.values(graph().cards)) {
+      const r = nodeRect(c);
+      if (r.x + r.w > a.x && r.x < b.x && r.y + r.h > a.y && r.y < b.y) out.push(c.id);
+    }
+    return out;
+  };
+
+  // --- eliminazione ---------------------------------------------------------------
+
+  /** `only`: elimina solo questi nodi (il pulsante × di un nodo); altrimenti la selezione. */
+  const requestDelete = (only?: readonly string[]): void => {
+    const ids = (only ?? store.getState().selection).filter((id) => !!graph().cards[id]);
+    if (!ids.length) return;
+    const attached = graph().links.some((l) => ids.includes(l.from) || ids.includes(l.to));
+    if (!attached) {
+      store.dispatch({ type: "deleteNodes", payload: { ids } });
+      return;
+    }
+    const removed = [...nodesRemovedBy(graph(), ids)];
+    setUi({ confirm: { ids, removed, ...confirmCopy(ids, removed.length) } });
+  };
+
+  const requestClearAll = (): void => {
+    const removed = Object.keys(graph().cards);
+    if (!removed.length) return;
+    setUi({
+      confirm: {
+        kind: "clear",
+        ids: [],
+        removed,
+        title: "Svuotare il canvas?",
+        text: "Eliminare tutti i nodi e i collegamenti? Puoi annullare con Cmd/Ctrl+Z.",
+      },
+    });
+  };
+
+  const nudge = (dx: number, dy: number): void => {
+    const ids = store.getState().selection;
+    if (ids.length) store.dispatch({ type: "moveNodes", payload: { ids, dx, dy } });
+  };
+
+  const finish = (): void => {
+    active = null;
+    setUi({
+      dragging: [],
+      drop: null,
+      insertLink: null,
+      tempLink: null,
+      marquee: null,
+      hint: null,
+    });
+  };
+
+  const controller: InteractionController = {
+    getUi: () => ui,
+    subscribe(l) {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+    isActive: () => active !== null,
+    setSpace(down) {
+      space = down;
+    },
+
+    down(target, input) {
+      if (active) return false;
+      if (input.button !== undefined && input.button !== 0) return false;
+      if (target.kind === "ignore") return false;
+      if (ui.confirm) setUi({ confirm: null });
+      if (space) return false;
+      const start = { x: input.x, y: input.y };
+
+      if (target.kind === "port") {
+        const card = graph().cards[target.id];
+        if (!card) return false;
+        const port = nodePorts(card)[PORT_INDEX[target.side]];
+        if (!port) return false;
+        const from = { x: port.anchor.x, y: port.anchor.y };
+        active = { kind: "port", id: target.id, from, rel: null, target: null };
+        setUi({
+          dragging: [target.id],
+          tempLink: { from, to: worldOf(start), valid: false },
+          hint: "Trascina fino al nodo da collegare",
+        });
+        return true;
+      }
+
+      if (target.kind === "node") {
+        const card = graph().cards[target.id];
+        if (!card) return false;
+        const sel = store.getState().selection;
+        const group =
+          sel.includes(target.id) && sel.length > 1
+            ? sel.filter((id) => !!graph().cards[id])
+            : null;
+        const canInsert =
+          !group &&
+          card.kind === "op" &&
+          !graph().links.some((l) => l.from === target.id || l.to === target.id);
+        active = {
+          kind: "node",
+          id: target.id,
+          start,
+          shift: !!input.shiftKey,
+          group,
+          canInsert,
+          moved: false,
+          drop: null,
+          insertLink: null,
+          startRoutes: null,
+        };
+        return true;
+      }
+
+      // su un cavo: niente riquadro, il click lo elimina (nel prototipo il cavo non è "sfondo", riga 4033)
+      const hit = linkAt(store.getRoutes(), worldOf(start));
+      const link = hit ? linkOfKey(hit) : null;
+      if (link) {
+        active = { kind: "link", link, start, moved: false };
+        return true;
+      }
+
+      // sfondo: riquadro di selezione (Maiusc = si aggiunge alla selezione)
+      const base = input.shiftKey ? [...store.getState().selection] : [];
+      active = { kind: "marquee", start, base, moved: false, ids: base };
+      return true;
+    },
+
+    move(input) {
+      const a = active;
+      if (!a) return;
+      if (a.kind === "node") moveNode(a, input);
+      else if (a.kind === "link") {
+        if (Math.hypot(input.x - a.start.x, input.y - a.start.y) >= DRAG_THRESHOLD_PX)
+          a.moved = true;
+      } else if (a.kind === "port") movePort(a, input);
+      else {
+        if (!a.moved && Math.hypot(input.x - a.start.x, input.y - a.start.y) < MARQUEE_THRESHOLD)
+          return;
+        a.moved = true;
+        const rect = marqueeRect(a, input);
+        const ids = Array.from(new Set([...a.base, ...idsInRect(rect)]));
+        a.ids = ids;
+        setUi({ marquee: { rect, ids } });
+      }
+    },
+
+    up(input) {
+      const a = active;
+      if (!a) return;
+      if (a.kind === "node") {
+        releaseNode(a, input);
+      } else if (a.kind === "port") {
+        releasePort(a);
+      } else if (a.kind === "link") {
+        if (!a.moved) store.dispatch({ type: "deleteLink", payload: { link: a.link } });
+      } else if (a.moved) {
+        applySelection(a.ids);
+      } else if (store.getState().selection.length || store.getState().inspector.nodeId) {
+        // un click sul vuoto deseleziona (riga 4584)
+        applySelection([]);
+      }
+      finish();
+    },
+
+    cancel() {
+      const a = active;
+      if (!a) return;
+      if (a.kind === "node" && a.moved) store.cancelGesture();
+      finish();
+    },
+
+    key(e) {
+      if (e.typing) return false;
+      const mod = !!(e.metaKey || e.ctrlKey);
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      // con una conferma aperta restano attivi solo Esc (annulla) e il normale uso da tastiera della finestra
+      if (ui.confirm && k !== "Escape") return false;
+      if (!mod) {
+        if (k === "Delete" || k === "Backspace") {
+          if (!store.getState().selection.length) return false;
+          requestDelete();
+          return true;
+        }
+        if (k === "Escape") {
+          if (active) {
+            controller.cancel();
+            return true;
+          }
+          if (ui.confirm) {
+            setUi({ confirm: null });
+            return true;
+          }
+          applySelection([]);
+          return true;
+        }
+        const step = e.shiftKey ? GRID : NUDGE_STEP;
+        const arrows: Record<string, [number, number]> = {
+          ArrowLeft: [-step, 0],
+          ArrowRight: [step, 0],
+          ArrowUp: [0, -step],
+          ArrowDown: [0, step],
+        };
+        const d = arrows[k];
+        if (d && store.getState().selection.length) {
+          nudge(d[0], d[1]);
+          return true;
+        }
+        return false;
+      }
+      if (k === "d") {
+        const r = store.dispatch({
+          type: "duplicate",
+          payload: { ids: store.getState().selection },
+        });
+        if (r.ok) applySelection(store.getState().selection);
+        return true;
+      }
+      if (k === "a") {
+        applySelection(Object.keys(graph().cards));
+        return true;
+      }
+      if (k === "z" && e.shiftKey) {
+        store.redo();
+        return true;
+      }
+      if (k === "z") {
+        store.undo();
+        return true;
+      }
+      if (k === "y") {
+        store.redo();
+        return true;
+      }
+      return false;
+    },
+
+    confirmDelete() {
+      const c = ui.confirm;
+      if (!c) return null;
+      setUi({ confirm: null });
+      if (c.kind === "clear") return store.dispatch({ type: "clearAll", payload: {} });
+      return store.dispatch({ type: "deleteNodes", payload: { ids: c.ids } });
+    },
+    cancelConfirm() {
+      setUi({ confirm: null });
+    },
+    requestClearAll,
+    requestDeleteNodes: (ids) => requestDelete(ids),
+
+    hoverExternal(payload, point) {
+      if (active) return;
+      if (!point) {
+        setUi({ drop: null, insertLink: null, hint: null });
+        return;
+      }
+      const preview = previewCanvasDrop(store, payload, worldOf(point));
+      const outcome = preview.outcome;
+      setUi({
+        drop:
+          preview.nodeId &&
+          (outcome === "merge" || outcome === "link" || outcome === "link-reverse")
+            ? { id: preview.nodeId, outcome }
+            : null,
+        insertLink: preview.linkKey ?? null,
+        hint:
+          outcome === "merge"
+            ? "Rilascia per fondere direttamente nel box"
+            : outcome === "link" || outcome === "link-reverse"
+              ? "Rilascia per collegare"
+              : outcome === "insert"
+                ? "Rilascia per inserire la lavorazione nel collegamento"
+                : null,
+      });
+    },
+    dropExternal(payload, point) {
+      setUi({ drop: null, insertLink: null, hint: null });
+      return point ? handleCanvasDrop(store, payload, worldOf(point)) : null;
+    },
+
+    subscribeClick(l) {
+      clickListeners.add(l);
+      return () => clickListeners.delete(l);
+    },
+
+    toWorld: (x, y) => toWorld(store.getState().view, x, y),
+    handleCanvasDrop: (payload, point) => handleCanvasDrop(store, payload, point),
+    previewCanvasDrop: (payload, point) => previewCanvasDrop(store, payload, point),
+  };
+  return controller;
+}
+```
+
+### `src/etl-canvas/loop.ts`
+
+118 righe
+
+```ts
+/**
+ * Un solo ciclo requestAnimationFrame per tutto il canvas. Si ferma
+ * quando la scheda è nascosta e quando nessun compito ha nulla da
+ * animare; con `prefers-reduced-motion` non parte mai (i compiti
+ * mostrano lo stato finale con `settle`). Tutto ciò che tocca il browser
+ * passa da `LoopEnv`, quindi nei test si sostituisce.
+ */
+
+export interface LoopEnv {
+  raf(cb: () => void): number;
+  caf(id: number): void;
+  /** Orologio in millisecondi (nel browser `performance.now`). */
+  now(): number;
+  hidden(): boolean;
+  reducedMotion(): boolean;
+  onVisibilityChange(cb: () => void): () => void;
+  onReducedMotionChange(cb: () => void): () => void;
+}
+
+export interface Task {
+  /** Disegna il frame a `now`; `true` se ha ancora qualcosa da animare. */
+  frame(now: number): boolean;
+  /** Mostra lo stato finale, senza movimento (movimento ridotto). */
+  settle(): void;
+}
+
+export interface Loop {
+  add(task: Task): () => void;
+  /** C'è (forse) lavoro nuovo: se serve, il ciclo riparte. */
+  wake(): void;
+  running(): boolean;
+  dispose(): void;
+}
+
+export function createLoop(env: LoopEnv): Loop {
+  const tasks = new Set<Task>();
+  let id: number | null = null;
+
+  const cancel = (): void => {
+    if (id !== null) {
+      env.caf(id);
+      id = null;
+    }
+  };
+
+  const settleAll = (): void => {
+    for (const t of [...tasks]) t.settle();
+  };
+
+  const tick = (): void => {
+    id = null;
+    const now = env.now();
+    let busy = false;
+    for (const t of [...tasks]) if (t.frame(now)) busy = true;
+    if (busy && !env.hidden() && !env.reducedMotion()) id = env.raf(tick);
+  };
+
+  const schedule = (): void => {
+    if (id !== null || tasks.size === 0) return;
+    if (env.hidden()) return;
+    if (env.reducedMotion()) {
+      settleAll();
+      return;
+    }
+    id = env.raf(tick);
+  };
+
+  const offVisibility = env.onVisibilityChange(() => {
+    if (env.hidden()) cancel();
+    else schedule();
+  });
+  const offMotion = env.onReducedMotionChange(() => {
+    if (env.reducedMotion()) {
+      cancel();
+      settleAll();
+    } else schedule();
+  });
+
+  return {
+    add(task) {
+      tasks.add(task);
+      schedule();
+      return () => {
+        tasks.delete(task);
+        if (tasks.size === 0) cancel();
+      };
+    },
+    wake: schedule,
+    running: () => id !== null,
+    dispose() {
+      cancel();
+      tasks.clear();
+      offVisibility();
+      offMotion();
+    },
+  };
+}
+
+/** Ambiente reale. Va creato solo nel browser (in un effetto), mai durante il rendering. */
+export function browserEnv(): LoopEnv {
+  const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+  return {
+    raf: (cb) => requestAnimationFrame(() => cb()),
+    caf: (id) => cancelAnimationFrame(id),
+    now: () => performance.now(),
+    hidden: () => document.hidden,
+    reducedMotion: () => mq.matches,
+    onVisibilityChange(cb) {
+      document.addEventListener("visibilitychange", cb);
+      return () => document.removeEventListener("visibilitychange", cb);
+    },
+    onReducedMotionChange(cb) {
+      mq.addEventListener("change", cb);
+      return () => mq.removeEventListener("change", cb);
+    },
+  };
+}
+```
 
 ### `src/etl-canvas/model.ts`
 
@@ -256,7 +1053,7 @@ export function ControlBar(props: {
 
 ### `src/etl-canvas/panels/Dock.tsx`
 
-346 righe
+381 righe
 
 ```tsx
 /**
@@ -270,13 +1067,17 @@ export function ControlBar(props: {
  * `setPanel`/`setView` (vedi actions.ts). Niente accesso a window/document
  * durante il rendering: gli ascoltatori nascono nei gestori degli eventi.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { Size } from "../../etl-layout";
 import type { EtlStore, PanelKey, Panels, Side } from "../../etl-store";
 import { useEtlState } from "../../etl-store/react";
 import type { InteractionController } from "../interaction";
+import type { Loop } from "../loop";
 import type { PanelActions } from "./actions";
+import { createDockAnimator } from "./animator";
+import type { DockAnimator, GhostView } from "./animator";
+import { overlayFor } from "./dockArea";
 import { ControlBar } from "./ControlBar";
 import {
   MIN_CANVAS_HEIGHT,
@@ -288,13 +1089,11 @@ import {
   SIDE_NAME,
   isGrouped,
   isVertical,
-  keepVisible,
   nearestSide,
   notchHidden,
   notchOffset,
   panelSize,
 } from "./layout";
-import { overlayLayout } from "./overlayLayout";
 import type { OverlayLayout } from "./overlayLayout";
 import "./panels.css";
 import { InspectorIcon, ToolsIcon } from "./ui-icons";
@@ -315,7 +1114,9 @@ export interface DockLayoutProps {
   /** Controller dei gesti: la barra dei controlli chiede la conferma di «Svuota» al canvas. */
   readonly controller: InteractionController;
   /** Il canvas, al centro; riceve la disposizione dei widget in sovrimpressione, quando l'area è misurata. */
-  readonly canvas: (overlay: OverlayLayout | undefined) => ReactNode;
+  readonly canvas: (overlay: OverlayLayout | undefined, notice: string | null) => ReactNode;
+  /** Il ciclo di animazione condiviso con il canvas: l'animatore dei pannelli e della vista ci si aggiunge. */
+  readonly loop: Loop;
   /** Contenuto di ciascun pannello; `side` è il bordo corrente, `horiz` l'orientamento. */
   readonly content: Readonly<Record<PanelKey, (ctx: { side: Side; horiz: boolean }) => ReactNode>>;
   /** Altro da disegnare sopra lo spazio di lavoro (per esempio l'anteprima del trascinamento). */
@@ -330,7 +1131,7 @@ interface NotchDrag {
 }
 
 export function DockLayout(props: DockLayoutProps) {
-  const { store, actions, controller, canvas, content, overlay } = props;
+  const { store, actions, controller, canvas, content, overlay, loop } = props;
   const panels = useEtlState((s) => s.panels, store);
   const centerRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -360,39 +1161,35 @@ export function DockLayout(props: DockLayoutProps) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const openSide =
-    PANEL_KEYS.map((k) => (panels[k].open ? panels[k].side : null)).find(Boolean) ?? null;
-  const layout = useMemo(
-    () =>
-      area
-        ? overlayLayout({
-            area,
-            openSide,
-            notches: PANEL_KEYS.map((k) => ({
-              key: k,
-              side: panels[k].side,
-              offset: notchOffset(panels, k),
-              visible: !notchHidden(panels, k),
-            })),
-          })
-        : undefined,
-    [area, openSide, panels],
+  const layout = useMemo(() => (area ? overlayFor(panels, area) : undefined), [area, panels]);
+  // un solo orologio: l'animatore imposta a ogni frame l'apertura dei pannelli e la vista
+  const [animator] = useState<DockAnimator>(() =>
+    createDockAnimator({
+      store,
+      loop,
+      metrics: () => {
+        const ws = workspaceRef.current;
+        if (!ws) return null;
+        const bar = ws.querySelector(".ec-bar-row");
+        return {
+          w: ws.clientWidth,
+          h: ws.clientHeight,
+          barH: bar?.getBoundingClientRect().height ?? 0,
+        };
+      },
+    }),
   );
-  // dopo ogni cambio (apertura, chiusura, scheda, bordo, finestra) i nodi che erano interamente visibili lo restano
-  const lastVisibility = useRef<{ size: Size; insets: OverlayLayout["insets"] } | null>(null);
+  useEffect(() => animator.start(), [animator]);
+  const dock = useSyncExternalStore(animator.subscribe, animator.getSnapshot, animator.getSnapshot);
+  // l'area misurata a riposo cambia (finestra, tetto d'altezza): la vista segue senza animazione
   useEffect(() => {
     if (!area || !layout) return;
-    const next = { size: area, insets: layout.insets };
-    const prev = lastVisibility.current;
-    lastVisibility.current = next;
-    if (!prev) return;
-    const st = store.getState();
-    const view = keepVisible(Object.values(st.graph.cards), st.view, prev, next);
-    if (view !== st.view) store.dispatch({ type: "setView", payload: { x: view.x, y: view.y } });
-  }, [area, layout, store]);
+    // `area` è intera (clientWidth) e può essere un valore di un frame fa: l'animatore riceve la misura di adesso, frazionaria come quella calcolata
+    const r = centerRef.current?.getBoundingClientRect();
+    animator.onMeasure({ size: r ? { w: r.width, h: r.height } : area, insets: layout.insets });
+  }, [area, layout, animator]);
   const [drag, setDrag] = useState<NotchDrag | null>(null);
   // cambiare scheda sostituisce il contenuto sul posto: niente animazione di larghezza, solo una dissolvenza
-  const [instant, setInstant] = useState(false);
   const [tabIn, setTabIn] = useState<PanelKey | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const cleanup = useRef<(() => void) | null>(null);
@@ -406,12 +1203,10 @@ export function DockLayout(props: DockLayoutProps) {
   );
 
   const switchTab = (key: PanelKey) => {
-    setInstant(true);
+    animator.snapNext();
     actions.open(key);
     setTabIn(key);
     timers.current.push(setTimeout(() => setTabIn(null), TAB_IN_MS));
-    // il ripristino delle transizioni avviene dopo due disegni (riga 4811)
-    timers.current.push(setTimeout(() => setInstant(false), 60));
   };
 
   const onNotchPointerDown = (key: PanelKey, e: ReactPointerEvent<HTMLButtonElement>) => {
@@ -471,20 +1266,39 @@ export function DockLayout(props: DockLayoutProps) {
               pkey={k}
               panels={panels}
               workspaceH={workspaceH}
-              instant={instant}
+              animator={animator}
               tabIn={tabIn === k}
               onSwitch={switchTab}
             >
               {content[k]({ side, horiz: !isVertical(side) })}
             </PanelShell>
           ))}
+          {dock.ghosts
+            .filter((g) => g.side === side)
+            .map((g) => (
+              <GhostShell key={g.id} ghost={g} workspaceH={workspaceH} animator={animator} />
+            ))}
         </div>
       ))}
       <div className="ec-bar-row">
         <ControlBar store={store} controller={controller} area={area} />
       </div>
-      <div className="ec-center" ref={centerRef}>
-        {canvas(layout)}
+      <div
+        className="ec-center"
+        ref={centerRef}
+        // ingombri dei widget (alto, destra, basso, sinistra): le verifiche nel browser leggono l'area sicura da qui
+        data-insets={
+          layout
+            ? [
+                layout.insets.top,
+                layout.insets.right,
+                layout.insets.bottom,
+                layout.insets.left,
+              ].join(",")
+            : undefined
+        }
+      >
+        {canvas(layout, dock.notice)}
         <div
           className={"ec-edge-hint" + (drag ? ` ec-on ec-e-${drag.side}` : "")}
           data-testid="ec-edge-hint"
@@ -549,12 +1363,12 @@ function PanelShell(props: {
   pkey: PanelKey;
   panels: Panels;
   workspaceH: number;
-  instant: boolean;
+  animator: DockAnimator;
   tabIn: boolean;
   onSwitch: (key: PanelKey) => void;
   children: ReactNode;
 }) {
-  const { pkey, panels, instant, tabIn, onSwitch } = props;
+  const { pkey, panels, animator, tabIn, onSwitch } = props;
   const { side, open } = panels[pkey];
   const grouped = isGrouped(panels);
   const size = panelSize(panels, pkey);
@@ -569,7 +1383,6 @@ function PanelShell(props: {
     open ? "ec-open" : "",
     grouped ? "ec-grouped" : "",
     isVertical(side) ? "" : "ec-horiz",
-    instant ? "ec-instant" : "",
     tabIn ? "ec-tab-in" : "",
   ]
     .filter(Boolean)
@@ -581,6 +1394,7 @@ function PanelShell(props: {
       data-side={side}
       aria-label={PANEL_LABEL[pkey]}
       inert={!open}
+      ref={(el) => animator.register(pkey, el)}
       style={{ "--pw": `${size.w}px`, "--ph": `${ph}px` } as CSSProperties}
     >
       {grouped ? (
@@ -604,11 +1418,29 @@ function PanelShell(props: {
     </aside>
   );
 }
+
+/** Il guscio vuoto che un pannello spostato lascia sul vecchio bordo: si richiude con lo stesso orologio. */
+function GhostShell(props: { ghost: GhostView; workspaceH: number; animator: DockAnimator }) {
+  const { ghost, animator } = props;
+  const ph =
+    isVertical(ghost.side) || props.workspaceH <= 0
+      ? ghost.size.h
+      : cappedPanelHeight(ghost.size.h, props.workspaceH);
+  return (
+    <aside
+      className={`ec-panel ec-ghost-panel ec-side-${ghost.side}${isVertical(ghost.side) ? "" : " ec-horiz"}`}
+      aria-hidden="true"
+      inert
+      ref={(el) => animator.register(ghost.id, el)}
+      style={{ "--pw": `${ghost.size.w}px`, "--ph": `${ph}px` } as CSSProperties}
+    />
+  );
+}
 ```
 
 ### `src/etl-canvas/panels/EtlWorkspace.tsx`
 
-175 righe
+187 righe
 
 ```tsx
 /**
@@ -626,6 +1458,8 @@ import { EtlCanvas } from "../EtlCanvas";
 import { Icon } from "../icons";
 import type { CanvasDropPayload } from "../drop";
 import { createInteractionController } from "../interaction";
+import { browserEnv, createLoop } from "../loop";
+import type { Loop } from "../loop";
 import { createPanelActions, followInspector } from "./actions";
 import { DockLayout } from "./Dock";
 import { familyOfType } from "./families";
@@ -653,6 +1487,13 @@ export function EtlWorkspace(props: { store: EtlStore }) {
   const [ghost, setGhost] = useState<Ghost | null>(null);
   // il box combinato aperto nel pannello espanso
   const [expanded, setExpanded] = useState<string | null>(null);
+  // un solo ciclo requestAnimationFrame per tutto lo spazio di lavoro (cavi, pannelli, vista): nasce solo nel browser
+  const [loop, setLoop] = useState<Loop | null>(null);
+  useEffect(() => {
+    const l = createLoop(browserEnv());
+    setLoop(l);
+    return () => l.dispose();
+  }, []);
   const hostRef = useRef<HTMLDivElement>(null);
   const cleanup = useRef<(() => void) | null>(null);
 
@@ -739,17 +1580,20 @@ export function EtlWorkspace(props: { store: EtlStore }) {
           }}
         />
       ) : null}
-      {isClient ? (
+      {isClient && loop ? (
         <DockLayout
           store={store}
           actions={actions}
           controller={controller}
-          canvas={(overlay) => (
+          loop={loop}
+          canvas={(overlay, notice) => (
             <EtlCanvas
               store={store}
               controller={controller}
               minHeight={0}
               overlay={overlay}
+              notice={notice}
+              loop={loop}
               onExpand={setExpanded}
             />
           )}
@@ -819,826 +1663,6 @@ export function InspectorShell(props: { store: EtlStore; side: Side; onClose: ()
       <Inspector store={store} />
     </div>
   );
-}
-```
-
-### `src/etl-canvas/panels/Toolbox.tsx`
-
-166 righe
-
-```tsx
-/**
- * La cassetta degli strumenti (prototipo, `buildPalette` righe 4727-4752, e i
- * gestori 4912-4937). Le sezioni e le voci NON sono scritte qui: derivano dal
- * catalogo di etl-core (`SECTIONS`, `META`), così un'operazione aggiunta al
- * dominio compare da sola. La sezione Dataset mostra la libreria di etl-store
- * e il caricamento di un CSV.
- */
-import { useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
-import { META, SECTIONS } from "../../etl-core";
-import type { ComponentId } from "../../etl-core";
-import type { EtlStore, Side } from "../../etl-store";
-import { useEtlState } from "../../etl-store/react";
-import { Icon } from "../icons";
-import { FAMILY_OF_SECTION } from "./families";
-import type { CanvasDropPayload } from "../drop";
-import { loadCsvFile } from "./csv";
-import { ChevronIcon, CloseArrow, UploadIcon } from "./ui-icons";
-
-export interface ToolboxProps {
-  readonly store: EtlStore;
-  readonly side: Side;
-  readonly onClose: () => void;
-  /** Inizio del trascinamento di una voce (il canvas ne mostra l'anteprima): vedi EtlWorkspace. */
-  readonly onItemPointerDown: (
-    payload: CanvasDropPayload,
-    e: ReactPointerEvent<HTMLElement>,
-  ) => void;
-}
-
-function Item(props: {
-  type: ComponentId;
-  label: string;
-  meta?: string | undefined;
-  lib?: string | undefined;
-  family?: string | undefined;
-  onPointerDown: ToolboxProps["onItemPointerDown"];
-}) {
-  const { type, lib } = props;
-  const payload: CanvasDropPayload = lib
-    ? { component: type, libraryId: lib }
-    : { component: type };
-  return (
-    <div
-      className={"ec-pal-item" + (type === "dataset" ? " ec-source" : "")}
-      data-type={type}
-      data-lib={lib}
-      data-family={props.family}
-      onPointerDown={(e) => props.onPointerDown(payload, e)}
-    >
-      <div className="ec-pal-chip">
-        <Icon id={type} />
-      </div>
-      <div className="ec-pal-label">{props.label}</div>
-      {props.meta ? <div className="ec-lib-meta">{props.meta}</div> : null}
-    </div>
-  );
-}
-
-export function Toolbox(props: ToolboxProps) {
-  const { store, side } = props;
-  const library = useEtlState((s) => s.library, store);
-  const horiz = side === "top" || side === "bottom";
-  const [open, setOpen] = useState<Readonly<Record<string, boolean>>>(() =>
-    Object.fromEntries(SECTIONS.map((s) => [s.id, true])),
-  );
-  const [status, setStatus] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const onFile = async (file: File | undefined) => {
-    if (!file) return;
-    const outcome = await loadCsvFile(store, file);
-    setStatus(outcome.message);
-    if (outcome.ok) setOpen((o) => ({ ...o, data: true }));
-  };
-
-  return (
-    <div className="ec-tb-inner" data-testid="ec-toolbox">
-      <div className="ec-tb-head">
-        <div className="ec-tb-title">Strumenti</div>
-        <button
-          type="button"
-          className="ec-close-btn"
-          aria-label="Nascondi la cassetta degli strumenti"
-          onClick={props.onClose}
-        >
-          <CloseArrow side={side} />
-        </button>
-      </div>
-      {SECTIONS.map((sec) => {
-        const isOpen = horiz || open[sec.id] !== false;
-        return (
-          <div key={sec.id} className={"ec-tb-sec" + (isOpen ? " ec-open" : "")} data-sec={sec.id}>
-            <button
-              type="button"
-              className="ec-tb-sec-head"
-              aria-expanded={isOpen}
-              onClick={() => setOpen((o) => ({ ...o, [sec.id]: !(o[sec.id] !== false) }))}
-            >
-              <span className="ec-chev">
-                <ChevronIcon />
-              </span>
-              <span className="ec-tb-sec-name">{sec.name}</span>
-            </button>
-            <div className="ec-tb-sec-body">
-              {sec.items ? (
-                sec.items.map((t) => (
-                  <Item
-                    key={t}
-                    type={t}
-                    label={META[t].label}
-                    family={FAMILY_OF_SECTION[sec.id]}
-                    onPointerDown={props.onItemPointerDown}
-                  />
-                ))
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="ec-tb-upload"
-                    onClick={() => fileRef.current?.click()}
-                  >
-                    <UploadIcon />
-                    Carica dataset
-                  </button>
-                  {library.length ? (
-                    library.map((lb) => (
-                      <Item
-                        key={lb.id}
-                        type="dataset"
-                        lib={lb.id}
-                        label={lb.name}
-                        meta={`${lb.columns.length} col · ${lb.rows} righe`}
-                        onPointerDown={props.onItemPointerDown}
-                      />
-                    ))
-                  ) : (
-                    <div className="ec-tb-empty">Nessun dataset caricato</div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        );
-      })}
-      {status ? (
-        <div className="ec-tb-status" role="status">
-          {status}
-        </div>
-      ) : null}
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".csv,.tsv,.txt"
-        hidden
-        data-testid="ec-file-input"
-        onChange={(e) => {
-          const input = e.currentTarget;
-          void onFile(input.files?.[0]);
-          input.value = "";
-        }}
-      />
-    </div>
-  );
-}
-```
-
-### `src/etl-canvas/panels/actions.ts`
-
-88 righe
-
-```ts
-/**
- * Azioni sui pannelli: comandi di etl-store (`setPanel`) più la regola
- * dell'Inspector che segue la selezione. Nessuna logica di dominio e nessun
- * DOM. La vista non si compensa qui: dopo ogni cambio la tiene visibile
- * `keepVisible` (layout.ts), chiamata da chi misura l'area.
- */
-import type { CommandResult, EtlStore, PanelKey, Side } from "../../etl-store";
-import type { InteractionController } from "../interaction";
-
-export interface PanelActions {
-  open(key: PanelKey): CommandResult;
-  close(key: PanelKey): CommandResult;
-  /** Sposta il pannello su un altro bordo: si chiude, si sposta e si riapre (prototipo, `setSide`). */
-  moveTo(key: PanelKey, side: Side): CommandResult;
-  /**
-   * Apertura automatica dell'Inspector (clic su un nodo). Se sostituisce la
-   * cassetta aperta, lo ricorda: alla chiusura automatica la cassetta si
-   * riapre.
-   */
-  autoOpenInspector(): void;
-  /** Chiusura automatica dell'Inspector (deselezione): riapre la cassetta se era stata sostituita. */
-  autoCloseInspector(): void;
-}
-
-export function createPanelActions(store: EtlStore): PanelActions {
-  // la cassetta aperta che l'apertura automatica dell'Inspector ha sostituito
-  let replacedTools = false;
-  const apply = (payload: { panel: PanelKey; open?: boolean; side?: Side }): CommandResult =>
-    store.dispatch({ type: "setPanel", payload });
-  // qualunque azione esplicita dell'utente su un pannello azzera la memoria
-  const explicit = (payload: { panel: PanelKey; open?: boolean; side?: Side }): CommandResult => {
-    replacedTools = false;
-    return apply(payload);
-  };
-  return {
-    open: (key) => explicit({ panel: key, open: true }),
-    close: (key) => explicit({ panel: key, open: false }),
-    moveTo: (key, side) => explicit({ panel: key, side }),
-    autoOpenInspector() {
-      const { panels } = store.getState();
-      if (panels.insp.open) return;
-      replacedTools = panels.tools.open;
-      apply({ panel: "insp", open: true });
-    },
-    autoCloseInspector() {
-      const { panels } = store.getState();
-      const restore = replacedTools;
-      replacedTools = false;
-      if (!panels.insp.open) return;
-      apply({ panel: "insp", open: false });
-      if (restore) apply({ panel: "tools", open: true });
-    },
-  };
-}
-
-/**
- * L'Inspector segue la selezione (prototipo: `selectCard` apre, `deselect`
- * chiude — righe 2694-2727), con due differenze volute (Fase 6a.2):
- *
- * - si apre solo al CLIC su un nodo (rilascio senza trascinamento, con un solo
- *   nodo selezionato): mai alla pressione, durante un trascinamento, un
- *   riquadro di selezione, una selezione multipla o dopo un rilascio dalla
- *   cassetta;
- * - si chiude quando non c'è più un nodo nell'inspector (deselezione) e, se
- *   aveva sostituito la cassetta, la riapre.
- *
- * Se l'utente lo chiude con un nodo ancora selezionato, resta chiuso fino al
- * prossimo clic. Restituisce la funzione per smettere di ascoltare.
- */
-export function followInspector(
-  store: EtlStore,
-  controller: Pick<InteractionController, "subscribeClick">,
-  actions: PanelActions,
-): () => void {
-  let had = store.getState().inspector.nodeId !== null;
-  const offClick = controller.subscribeClick(() => actions.autoOpenInspector());
-  const offStore = store.subscribe(() => {
-    const has = store.getState().inspector.nodeId !== null;
-    if (has === had) return;
-    had = has;
-    if (!has) actions.autoCloseInspector();
-  });
-  return () => {
-    offClick();
-    offStore();
-  };
-}
-```
-
-### `src/etl-canvas/panels/csv.ts`
-
-37 righe
-
-```ts
-/**
- * Caricamento di un dataset dalla cassetta (prototipo, righe 4921-4937): la
- * lettura e la deduzione dei tipi sono `parseCSV` di etl-core, la libreria è
- * quella di etl-store (`loadCsv` → comando `loadDataset`, che conserva solo i
- * metadati: nome, percorso, colonne, righe — mai il contenuto del file).
- */
-import type { EtlStore } from "../../etl-store";
-
-export interface CsvLoadOutcome {
-  readonly ok: boolean;
-  /** Messaggio per l'utente (prototipo, riga 4934 e 4927). */
-  readonly message: string;
-}
-
-/** Carica il testo di un CSV già letto. */
-export function loadCsvText(store: EtlStore, fileName: string, text: string): CsvLoadOutcome {
-  const result = store.loadCsv(text, fileName);
-  if (!result.ok) return { ok: false, message: result.reason };
-  const item = store.getState().library.at(-1);
-  return {
-    ok: true,
-    message: item
-      ? `${fileName} caricato: ${item.columns.length} colonne, ${item.rows} righe. Trascinalo sul canvas.`
-      : `${fileName} caricato.`,
-  };
-}
-
-/** Legge un file scelto dall'utente (solo nel browser: `FileReader`) e lo carica. */
-export function loadCsvFile(store: EtlStore, file: File): Promise<CsvLoadOutcome> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(loadCsvText(store, file.name, String(reader.result ?? "")));
-    reader.onerror = () => resolve({ ok: false, message: "Il file non si può leggere" });
-    reader.readAsText(file);
-  });
-}
-```
-
-### `src/etl-canvas/panels/families.ts`
-
-17 righe
-
-```ts
-import { sectionOf } from "../../etl-core";
-import type { ComponentId } from "../../etl-core";
-
-/** Famiglia di colore di una sezione della cassetta (la stessa dei nodi sul canvas: `data-family`). */
-export const FAMILY_OF_SECTION: Readonly<Record<string, string>> = {
-  rows: "filter",
-  xform: "transform",
-  merge: "merge",
-  out: "output",
-};
-
-/** Famiglia di un componente, o `undefined` per il dataset. */
-export function familyOfType(type: ComponentId): string | undefined {
-  const section = sectionOf(type);
-  return section ? FAMILY_OF_SECTION[section.id] : undefined;
-}
-```
-
-### `src/etl-canvas/panels/layout.ts`
-
-227 righe
-
-```ts
-/**
- * Geometria dei pannelli agganciabili: funzioni pure sullo stato dei pannelli
- * di etl-store (`Panels`: lato e aperto/chiuso di ciascuno). Misure del
- * prototipo (docs/prototype/isa-fusion-prototype.html, righe 4756-4900), salvo
- * la regola della vista (vedi `keepVisible`).
- *
- * Nessuna logica di dominio: misure e posizione della vista sono
- * geometria dell'interfaccia.
- */
-import type { Card } from "../../etl-core";
-import { CARD, LABEL_H } from "../../etl-layout";
-import type { Size } from "../../etl-layout";
-import type { PanelKey, Panels, Side, View } from "../../etl-store";
-import type { Insets } from "../view";
-
-/** I due pannelli, nell'ordine delle schede (prototipo, riga 4797). */
-export const PANEL_KEYS: readonly PanelKey[] = ["tools", "insp"];
-
-export const PANEL_LABEL: Readonly<Record<PanelKey, string>> = {
-  tools: "Strumenti",
-  insp: "Inspector",
-};
-
-/** Nome del pannello nei suggerimenti (riga 4759-4760). */
-export const PANEL_NAME: Readonly<Record<PanelKey, string>> = {
-  tools: "gli strumenti",
-  insp: "l’inspector",
-};
-
-export const SIDE_NAME: Readonly<Record<Side, string>> = {
-  left: "sinistro",
-  right: "destro",
-  top: "superiore",
-  bottom: "inferiore",
-};
-
-export const SIDES: readonly Side[] = ["left", "right", "top", "bottom"];
-
-/** Misure proprie di ciascun pannello: larghezza (bordi verticali) e altezza (orizzontali). Righe 4759-4760. */
-export const PANEL_SIZE: Readonly<Record<PanelKey, { readonly w: number; readonly h: number }>> = {
-  tools: { w: 264, h: 206 },
-  insp: { w: 308, h: 300 },
-};
-
-/**
- * Tetto all'altezza dei pannelli sui bordi alto e basso (Fase 6b.1): la loro
- * altezza propria, ma non oltre il 45% dell'altezza disponibile (lo spazio di
- * lavoro); il contenuto scorre dentro il pannello.
- */
-export const PANEL_HEIGHT_CAP = 0.45;
-
-export function cappedPanelHeight(own: number, available: number): number {
-  return Math.max(0, Math.min(own, Math.floor(available * PANEL_HEIGHT_CAP)));
-}
-
-/** Margine verso il canvas, parte della misura del pannello (CSS `.panel`, riga 227). */
-export const EXTENT_PAD = 16;
-
-/** Distanza tra due tacche sullo stesso bordo (riga 4850). */
-export const NOTCH_SPREAD = 40;
-
-export const isVertical = (side: Side): boolean => side === "left" || side === "right";
-
-/** I due pannelli stanno sullo stesso bordo: diventano schede di un unico pannello. */
-export function isGrouped(panels: Panels): boolean {
-  return panels.tools.side === panels.insp.side;
-}
-
-/** Misura effettiva: in gruppo entrambi prendono la maggiore, così cambiare scheda non sposta il canvas (riga 4772). */
-export function panelSize(panels: Panels, key: PanelKey): { w: number; h: number } {
-  if (!isGrouped(panels)) return { ...PANEL_SIZE[key] };
-  return {
-    w: Math.max(PANEL_SIZE.tools.w, PANEL_SIZE.insp.w),
-    h: Math.max(PANEL_SIZE.tools.h, PANEL_SIZE.insp.h),
-  };
-}
-
-/** Quanto spazio sottrae al canvas un pannello aperto (riga 4763). */
-export function panelExtent(panels: Panels, key: PanelKey): number {
-  const s = panelSize(panels, key);
-  return (isVertical(panels[key].side) ? s.w : s.h) + EXTENT_PAD;
-}
-
-/** Spazio sottratto al canvas dai pannelli aperti sul bordo `side`. */
-export function openExtent(panels: Panels, side: Side): number {
-  return PANEL_KEYS.filter((k) => panels[k].open && panels[k].side === side).reduce(
-    (sum, k) => sum + panelExtent(panels, k),
-    0,
-  );
-}
-
-/** Area visibile con lo spazio dei widget in sovrimpressione già escluso (margine di sicurezza). */
-export interface Visibility {
-  readonly size: Size;
-  readonly insets: Insets;
-}
-
-interface Box {
-  readonly x1: number;
-  readonly y1: number;
-  readonly x2: number;
-  readonly y2: number;
-}
-
-/** Rettangolo di un nodo (quadrato più etichetta) sullo schermo, con la vista data. */
-function screenBox(c: Pick<Card, "x" | "y">, v: View): Box {
-  const x1 = v.x + c.x * v.zoom;
-  const y1 = v.y + c.y * v.zoom;
-  return { x1, y1, x2: x1 + CARD * v.zoom, y2: y1 + (CARD + LABEL_H) * v.zoom };
-}
-
-function safeBox(a: Visibility): Box {
-  return {
-    x1: a.insets.left,
-    y1: a.insets.top,
-    x2: a.size.w - a.insets.right,
-    y2: a.size.h - a.insets.bottom,
-  };
-}
-
-/** Identificativi dei nodi interamente dentro l'area visibile sicura. */
-export function visibleIds(
-  cards: readonly Card[],
-  view: View,
-  area: Visibility,
-): readonly string[] {
-  const safe = safeBox(area);
-  return cards
-    .filter((c) => {
-      const b = screenBox(c, view);
-      return b.x1 >= safe.x1 && b.y1 >= safe.y1 && b.x2 <= safe.x2 && b.y2 <= safe.y2;
-    })
-    .map((c) => c.id);
-}
-
-/** Spostamento minimo di un intervallo [lo, hi] perché stia in [a, b]; se non entra, si allinea ad `a`. */
-function shiftInto(lo: number, hi: number, a: number, b: number): number {
-  if (hi - lo > b - a) return a - lo;
-  if (lo < a) return a - lo;
-  if (hi > b) return b - hi;
-  return 0;
-}
-
-/**
- * Regola dei pannelli (Fase 6a.2, sostituisce quella del prototipo «nodi
- * fermi sullo schermo», righe 4780-4784 e 4818-4821): un pannello aperto
- * riduce l'area del canvas e non copre mai un nodo. Le posizioni nel mondo
- * non cambiano e lo zoom nemmeno; cambia solo la vista. Il canvas si
- * sposta con i suoi bordi (a sinistra e in alto il bordo avanza e i nodi
- * vanno con lui; a destra e in basso restano dove sono rispetto
- * all'origine) e, se l'area si restringe, i nodi che prima erano interamente
- * visibili e ora sarebbero fuori si riportano dentro con lo scorrimento
- * minimo. Se l'insieme non entra nell'area, si allinea al bordo di partenza
- * (sinistra, alto) e il resto resta raggiungibile con scorrimento e
- * minimappa.
- *
- * `prev` è l'area prima del cambio (apertura, chiusura, cambio di scheda,
- * spostamento della tacca, ridimensionamento), `next` quella dopo. Restituisce
- * la stessa vista se non serve scorrere.
- */
-export function keepVisible(
-  cards: readonly Card[],
-  view: View,
-  prev: Visibility,
-  next: Visibility,
-): View {
-  const was = new Set(visibleIds(cards, view, prev));
-  if (was.size === 0) return view;
-  const boxes = cards.filter((c) => was.has(c.id)).map((c) => screenBox(c, view));
-  const lo = {
-    x: Math.min(...boxes.map((b) => b.x1)),
-    y: Math.min(...boxes.map((b) => b.y1)),
-  };
-  const hi = {
-    x: Math.max(...boxes.map((b) => b.x2)),
-    y: Math.max(...boxes.map((b) => b.y2)),
-  };
-  const safe = safeBox(next);
-  const dx = shiftInto(lo.x, hi.x, safe.x1, safe.x2);
-  const dy = shiftInto(lo.y, hi.y, safe.y1, safe.y2);
-  return dx === 0 && dy === 0 ? view : { ...view, x: view.x + dx, y: view.y + dy };
-}
-
-/**
- * Altezza minima del canvas, la riga centrale dello spazio di lavoro. Se i
- * pannelli in alto e in basso lasciano meno spazio, scorre il contenitore
- * dello spazio di lavoro, non la pagina.
- */
-export const MIN_CANVAS_HEIGHT = 160;
-
-/** Il bordo del canvas più vicino a un punto (riga 4851-4856). */
-export function nearestSide(
-  point: { readonly x: number; readonly y: number },
-  rect: {
-    readonly left: number;
-    readonly right: number;
-    readonly top: number;
-    readonly bottom: number;
-  },
-): Side {
-  const d: Record<Side, number> = {
-    left: Math.abs(point.x - rect.left),
-    right: Math.abs(rect.right - point.x),
-    top: Math.abs(point.y - rect.top),
-    bottom: Math.abs(rect.bottom - point.y),
-  };
-  return SIDES.slice().sort((a, b) => d[a] - d[b])[0] as Side;
-}
-
-/** Scostamento della tacca lungo il bordo: due tacche sullo stesso bordo si affiancano (riga 4850). */
-export function notchOffset(panels: Panels, key: PanelKey): number {
-  const mates = PANEL_KEYS.filter((k) => panels[k].side === panels[key].side);
-  if (mates.length < 2) return 0;
-  return mates.indexOf(key) === 0 ? -NOTCH_SPREAD : NOTCH_SPREAD;
-}
-
-/** La tacca si nasconde se il pannello è aperto o se si raggiunge dalla scheda dell'altro, aperto sullo stesso bordo (righe 4856-4858). */
-export function notchHidden(panels: Panels, key: PanelKey): boolean {
-  const other = PANEL_KEYS.find((k) => k !== key) as PanelKey;
-  return panels[key].open || (panels[other].side === panels[key].side && panels[other].open);
-}
-
-/** Il pannello aperto sul bordo `side` (la scheda attiva), se c'è. */
-export function activeTab(panels: Panels, side: Side): PanelKey | null {
-  return PANEL_KEYS.find((k) => panels[k].side === side && panels[k].open) ?? null;
-}
-```
-
-### `src/etl-canvas/panels/overlayLayout.ts`
-
-249 righe
-
-```ts
-/**
- * Disposizione dei widget in sovrimpressione al canvas (minimappa, controlli
- * di zoom, suggerimento di rilascio, tacche dei pannelli chiusi): funzione
- * pura, nessun DOM. Decide le posizioni a partire dalla misura dell'area e dal
- * bordo del pannello aperto, così nessun componente scrive una posizione a
- * mano e due widget non si sovrappongono mai.
- *
- * Regole:
- * - minimappa in basso a sinistra; con il pannello in basso va in alto a
- *   sinistra (lontano dal pannello); con il pannello in alto resta in basso a
- *   sinistra;
- * - controlli di zoom in basso a destra;
- * - se un widget ne tocca un altro (area piccola) la minimappa, nell'ordine,
- *   passa all'angolo opposto, poi si riduce a un pulsante compatto (che si
- *   espande al clic), poi prova gli altri angoli; se nemmeno così c'è posto
- *   non si mostra (`rect: null`);
- * - il suggerimento prova in basso e in alto, al centro, e ovunque si evita
- *   il resto; senza posto non si mostra.
- *
- * Le misure dei widget sono quelle del CSS del canvas (`canvas.css`,
- * `panels.css`), che le prende da qui.
- */
-import type { Size } from "../../etl-layout";
-import type { PanelKey, Side } from "../../etl-store";
-import type { Insets } from "../view";
-
-export interface Rect {
-  readonly x: number;
-  readonly y: number;
-  readonly w: number;
-  readonly h: number;
-}
-
-export type Corner = "bl" | "br" | "tl" | "tr";
-
-/** Distanza dei widget dal bordo dell'area (prototipo: 12 px, riga 152). */
-export const OVERLAY_MARGIN = 12;
-/** Spazio minimo tra due widget. */
-export const OVERLAY_GAP = 4;
-/** Respiro tra un widget e i nodi (margine di sicurezza dell'area visibile). */
-export const SAFE_GAP = 8;
-export const MINIMAP_SIZE = { w: 168, h: 104 } as const;
-export const MINIMAP_COMPACT = 40;
-export const ZOOM_SIZE = { w: 176, h: 38 } as const;
-/** Tacca: lato lungo e lato corto (prototipo, CSS `.notch`, righe 290-293). */
-export const NOTCH_LONG = 66;
-export const NOTCH_SHORT = 24;
-export const HINT_HEIGHT = 30;
-export const HINT_WIDTHS = [360, 240] as const;
-
-export interface NotchInput {
-  readonly key: PanelKey;
-  readonly side: Side;
-  /** Scostamento lungo il bordo (due tacche sullo stesso bordo si affiancano). */
-  readonly offset: number;
-  /** Visibile (pannello chiuso) o nascosta: una tacca nascosta non occupa posto. */
-  readonly visible: boolean;
-}
-
-export interface OverlayInput {
-  /** Area del canvas (senza i pannelli). */
-  readonly area: Size;
-  /** Bordo del pannello aperto, se ce n'è uno. */
-  readonly openSide: Side | null;
-  readonly notches: readonly NotchInput[];
-}
-
-export interface OverlayLayout {
-  readonly minimap: {
-    /** Posizione occupata (piena o compatta); `null` se non c'è posto. */
-    readonly rect: Rect | null;
-    readonly corner: Corner | null;
-    readonly compact: boolean;
-    /** Posizione da piena, ancorata allo stesso angolo: la usa il pulsante compatto quando si espande. */
-    readonly expanded: Rect | null;
-  };
-  readonly zoom: Rect;
-  readonly hint: Rect | null;
-  readonly notches: Readonly<Record<PanelKey, Rect>>;
-  /** Spazio che i nodi devono evitare per restare visibili (anche per «Adatta»). */
-  readonly insets: Insets;
-}
-
-const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
-
-export function intersects(a: Rect, b: Rect): boolean {
-  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-}
-
-const inflate = (r: Rect, by: number): Rect => ({
-  x: r.x - by,
-  y: r.y - by,
-  w: r.w + by * 2,
-  h: r.h + by * 2,
-});
-
-function inside(r: Rect, area: Size): boolean {
-  return r.x >= 0 && r.y >= 0 && r.x + r.w <= area.w && r.y + r.h <= area.h;
-}
-
-/** Angolo dell'area; `inward` allontana il widget dal bordo orizzontale (per scavalcare una tacca). */
-function cornerRect(corner: Corner, size: { w: number; h: number }, area: Size, inward = 0): Rect {
-  const m = OVERLAY_MARGIN;
-  const top = corner === "tl" || corner === "tr";
-  return {
-    x: corner === "bl" || corner === "tl" ? m : area.w - m - size.w,
-    y: top ? m + inward : area.h - m - size.h - inward,
-    w: size.w,
-    h: size.h,
-  };
-}
-
-/** Quanto spostare un widget verso l'interno per scavalcare una tacca (24 px) più il respiro. */
-const CLEAR_NOTCH = NOTCH_SHORT + OVERLAY_GAP * 2;
-
-const OPPOSITE: Record<Corner, Corner> = { bl: "tr", br: "tl", tl: "br", tr: "bl" };
-const ALL_CORNERS: readonly Corner[] = ["bl", "tl", "br", "tr"];
-
-/** Rettangolo di una tacca sul suo bordo, al centro più lo scostamento. */
-export function notchRect(side: Side, offset: number, area: Size): Rect {
-  switch (side) {
-    case "left":
-      return { x: 0, y: area.h / 2 - NOTCH_LONG / 2 + offset, w: NOTCH_SHORT, h: NOTCH_LONG };
-    case "right":
-      return {
-        x: area.w - NOTCH_SHORT,
-        y: area.h / 2 - NOTCH_LONG / 2 + offset,
-        w: NOTCH_SHORT,
-        h: NOTCH_LONG,
-      };
-    case "top":
-      return { x: area.w / 2 - NOTCH_LONG / 2 + offset, y: 0, w: NOTCH_LONG, h: NOTCH_SHORT };
-    case "bottom":
-      return {
-        x: area.w / 2 - NOTCH_LONG / 2 + offset,
-        y: area.h - NOTCH_SHORT,
-        w: NOTCH_LONG,
-        h: NOTCH_SHORT,
-      };
-  }
-}
-
-/** Spazio da riservare ai nodi per un widget: la fascia meno costosa tra quella verticale e quella orizzontale. */
-function insetsFor(rects: readonly Rect[], area: Size): Insets {
-  let top = 0;
-  let right = 0;
-  let bottom = 0;
-  let left = 0;
-  for (const r of rects) {
-    const upper = r.y + r.h / 2 < area.h / 2;
-    const leftSide = r.x + r.w / 2 < area.w / 2;
-    const vertical = (upper ? r.y + r.h : area.h - r.y) + SAFE_GAP;
-    const horizontal = (leftSide ? r.x + r.w : area.w - r.x) + SAFE_GAP;
-    if (vertical / Math.max(1, area.h) <= horizontal / Math.max(1, area.w)) {
-      if (upper) top = Math.max(top, vertical);
-      else bottom = Math.max(bottom, vertical);
-    } else if (leftSide) left = Math.max(left, horizontal);
-    else right = Math.max(right, horizontal);
-  }
-  return { top, right, bottom, left };
-}
-
-export function overlayLayout(input: OverlayInput): OverlayLayout {
-  const { area, openSide } = input;
-
-  const notches = {} as Record<PanelKey, Rect>;
-  const obstacles: Rect[] = [];
-  for (const n of input.notches) {
-    const r = notchRect(n.side, n.offset, area);
-    notches[n.key] = r;
-    if (n.visible) obstacles.push(r);
-  }
-  const free = (r: Rect, others: readonly Rect[]): boolean =>
-    inside(r, area) &&
-    others.every((o) => !intersects(inflate(r, OVERLAY_GAP / 2), inflate(o, OVERLAY_GAP / 2)));
-
-  // controlli di zoom: in basso a destra; solo in aree minuscole provano gli altri angoli
-  let zoom = cornerRect("br", ZOOM_SIZE, area);
-  zoomSearch: for (const inward of [0, CLEAR_NOTCH]) {
-    for (const c of ["br", "bl", "tr", "tl"] as const) {
-      const r = cornerRect(c, ZOOM_SIZE, area, inward);
-      if (free(r, obstacles)) {
-        zoom = r;
-        break zoomSearch;
-      }
-    }
-  }
-  const placed: Rect[] = [...obstacles, zoom];
-
-  // minimappa
-  const preferred: Corner = openSide === "bottom" ? "tl" : "bl";
-  const full = (c: Corner, inward = 0): Rect => cornerRect(c, MINIMAP_SIZE, area, inward);
-  const compact = (c: Corner, inward = 0): Rect =>
-    cornerRect(c, { w: MINIMAP_COMPACT, h: MINIMAP_COMPACT }, area, inward);
-  const others = ALL_CORNERS.filter((c) => c !== preferred && c !== OPPOSITE[preferred]);
-  const sequence: { corner: Corner; compact: boolean }[] = [
-    { corner: preferred, compact: false },
-    { corner: OPPOSITE[preferred], compact: false },
-    { corner: preferred, compact: true },
-    { corner: OPPOSITE[preferred], compact: true },
-    ...others.map((corner) => ({ corner, compact: true })),
-  ];
-  // se nemmeno così c'è posto, si riprova scavalcando le tacche
-  const candidates = [0, CLEAR_NOTCH].flatMap((inward) => sequence.map((c) => ({ ...c, inward })));
-  let minimap: OverlayLayout["minimap"] = {
-    rect: null,
-    corner: null,
-    compact: false,
-    expanded: null,
-  };
-  for (const cand of candidates) {
-    const rect = cand.compact ? compact(cand.corner, cand.inward) : full(cand.corner, cand.inward);
-    if (free(rect, placed)) {
-      minimap = {
-        rect,
-        corner: cand.corner,
-        compact: cand.compact,
-        expanded: cand.compact ? full(cand.corner, cand.inward) : rect,
-      };
-      placed.push(rect);
-      break;
-    }
-  }
-
-  // suggerimento di rilascio: al centro, in basso o in alto
-  let hint: Rect | null = null;
-  search: for (const width of HINT_WIDTHS) {
-    const w = Math.min(width, Math.floor(area.w * 0.7));
-    for (const y of [
-      area.h - OVERLAY_MARGIN - HINT_HEIGHT,
-      OVERLAY_MARGIN,
-      area.h - OVERLAY_MARGIN - HINT_HEIGHT - CLEAR_NOTCH,
-      OVERLAY_MARGIN + CLEAR_NOTCH,
-    ]) {
-      const r = { x: Math.round((area.w - w) / 2), y, w, h: HINT_HEIGHT };
-      if (free(r, placed)) {
-        hint = r;
-        break search;
-      }
-    }
-  }
-
-  const insets = insetsFor(
-    [...(minimap.rect ? [minimap.rect] : []), zoom].filter((r) => inside(r, area)),
-    area,
-  );
-  return { minimap, zoom, hint, notches, insets: area.w > 0 && area.h > 0 ? insets : NO_INSETS };
 }
 ```
 

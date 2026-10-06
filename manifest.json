@@ -163,7 +163,7 @@
     },
     {
       "name": "files/01e-etl-canvas-a.md",
-      "bytes": 39293,
+      "bytes": 40117,
       "files": [
         "src/etl-canvas/EtlCanvas.tsx",
         "src/etl-canvas/Links.tsx",
@@ -174,124 +174,135 @@
     },
     {
       "name": "files/01e-etl-canvas-b.md",
-      "bytes": 56084,
+      "bytes": 59344,
       "files": [
         "src/etl-canvas/README.md",
-        "src/etl-canvas/__tests__/controlbar.test.tsx",
-        "src/etl-canvas/__tests__/drop.test.ts",
-        "src/etl-canvas/__tests__/engine.test.ts",
-        "src/etl-canvas/__tests__/fake-env.ts"
+        "src/etl-canvas/__tests__/animator.test.ts",
+        "src/etl-canvas/__tests__/autofit.test.ts"
       ]
     },
     {
       "name": "files/01e-etl-canvas-c.md",
-      "bytes": 59025,
+      "bytes": 47236,
       "files": [
+        "src/etl-canvas/__tests__/controlbar.test.tsx",
+        "src/etl-canvas/__tests__/drop.test.ts",
+        "src/etl-canvas/__tests__/engine.test.ts",
+        "src/etl-canvas/__tests__/fake-env.ts",
         "src/etl-canvas/__tests__/flow.test.ts",
         "src/etl-canvas/__tests__/gesture-render.test.ts",
         "src/etl-canvas/__tests__/helpers.ts",
         "src/etl-canvas/__tests__/inspector-logic.test.ts",
-        "src/etl-canvas/__tests__/inspector-rules.test.ts",
-        "src/etl-canvas/__tests__/inspector.test.tsx",
-        "src/etl-canvas/__tests__/interaction.test.ts"
+        "src/etl-canvas/__tests__/inspector-rules.test.ts"
       ]
     },
     {
       "name": "files/01e-etl-canvas-d.md",
-      "bytes": 58741,
+      "bytes": 58838,
       "files": [
+        "src/etl-canvas/__tests__/inspector.test.tsx",
+        "src/etl-canvas/__tests__/interaction.test.ts",
         "src/etl-canvas/__tests__/keyboard.test.ts",
         "src/etl-canvas/__tests__/loop.test.ts",
         "src/etl-canvas/__tests__/menu.test.ts",
-        "src/etl-canvas/__tests__/no-reroute.test.ts",
-        "src/etl-canvas/__tests__/overlay-layout.test.ts",
-        "src/etl-canvas/__tests__/panels-actions.test.ts",
-        "src/etl-canvas/__tests__/panels-layout.test.ts",
-        "src/etl-canvas/__tests__/render.test.ts"
+        "src/etl-canvas/__tests__/no-reroute.test.ts"
       ]
     },
     {
       "name": "files/01e-etl-canvas-e.md",
-      "bytes": 58724,
+      "bytes": 57300,
       "files": [
+        "src/etl-canvas/__tests__/overlay-layout.test.ts",
+        "src/etl-canvas/__tests__/panels-actions.test.ts",
+        "src/etl-canvas/__tests__/panels-layout.test.ts",
+        "src/etl-canvas/__tests__/render.test.ts",
         "src/etl-canvas/__tests__/ssr.test.tsx",
         "src/etl-canvas/__tests__/tokens.test.ts",
         "src/etl-canvas/__tests__/toolbox-drop.test.ts",
         "src/etl-canvas/__tests__/toolbox.test.tsx",
-        "src/etl-canvas/__tests__/transitions.test.ts",
-        "src/etl-canvas/__tests__/view.test.ts",
-        "src/etl-canvas/actions.ts",
-        "src/etl-canvas/canvas.css",
-        "src/etl-canvas/contrast.ts",
-        "src/etl-canvas/drop.ts"
+        "src/etl-canvas/__tests__/transitions.test.ts"
       ]
     },
     {
       "name": "files/01e-etl-canvas-f.md",
-      "bytes": 56024,
+      "bytes": 53931,
       "files": [
+        "src/etl-canvas/__tests__/view.test.ts",
+        "src/etl-canvas/actions.ts",
+        "src/etl-canvas/canvas.css",
+        "src/etl-canvas/contrast.ts",
+        "src/etl-canvas/drop.ts",
         "src/etl-canvas/engine.ts",
         "src/etl-canvas/flow.ts",
         "src/etl-canvas/icons.tsx",
         "src/etl-canvas/index.ts",
         "src/etl-canvas/inspector/ActionMenu.tsx",
-        "src/etl-canvas/inspector/BlockedNotice.tsx",
+        "src/etl-canvas/inspector/BlockedNotice.tsx"
+      ]
+    },
+    {
+      "name": "files/01e-etl-canvas-g.md",
+      "bytes": 55279,
+      "files": [
         "src/etl-canvas/inspector/ColumnPicker.tsx",
         "src/etl-canvas/inspector/ExpandedPanel.tsx",
         "src/etl-canvas/inspector/Field.tsx",
         "src/etl-canvas/inspector/Header.tsx",
         "src/etl-canvas/inspector/Inspector.tsx",
-        "src/etl-canvas/inspector/Menu.tsx"
-      ]
-    },
-    {
-      "name": "files/01e-etl-canvas-g.md",
-      "bytes": 46261,
-      "files": [
+        "src/etl-canvas/inspector/Menu.tsx",
         "src/etl-canvas/inspector/MultiList.tsx",
         "src/etl-canvas/inspector/NameInput.tsx",
-        "src/etl-canvas/inspector/StepList.tsx",
-        "src/etl-canvas/inspector/StyledSelect.tsx",
-        "src/etl-canvas/inspector/ValuePicker.tsx",
-        "src/etl-canvas/inspector/copy.ts",
-        "src/etl-canvas/inspector/family.ts",
-        "src/etl-canvas/inspector/icons.tsx"
+        "src/etl-canvas/inspector/StepList.tsx"
       ]
     },
     {
       "name": "files/01e-etl-canvas-h.md",
-      "bytes": 58341,
+      "bytes": 56220,
       "files": [
+        "src/etl-canvas/inspector/StyledSelect.tsx",
+        "src/etl-canvas/inspector/ValuePicker.tsx",
+        "src/etl-canvas/inspector/copy.ts",
+        "src/etl-canvas/inspector/family.ts",
+        "src/etl-canvas/inspector/icons.tsx",
         "src/etl-canvas/inspector/inspector.css",
         "src/etl-canvas/inspector/logic.ts",
         "src/etl-canvas/inspector/menu.ts",
         "src/etl-canvas/inspector/params.ts",
-        "src/etl-canvas/inspector/useActiveSchema.ts",
-        "src/etl-canvas/interaction.ts",
-        "src/etl-canvas/loop.ts"
+        "src/etl-canvas/inspector/useActiveSchema.ts"
       ]
     },
     {
       "name": "files/01e-etl-canvas-i.md",
-      "bytes": 56962,
+      "bytes": 57478,
       "files": [
+        "src/etl-canvas/interaction.ts",
+        "src/etl-canvas/loop.ts",
         "src/etl-canvas/model.ts",
         "src/etl-canvas/motion.tsx",
         "src/etl-canvas/panels/ControlBar.tsx",
         "src/etl-canvas/panels/Dock.tsx",
         "src/etl-canvas/panels/EtlWorkspace.tsx",
-        "src/etl-canvas/panels/InspectorShell.tsx",
+        "src/etl-canvas/panels/InspectorShell.tsx"
+      ]
+    },
+    {
+      "name": "files/01e-etl-canvas-j.md",
+      "bytes": 49373,
+      "files": [
         "src/etl-canvas/panels/Toolbox.tsx",
         "src/etl-canvas/panels/actions.ts",
+        "src/etl-canvas/panels/animator.ts",
+        "src/etl-canvas/panels/autoFit.ts",
         "src/etl-canvas/panels/csv.ts",
+        "src/etl-canvas/panels/dockArea.ts",
         "src/etl-canvas/panels/families.ts",
         "src/etl-canvas/panels/layout.ts",
         "src/etl-canvas/panels/overlayLayout.ts"
       ]
     },
     {
-      "name": "files/01e-etl-canvas-j.md",
-      "bytes": 36572,
+      "name": "files/01e-etl-canvas-k.md",
+      "bytes": 36916,
       "files": [
         "src/etl-canvas/panels/panels.css",
         "src/etl-canvas/panels/ui-icons.tsx",
@@ -510,15 +521,22 @@
     },
     {
       "name": "files/08-scripts-config-c.md",
-      "bytes": 55280,
+      "bytes": 37797,
       "files": [
-        "scripts/e2e-fase6b1.mjs",
+        "scripts/e2e-fase6b1.mjs"
+      ]
+    },
+    {
+      "name": "files/08-scripts-config-d.md",
+      "bytes": 48832,
+      "files": [
+        "scripts/e2e-fase6b11.mjs",
         "scripts/extract-golden.mjs",
         "scripts/generate-index.mjs"
       ]
     },
     {
-      "name": "files/08-scripts-config-d.md",
+      "name": "files/08-scripts-config-e.md",
       "bytes": 51254,
       "files": [
         "scripts/generate-snapshot.mjs",
@@ -530,7 +548,7 @@
       ]
     },
     {
-      "name": "files/08-scripts-config-e.md",
+      "name": "files/08-scripts-config-f.md",
       "bytes": 23640,
       "files": [
         "scripts/visual-fase4b.mjs",
@@ -781,10 +799,25 @@
     },
     {
       "name": "files/12-docs-other-z.md",
-      "bytes": 28335,
+      "bytes": 34084,
       "files": [
         "docs/visual/fase4b/v2-chiaro.webm",
-        "docs/visual/fase6a/posizioni-nodi.json"
+        "docs/visual/fase6a/posizioni-nodi.json",
+        "docs/visual/fase6b11/REPORT.md"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-undefined.md",
+      "bytes": 49918,
+      "files": [
+        "docs/visual/fase6b11/misure.json"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-undefined.md",
+      "bytes": 16961,
+      "files": [
+        "docs/visual/fase6b11/misure.json"
       ]
     },
     {
@@ -1125,6 +1158,46 @@
       "reason": "binary"
     },
     {
+      "file": "docs/visual/fase6b11/cassetta-a-sinistra-scena-densa-1280x720-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b11/cassetta-a-sinistra-scena-densa-1280x720-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b11/cassetta-a-sinistra-scena-densa-1440-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b11/cassetta-a-sinistra-scena-densa-1440-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b11/inspector-in-basso-1280x720-dopo-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b11/inspector-in-basso-1280x720-dopo-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b11/inspector-in-basso-1440-dopo-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b11/inspector-in-basso-1440-dopo-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b11/striscia-apertura-inspector-in-basso.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b11/striscia-chiusura-inspector-in-basso.png",
+      "reason": "binary"
+    },
+    {
       "file": "docs/visual/temi/notte-chiaro-canvas.png",
       "reason": "binary"
     },
@@ -1361,6 +1434,8 @@
         "src/etl-canvas/NOTE_DIVERGENZE.md",
         "src/etl-canvas/Node.tsx",
         "src/etl-canvas/README.md",
+        "src/etl-canvas/__tests__/animator.test.ts",
+        "src/etl-canvas/__tests__/autofit.test.ts",
         "src/etl-canvas/__tests__/controlbar.test.tsx",
         "src/etl-canvas/__tests__/drop.test.ts",
         "src/etl-canvas/__tests__/engine.test.ts",
@@ -1425,7 +1500,10 @@
         "src/etl-canvas/panels/InspectorShell.tsx",
         "src/etl-canvas/panels/Toolbox.tsx",
         "src/etl-canvas/panels/actions.ts",
+        "src/etl-canvas/panels/animator.ts",
+        "src/etl-canvas/panels/autoFit.ts",
         "src/etl-canvas/panels/csv.ts",
+        "src/etl-canvas/panels/dockArea.ts",
         "src/etl-canvas/panels/families.ts",
         "src/etl-canvas/panels/layout.ts",
         "src/etl-canvas/panels/overlayLayout.ts",
@@ -1446,7 +1524,8 @@
         "01e-etl-canvas-g.md",
         "01e-etl-canvas-h.md",
         "01e-etl-canvas-i.md",
-        "01e-etl-canvas-j.md"
+        "01e-etl-canvas-j.md",
+        "01e-etl-canvas-k.md"
       ]
     },
     "02-isa-etl": {
@@ -1616,6 +1695,7 @@
         "scripts/e2e-fase5.mjs",
         "scripts/e2e-fase6a.mjs",
         "scripts/e2e-fase6b1.mjs",
+        "scripts/e2e-fase6b11.mjs",
         "scripts/extract-golden.mjs",
         "scripts/generate-index.mjs",
         "scripts/generate-snapshot.mjs",
@@ -1636,7 +1716,8 @@
         "08-scripts-config-b.md",
         "08-scripts-config-c.md",
         "08-scripts-config-d.md",
-        "08-scripts-config-e.md"
+        "08-scripts-config-e.md",
+        "08-scripts-config-f.md"
       ]
     },
     "09-docs": {
@@ -1680,7 +1761,9 @@
         "docs/visual/fase4b/misure.json",
         "docs/visual/fase4b/prototipo.webm",
         "docs/visual/fase4b/v2-chiaro.webm",
-        "docs/visual/fase6a/posizioni-nodi.json"
+        "docs/visual/fase6a/posizioni-nodi.json",
+        "docs/visual/fase6b11/REPORT.md",
+        "docs/visual/fase6b11/misure.json"
       ],
       "outFiles": [
         "12-docs-other-a.md",
@@ -1708,7 +1791,9 @@
         "12-docs-other-w.md",
         "12-docs-other-x.md",
         "12-docs-other-y.md",
-        "12-docs-other-z.md"
+        "12-docs-other-z.md",
+        "12-docs-other-undefined.md",
+        "12-docs-other-undefined.md"
       ]
     },
     "13-misc": {
@@ -1763,6 +1848,6 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T11-15-00Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T14-30-00Z.md"
   ],
-  "inScopeFileCount": 339,
+  "inScopeFileCount": 347,
   "reportFileCount": 22
 }

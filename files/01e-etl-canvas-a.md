@@ -12,7 +12,7 @@ File in questo blocco:
 
 ### `src/etl-canvas/EtlCanvas.tsx`
 
-564 righe
+579 righe
 
 ```tsx
 import {
@@ -37,7 +37,7 @@ import { createInteractionController } from "./interaction";
 import type { DownTarget, InteractionController, PointerInput, PortSide } from "./interaction";
 import type { LinkInput } from "./engine";
 import { browserEnv } from "./loop";
-import type { LoopEnv } from "./loop";
+import type { Loop, LoopEnv } from "./loop";
 import { MotionContext } from "./motion";
 import "./canvas.css";
 import { Links } from "./Links";
@@ -78,10 +78,14 @@ export interface CanvasSurfaceProps {
   readonly size: Size;
   /** Ambiente delle animazioni (orologio, rAF, visibilità, movimento ridotto); nei test si sostituisce. */
   readonly env?: LoopEnv;
+  /** Il ciclo condiviso con lo spazio di lavoro (animatore dei pannelli): se c'è, il motore si aggiunge a quello. */
+  readonly loop?: Loop | undefined;
   /** Controller dei gesti condiviso con chi sta fuori dal canvas (la cassetta); se manca, ne nasce uno. */
   readonly controller?: InteractionController | undefined;
   /** Posizione dei widget in sovrimpressione, decisa da `overlayLayout`; se manca, quella senza pannelli. */
   readonly overlay?: OverlayLayout | undefined;
+  /** Avviso non bloccante nel suggerimento in sovrimpressione, se nessun suggerimento dei gesti lo occupa. */
+  readonly notice?: string | null | undefined;
   /** Espansione di un box combinato (pulsante sul nodo). */
   readonly onExpand?: ((id: string) => void) | undefined;
 }
@@ -145,9 +149,9 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
 
   // animazioni: un solo ciclo condiviso, avviato solo nel browser (gli effetti non girano sul server)
   useLayoutEffect(() => {
-    engine.start(env ?? browserEnv());
+    engine.start(env ?? browserEnv(), props.loop);
     return () => engine.stop();
-  }, [engine, env]);
+  }, [engine, env, props.loop]);
 
   // dopo ogni rendering dei cavi: percorsi e cavi attivi per il motore (sola lettura)
   useLayoutEffect(() => {
@@ -352,9 +356,14 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
               }}
             />
           ) : null}
-          {ui.hint && layout.hint ? (
-            <div className="ec-hint" role="status" style={rectStyle(layout.hint)}>
-              {ui.hint}
+          {(ui.hint ?? props.notice) && layout.hint ? (
+            <div
+              className={"ec-hint" + (ui.hint ? "" : " ec-notice")}
+              role="status"
+              data-testid={ui.hint ? undefined : "ec-notice"}
+              style={rectStyle(layout.hint)}
+            >
+              {ui.hint ?? props.notice}
             </div>
           ) : null}
           {ui.confirm ? (
@@ -531,6 +540,10 @@ export function EtlCanvas(props: {
   minHeight?: number;
   /** Posizione dei widget in sovrimpressione (vedi `overlayLayout`). */
   overlay?: OverlayLayout | undefined;
+  /** Avviso non bloccante da mostrare nel suggerimento in sovrimpressione (zoom automatico al minimo). */
+  notice?: string | null | undefined;
+  /** Ciclo di animazione condiviso con lo spazio di lavoro. */
+  loop?: Loop | undefined;
   onExpand?: ((id: string) => void) | undefined;
 }) {
   const isClient = useSyncExternalStore(
@@ -572,6 +585,8 @@ export function EtlCanvas(props: {
           size={size}
           controller={props.controller}
           overlay={props.overlay}
+          notice={props.notice}
+          loop={props.loop}
           onExpand={props.onExpand}
         />
       ) : null}

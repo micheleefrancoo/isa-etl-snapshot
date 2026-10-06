@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-10-04T11:38:29Z (UTC)
+Generato: 2026-10-06T09:02:24Z (UTC)
 
 ## Type check
 
@@ -9,7 +9,7 @@ Nessuno script "typecheck" in package.json: eseguito il comando diretto.
 Comando: `npx tsc --noEmit`
 
 Esito: OK (exit 0)
-Durata: 12s
+Durata: 16s
 
 Ultime 60 righe di output:
 ```
@@ -20,7 +20,7 @@ Ultime 60 righe di output:
 Comando: `npm run lint`
 
 Esito: FALLITO (exit 1)
-Durata: 13s
+Durata: 15s
 
 Ultime 60 righe di output:
 ```
@@ -87,7 +87,7 @@ Ultime 60 righe di output:
 Comando: `npm test`
 
 Esito: OK (exit 0)
-Durata: 39s
+Durata: 48s
 
 Ultime 60 righe di output:
 ```
@@ -100,13 +100,13 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
  RUN  v5.0.1 /workspaces/isa-glass-platform
 
 
- Test Files  53 passed (53)
-      Tests  1059 passed (1059)
-   Start at  11:38:54
-   Duration  39.30s (tests 88%, import 7%, transform 4%, worker 1%)
+ Test Files  55 passed (55)
+      Tests  1132 passed (1132)
+   Start at  09:02:56
+   Duration  46.52s (tests 86%, import 8%, transform 4%, worker 1%)
 
-    Isolate  53 workers spawned · ~102ms startup each (spawn + environment, per file)
-             at least ~5.29s faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  55 workers spawned · ~117ms startup each (spawn + environment, per file)
+             at least ~6.30s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -115,7 +115,7 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 Comando: `npm run build`
 
 Esito: OK (exit 0)
-Durata: 6s
+Durata: 9s
 
 Ultime 60 righe di output:
 ```
@@ -126,7 +126,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/templates-BxgvM8qO.mjs                          0.61 kB │ gzip:   0.39 kB
 .output/server/_ssr/solutions._solutionId.dashboard-CujVFx5K.mjs    0.86 kB │ gzip:   0.47 kB
 .output/server/_ssr/solutions._solutionId.model-D5GqwrKQ.mjs        0.88 kB │ gzip:   0.47 kB
-.output/server/_ssr/solutions._solutionId.etl-DPc3Mtq_.mjs          1.09 kB │ gzip:   0.58 kB
+.output/server/_ssr/solutions._solutionId.etl-PFVm6SnC.mjs          1.09 kB │ gzip:   0.58 kB
 .output/server/_libs/hookable.mjs                                   1.16 kB │ gzip:   0.51 kB
 .output/server/_ssr/start-RKGGYzjZ.mjs                              1.53 kB │ gzip:   0.70 kB
 .output/server/_runtime.mjs                                         1.61 kB │ gzip:   0.74 kB
@@ -135,7 +135,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/createCsrfMiddleware-B2To0gPJ.mjs               3.11 kB │ gzip:   1.01 kB
 .output/server/_libs/d3-path.mjs                                    3.25 kB │ gzip:   1.16 kB
 .output/server/_ssr/activity-C06WSQVD.mjs                           3.45 kB │ gzip:   0.97 kB
-.output/server/_tanstack-start-manifest_v-DWBs0G49.mjs              3.71 kB │ gzip:   0.86 kB
+.output/server/_tanstack-start-manifest_v-BmDltdg0.mjs              3.71 kB │ gzip:   0.86 kB
 .output/server/_ssr/solutions._solutionId.model-DN1m8FSz.mjs        4.05 kB │ gzip:   1.32 kB
 .output/server/_ssr/ssr.mjs                                         4.55 kB │ gzip:   1.92 kB
 .output/server/_libs/d3-interpolate.mjs                             5.02 kB │ gzip:   1.61 kB
@@ -148,11 +148,11 @@ Ultime 60 righe di output:
 .output/server/_libs/d3-color.mjs                                  10.38 kB │ gzip:   3.57 kB
 .output/server/_libs/d3-format.mjs                                 10.56 kB │ gzip:   3.02 kB
 .output/server/_libs/tanstack__history.mjs                         12.09 kB │ gzip:   3.48 kB
-.output/server/_ssr/router-CqDFlgNI.mjs                            14.47 kB │ gzip:   3.90 kB
+.output/server/_ssr/router-XahF6gKW.mjs                            14.47 kB │ gzip:   3.90 kB
 .output/server/_ssr/theme-Dujx4GV7.mjs                             15.18 kB │ gzip:   6.06 kB
 .output/server/_libs/fast-equals.mjs                               15.91 kB │ gzip:   4.13 kB
 .output/server/_libs/h3-v2+rou3+srvx+unenv.mjs                     15.92 kB │ gzip:   4.39 kB
-.output/server/index.mjs                                           16.41 kB │ gzip:   4.69 kB
+.output/server/index.mjs                                           16.41 kB │ gzip:   4.70 kB
 .output/server/_libs/h3+rou3+srvx.mjs                              17.30 kB │ gzip:   4.98 kB
 .output/server/_libs/react+tanstack__react-query.mjs               18.47 kB │ gzip:   4.82 kB
 .output/server/_libs/decimal.js-light.mjs                          23.31 kB │ gzip:   6.89 kB
@@ -162,15 +162,15 @@ Ultime 60 righe di output:
 .output/server/_libs/lucide-react.mjs                              37.25 kB │ gzip:   7.17 kB
 .output/server/_libs/react-smooth.mjs                              37.83 kB │ gzip:   8.14 kB
 .output/server/_libs/tanstack__query-core.mjs                      49.84 kB │ gzip:  11.12 kB
-.output/server/_ssr/server-Ddufsfy1.mjs                            54.77 kB │ gzip:  14.39 kB
+.output/server/_ssr/server-BGHWuer8.mjs                            54.77 kB │ gzip:  14.39 kB
 .output/server/_libs/d3-scale+[...].mjs                            58.22 kB │ gzip:  12.11 kB
 .output/server/_libs/@tanstack/router-core+[...].mjs              125.35 kB │ gzip:  26.53 kB
 .output/server/_libs/lodash.mjs                                   161.80 kB │ gzip:  29.45 kB
-.output/server/_ssr/solutions._solutionId.etl-R8v2UzDX.mjs        494.32 kB │ gzip: 129.52 kB
+.output/server/_ssr/solutions._solutionId.etl-BYyueX4b.mjs        506.70 kB │ gzip: 133.82 kB
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 987ms
+✓ built in 1.35s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -188,7 +188,7 @@ Colori, raggi e ombre letterali nei file controllati (scripts/check-tokens.mjs).
 Comando: `node scripts/check-tokens.mjs`
 
 Esito: OK (exit 0)
-Durata: 1s
+Durata: 0s
 
 Ultime 60 righe di output:
 ```
@@ -198,6 +198,11 @@ check-tokens: 0 violazioni nei file controllati; debito preesistente: 26 (6 ombr
 ## Git log (ultimi 20 commit)
 
 ```
+f9e1cfb Fase 6b.1.1: report di validazione, registro delle richieste di rete fallite
+78cb9ee Fase 6b.1.1: verifica nel browser dello zoom automatico e correzione della misura a fine animazione
+681c72a Fase 6b.1.1: test dell'animatore, easing a seno (pendenza ≤ π/2) per rispettare R4
+aa9fb9c Fase 6b.1.1: animatore unico di pannelli e vista, al posto di keepVisible e della transizione CSS
+6c3fb88 Fase 6b.1.1: modulo puro autoFit (nodi richiesti, bersaglio, ripristino, interpolazione, easing)
 5dad418 Fase 6b.1: schermate dell'Inspector e report di validazione
 6840ff1 Fase 6b.1: documentazione (README, note di divergenza, token di forma)
 8dec8e2 Fase 6b.1: e2e, notte in due schermate, selettori dei pulsanti circoscritti alle conferme
@@ -213,16 +218,12 @@ d560fdd Fase 6b.0: dominio, colonne multiple nelle voci
 8db8087 Fase 6a.2: report di validazione
 a7a2127 Baseline visiva rigenerata: la barra dei controlli riduce l'altezza del canvas
 4a51045 Fase 6a.2: un pannello alla volta, spinta senza sovrapposizioni, barra dei controlli
-cf6e294 Fase 6a.1: i pannelli in alto e in basso sottraggono altezza al canvas
-ae56053 Baseline visiva rigenerata nell'ambiente attuale, nessuna modifica al codice
-37cd559 Fase 6a: pannelli agganciabili e cassetta degli strumenti
-a2dd012 Clic su un cavo per eliminarlo (deleteLink), come nel prototipo
-199cdfe Soglia di trascinamento: DRAG_THRESHOLD_PX = 5 in etl-layout (prototipo, riga 1982)
 ```
 
 ## Branch
 
 ```
+  feat/auto-zoom
   feat/design-tokens-unify
   feat/etl-canvas
   feat/etl-canvas-motion
@@ -243,6 +244,7 @@ a2dd012 Clic su un cavo per eliminarlo (deleteLink), come nel prototipo
 * main
   wip/stato-2026-09-28
   remotes/origin/HEAD -> origin/main
+  remotes/origin/feat/auto-zoom
   remotes/origin/feat/design-tokens-unify
   remotes/origin/feat/etl-canvas
   remotes/origin/feat/etl-canvas-motion
@@ -265,6 +267,17 @@ a2dd012 Clic su un cavo per eliminarlo (deleteLink), come nel prototipo
 ```
 
 ## Branch diversi da main
+
+### `feat/auto-zoom`
+
+Ultimo commit:
+```
+f9e1cfb Fase 6b.1.1: report di validazione, registro delle richieste di rete fallite
+```
+
+Diff stat rispetto a main:
+```
+```
 
 ### `feat/design-tokens-unify`
 

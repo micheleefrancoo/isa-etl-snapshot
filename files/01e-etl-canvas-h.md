@@ -2,15 +2,767 @@
 
 File in questo blocco:
 
+- `src/etl-canvas/inspector/StyledSelect.tsx`
+- `src/etl-canvas/inspector/ValuePicker.tsx`
+- `src/etl-canvas/inspector/copy.ts`
+- `src/etl-canvas/inspector/family.ts`
+- `src/etl-canvas/inspector/icons.tsx`
 - `src/etl-canvas/inspector/inspector.css`
 - `src/etl-canvas/inspector/logic.ts`
 - `src/etl-canvas/inspector/menu.ts`
 - `src/etl-canvas/inspector/params.ts`
 - `src/etl-canvas/inspector/useActiveSchema.ts`
-- `src/etl-canvas/interaction.ts`
-- `src/etl-canvas/loop.ts`
 
 ---
+
+### `src/etl-canvas/inspector/StyledSelect.tsx`
+
+212 righe
+
+```tsx
+/**
+ * Scelta singola con ricerca (sostituisce `<select>` e `<datalist>`): un campo
+ * che apre il nostro menu in un portale. Il menu ha un campo di ricerca che è
+ * il combobox ARIA (frecce, Home, Fine, Invio, Esc, digitazione) e un elenco
+ * listbox; con `allowFree` si può anche scrivere un valore non presente
+ * («oppure scrivi», in corsivo). Il focus torna al campo alla chiusura.
+ */
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
+import { copy } from "./copy";
+import { ChevronDown } from "./icons";
+import { clampActive, comboAction, filterByQuery, fold } from "./logic";
+import { Menu } from "./Menu";
+
+export interface SelectOption {
+  readonly value: string;
+  readonly label: string;
+  /** Testo discreto a destra (per esempio il tipo di una colonna). */
+  readonly hint?: string;
+}
+
+export interface StyledSelectProps {
+  readonly value: string;
+  readonly options: readonly SelectOption[];
+  readonly onChange: (value: string) => void;
+  readonly labelledBy?: string | undefined;
+  readonly ariaLabel?: string | undefined;
+  /** Si può scrivere un valore non presente nell'elenco. */
+  readonly allowFree?: boolean;
+  readonly placeholder?: string;
+  readonly disabled?: boolean;
+}
+
+interface Row {
+  readonly value: string;
+  readonly label: string;
+  readonly hint?: string | undefined;
+  readonly free?: boolean;
+}
+
+export function StyledSelect(props: StyledSelectProps) {
+  const { value, options, onChange, allowFree, disabled } = props;
+  const id = useId();
+  const listId = `${id}-list`;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(-1);
+
+  const rows = useMemo<Row[]>(() => {
+    const found: Row[] = filterByQuery(options, query).map((o) => ({
+      value: o.value,
+      label: o.label,
+      hint: o.hint,
+    }));
+    const typed = query.trim();
+    const exact = options.some((o) => fold(o.label) === fold(typed) || o.value === typed);
+    if (allowFree && typed && !exact) {
+      found.push({ value: typed, label: copy.useTyped(typed), free: true });
+    }
+    return found;
+  }, [options, query, allowFree]);
+  const act = clampActive(active, rows.length);
+
+  const close = useCallback((returnFocus: boolean) => {
+    setOpen(false);
+    setQuery("");
+    if (returnFocus) triggerRef.current?.focus();
+  }, []);
+  const openWith = (seed: string) => {
+    if (disabled) return;
+    setQuery(seed);
+    const i = options.findIndex((o) => o.value === value);
+    setActive(seed ? 0 : i);
+    setOpen(true);
+  };
+  const choose = (v: string) => {
+    onChange(v);
+    close(true);
+  };
+
+  // il focus passa al campo di ricerca; la voce attiva resta in vista
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+  useEffect(() => {
+    if (!open || act < 0) return;
+    listRef.current?.querySelector(`[data-index="${act}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [open, act, rows.length]);
+
+  const onTriggerKey = (e: KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      openWith("");
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== " ") {
+      e.preventDefault();
+      openWith(e.key);
+    }
+  };
+  const onInputKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    const a = comboAction(e.key, act, rows.length);
+    if (a.kind === "move") {
+      e.preventDefault();
+      setActive(a.to);
+    } else if (a.kind === "commit") {
+      e.preventDefault();
+      const row = rows[act];
+      if (row) choose(row.value);
+      else if (allowFree && query.trim()) choose(query.trim());
+    } else if (a.kind === "close") {
+      e.preventDefault();
+      e.stopPropagation();
+      close(true);
+    } else if (e.key === "Tab") {
+      close(false);
+    }
+  };
+
+  const current = options.find((o) => o.value === value);
+  const shown = current?.label ?? value;
+  const isFree = value !== "" && !current;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="ei-field ei-select"
+        data-picker="select"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-labelledby={props.labelledBy}
+        aria-label={props.labelledBy ? undefined : props.ariaLabel}
+        disabled={disabled}
+        data-open={open || undefined}
+        onClick={() => (open ? close(false) : openWith(""))}
+        onKeyDown={onTriggerKey}
+      >
+        <span className={"ei-select-value" + (isFree ? " ei-free" : "")}>
+          {shown || <span className="ei-placeholder">{props.placeholder ?? copy.pickOrType}</span>}
+        </span>
+        <span className="ei-select-chevron">
+          <ChevronDown />
+        </span>
+      </button>
+      {open ? (
+        <Menu anchor={triggerRef} onClose={() => close(false)} onEscape={() => close(true)}>
+          <div className="ei-menu-head">
+            <input
+              ref={inputRef}
+              type="text"
+              className="ei-search"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls={listId}
+              aria-autocomplete="list"
+              aria-activedescendant={act >= 0 ? `${id}-opt-${act}` : undefined}
+              aria-label={copy.searchPlaceholder}
+              placeholder={copy.searchPlaceholder}
+              autoComplete="off"
+              spellCheck={false}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
+              onKeyDown={onInputKey}
+            />
+          </div>
+          <div
+            ref={listRef}
+            id={listId}
+            className="ei-menu-scroll"
+            role="listbox"
+            aria-label={copy.menuLabel}
+            data-scroll=""
+          >
+            {rows.length === 0 ? <div className="ei-menu-empty">{copy.noResults}</div> : null}
+            {rows.map((r, i) => (
+              <div
+                key={`${r.free ? "free:" : ""}${r.value}`}
+                id={`${id}-opt-${i}`}
+                data-index={i}
+                role="option"
+                aria-selected={!r.free && r.value === value}
+                className={
+                  "ei-option" +
+                  (i === act ? " ei-active" : "") +
+                  (!r.free && r.value === value ? " ei-selected" : "") +
+                  (r.free ? " ei-free" : "")
+                }
+                onPointerDown={(e) => e.preventDefault()}
+                onPointerMove={() => setActive(i)}
+                onClick={() => choose(r.value)}
+              >
+                <span className="ei-option-label">{r.label}</span>
+                {r.hint ? <span className="ei-option-hint">{r.hint}</span> : null}
+              </div>
+            ))}
+          </div>
+          {allowFree && !query.trim() ? (
+            <div className="ei-menu-foot ei-help">{copy.typeOr}</div>
+          ) : null}
+        </Menu>
+      ) : null}
+    </>
+  );
+}
+```
+
+### `src/etl-canvas/inspector/ValuePicker.tsx`
+
+293 righe
+
+```tsx
+/**
+ * Selettore di valori (versione finale del prototipo, `pickerHtml`): i valori
+ * scelti sono etichette rimovibili (in corsivo quelli assenti dai dati); il
+ * menu (in un portale) ha ricerca che filtra, «+ Aggiungi “x”» per ciò che non
+ * esiste (Invio), incolla di più valori (virgola, punto e virgola, barra
+ * verticale, a capo), elenco a spunta con scorrimento (max 170 px), «Tutti» e
+ * «Nessuno» sui soli valori visibili e il conteggio annunciato.
+ *
+ * L'elenco proposto è `columnsDomain` delle colonne della riga (lo calcola chi
+ * lo usa). Cambiando le colonne i valori NON si azzerano: quelli fuori dominio
+ * restano in corsivo, con l'avviso e l'azione «Rimuovi». I valori stanno solo
+ * in `values`.
+ */
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { ClipboardEvent, KeyboardEvent } from "react";
+import { valuesOutsideDomain } from "../../etl-core";
+import type { ValuesField } from "../../etl-core";
+import { copy } from "./copy";
+import { CheckIcon, PlusIcon, XIcon } from "./icons";
+import {
+  addTokens,
+  addVisibleValues,
+  clampActive,
+  comboAction,
+  filterByQuery,
+  pendingTokens,
+  removeVisibleValues,
+  toggleValue,
+  withValues,
+} from "./logic";
+import { Menu } from "./Menu";
+
+export interface ValuePickerProps {
+  readonly value: ValuesField | undefined;
+  readonly domain: readonly string[];
+  readonly onChange: (field: ValuesField) => void;
+  readonly labelledBy?: string | undefined;
+  readonly ariaLabel?: string | undefined;
+}
+
+type Row =
+  | { readonly kind: "add"; readonly tokens: readonly string[]; readonly label: string }
+  | {
+      readonly kind: "value";
+      readonly value: string;
+      readonly label: string;
+      readonly free: boolean;
+    };
+
+const NO_VALUES: readonly string[] = [];
+const SEPARATORS = /[,;|\n]/;
+
+export function ValuePicker(props: ValuePickerProps) {
+  const { value: field, domain, onChange } = props;
+  const values = useMemo(() => field?.values ?? NO_VALUES, [field]);
+  const id = useId();
+  const listId = `${id}-list`;
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const addRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+
+  const outside = useMemo(
+    () => (domain.length > 0 ? valuesOutsideDomain(values, domain) : []),
+    [values, domain],
+  );
+  const set = (next: string[]) => onChange(withValues(field, next));
+
+  // elenco: i valori dei dati, poi quelli scelti ma assenti dai dati (si possono togliere)
+  const rows = useMemo<Row[]>(() => {
+    const extra = values.filter((v) => !domain.includes(v));
+    const all = [...domain, ...extra].map((v) => ({ label: v, free: !domain.includes(v) }));
+    const list: Row[] = filterByQuery(all, query).map((r) => ({
+      kind: "value",
+      value: r.label,
+      label: r.label,
+      free: r.free,
+    }));
+    const tokens = pendingTokens(values, domain, query);
+    if (tokens.length) list.unshift({ kind: "add", tokens, label: copy.valuesAddTyped(tokens) });
+    return list;
+  }, [domain, values, query]);
+  const act = clampActive(active, rows.length);
+  const visible = rows.flatMap((r) => (r.kind === "value" ? [r.value] : []));
+
+  const close = (returnFocus: boolean) => {
+    setOpen(false);
+    setQuery("");
+    if (returnFocus) addRef.current?.focus();
+  };
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+  useEffect(() => {
+    if (!open || act < 0) return;
+    listRef.current?.querySelector(`[data-index="${act}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [open, act, rows.length]);
+
+  const activate = (r: Row) => {
+    if (r.kind === "add") {
+      set(addTokens(values, domain, query));
+      setQuery("");
+      setActive(0);
+    } else set(toggleValue(values, r.value));
+  };
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    const a = comboAction(e.key, act, rows.length);
+    if (a.kind === "move") {
+      e.preventDefault();
+      setActive(a.to);
+    } else if (a.kind === "commit") {
+      e.preventDefault();
+      const r = rows[act];
+      if (r) activate(r);
+    } else if (a.kind === "close") {
+      e.preventDefault();
+      e.stopPropagation();
+      close(true);
+    }
+  };
+  // incollando più valori insieme si aggiungono subito, con la grafia dei dati
+  const onPaste = (e: ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData("text");
+    if (!SEPARATORS.test(text)) return;
+    e.preventDefault();
+    set(addTokens(values, domain, text));
+    setQuery("");
+  };
+
+  return (
+    <>
+      <div
+        ref={fieldRef}
+        className="ei-field ei-chipsfield"
+        data-picker="values"
+        data-selected={values.length}
+        data-total={domain.length}
+        role="group"
+        aria-labelledby={props.labelledBy}
+        aria-label={props.labelledBy ? undefined : props.ariaLabel}
+        data-open={open || undefined}
+      >
+        {values.length === 0 ? (
+          <span className="ei-placeholder">{copy.valuesPlaceholder}</span>
+        ) : null}
+        <ul className="ei-chips">
+          {values.map((v) => {
+            const free = domain.length > 0 ? !domain.includes(v) : false;
+            return (
+              <li
+                key={v}
+                className={"ei-chip" + (free ? " ei-free" : "")}
+                title={free ? copy.valuesFree : undefined}
+              >
+                <span className="ei-chip-text">{v}</span>
+                <button
+                  type="button"
+                  className="ei-chip-x"
+                  aria-label={copy.valuesRemove(v)}
+                  onClick={() => set(values.filter((x) => x !== v))}
+                >
+                  <XIcon />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <button
+          ref={addRef}
+          type="button"
+          className="ei-add"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={open ? listId : undefined}
+          onClick={() => (open ? close(false) : setOpen(true))}
+        >
+          <PlusIcon />
+          <span>{copy.valuesAdd}</span>
+        </button>
+      </div>
+      {outside.length > 0 ? (
+        <div className="ei-warn" role="status">
+          <span>{copy.valuesOutside(outside.length)}</span>
+          <button
+            type="button"
+            className="ei-link-btn"
+            onClick={() => set(values.filter((v) => !outside.includes(v)))}
+          >
+            {copy.valuesOutsideRemove}
+          </button>
+        </div>
+      ) : null}
+      {open ? (
+        <Menu
+          anchor={fieldRef}
+          onClose={() => close(false)}
+          onEscape={() => close(true)}
+          ariaLabel={copy.valuesMenu}
+        >
+          <div className="ei-menu-head">
+            <input
+              ref={inputRef}
+              type="text"
+              className="ei-search"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls={listId}
+              aria-autocomplete="list"
+              aria-activedescendant={act >= 0 ? `${id}-opt-${act}` : undefined}
+              aria-label={domain.length ? copy.valuesSearch : copy.valuesSearchFree}
+              placeholder={domain.length ? copy.valuesSearch : copy.valuesSearchFree}
+              autoComplete="off"
+              spellCheck={false}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
+              onKeyDown={onKey}
+              onPaste={onPaste}
+            />
+          </div>
+          <div
+            ref={listRef}
+            id={listId}
+            className="ei-menu-scroll ei-values-list"
+            role="listbox"
+            aria-multiselectable="true"
+            aria-label={copy.valuesMenu}
+            data-scroll=""
+          >
+            {rows.length === 0 ? <div className="ei-menu-empty">{copy.noResults}</div> : null}
+            {rows.map((r, i) => {
+              const on = r.kind === "value" && values.includes(r.value);
+              return (
+                <div
+                  key={r.kind === "add" ? "add" : r.value}
+                  id={`${id}-opt-${i}`}
+                  data-index={i}
+                  role="option"
+                  aria-selected={on}
+                  className={
+                    "ei-option" +
+                    (i === act ? " ei-active" : "") +
+                    (on ? " ei-selected" : "") +
+                    (r.kind === "add" || r.free ? " ei-free" : "")
+                  }
+                  onPointerDown={(e) => e.preventDefault()}
+                  onPointerMove={() => setActive(i)}
+                  onClick={() => activate(r)}
+                >
+                  {r.kind === "add" ? null : (
+                    <span className="ei-checkbox" data-on={on || undefined} aria-hidden="true">
+                      {on ? <CheckIcon /> : null}
+                    </span>
+                  )}
+                  <span className="ei-option-label">{r.label}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="ei-menu-foot">
+            <span className="ei-count" role="status" aria-live="polite">
+              {copy.valuesCount(values.length, domain.length)}
+            </span>
+            {domain.length > 0 ? (
+              <span className="ei-menu-actions">
+                <button
+                  type="button"
+                  className="ei-link-btn"
+                  onClick={() => set(addVisibleValues(values, visible))}
+                >
+                  {copy.valuesAll}
+                </button>
+                <button
+                  type="button"
+                  className="ei-link-btn"
+                  onClick={() => set(removeVisibleValues(values, visible))}
+                >
+                  {copy.valuesNone}
+                </button>
+              </span>
+            ) : null}
+          </div>
+        </Menu>
+      ) : null}
+    </>
+  );
+}
+```
+
+### `src/etl-canvas/inspector/copy.ts`
+
+114 righe
+
+```ts
+/**
+ * Tutti i testi dell'Inspector, in italiano e con la sola maiuscola iniziale.
+ * Nessuna stringa italiana sparsa nei componenti: un test lo verifica. Le
+ * etichette dei campi e delle operazioni vengono dal catalogo di etl-core.
+ */
+export const copy = {
+  // intestazione
+  kindSource: "Sorgente",
+  kindResult: "Risultato",
+  kindBox: "Box combinato",
+  kindOperation: "Lavorazione",
+  nameLabel: "Nome del nodo",
+
+  // stati
+  emptyInspector: "Nessun nodo selezionato",
+  lockedText:
+    "Collega una tabella a questo nodo per configurarne i parametri: colonne, chiavi e valori dipendono dai dati in ingresso.",
+  lockedJoin: (n: number) => `Serve un Join completo: ${n} tabelle in ingresso.`,
+  resultNote: (producer: string) =>
+    `Risultato generato da ${producer}. I suoi parametri si configurano nei passaggi che lo producono.`,
+  producerFallback: "una lavorazione",
+  resultIncomplete: "Incompleto: al join manca una tabella.",
+  inputsCount: (got: number, cap: number) => `Tabelle in ingresso: ${got} su ${cap}.`,
+  conditionsSoon: "Le condizioni arrivano nella prossima fase",
+  columnsTitle: "Colonne",
+  columnsNone: "Nessuna colonna nota: carica un dataset con colonne.",
+  closeInspector: "Nascondi l’inspector",
+
+  // box combinato
+  sequenceTitle: "Sequenza di esecuzione",
+  sequenceCount: (n: number) => `${n} passaggi`,
+  stepLabel: (n: number, name: string) => `Passaggio ${n}: ${name}`,
+  stepReorderHelp: "Trascina il passaggio o usa Alt con le frecce su e giù per cambiarne l’ordine.",
+  stepDetach: "Sgancia sul canvas",
+  stepDelete: "Elimina passaggio",
+  stepConfigure: "Configura parametri",
+  stepMenu: "Impostazioni del passaggio",
+  stepsMenuLabel: "Azioni del passaggio",
+  tableReference: "Tabella di riferimento",
+  tableLeft: "Tabella sinistra",
+  tableRight: "Tabella destra",
+  tableLinkFirst: "Collega le tabelle per scegliere su quale agisce questo passaggio.",
+  tableLeftResult: (j: number) =>
+    `Tabella sinistra: risultato del join ${j}, già unito nei passaggi precedenti.`,
+  tableSingle: (j: number) => `Opera sul risultato del join ${j}: da qui la tabella è una sola.`,
+  tableFallback: "tabella",
+
+  // campi e menu
+  pickOrType: "Scegli o scrivi",
+  typeOr: "Oppure scrivi",
+  typePlaceholder: "Scrivi un valore",
+  searchPlaceholder: "Cerca",
+  noResults: "Nessun risultato",
+  useTyped: (text: string) => `Usa “${text}”`,
+  menuLabel: "Scelte disponibili",
+
+  // colonne
+  columnsPlaceholder: "Nessuna colonna scelta",
+  columnsAdd: "Aggiungi colonne",
+  columnsSearch: "Cerca una colonna",
+  columnsAll: "Tutte",
+  columnsNone2: "Nessuna",
+  columnsCount: (n: number, m: number) => `${n} ${n === 1 ? "colonna" : "colonne"} su ${m}`,
+  columnsRemove: (name: string) => `Rimuovi ${name}`,
+  columnsMoveHelp: "Alt con le frecce sinistra e destra cambia l’ordine; si può anche trascinare.",
+  columnsAddTyped: (name: string) => `+ Aggiungi “${name}”`,
+  columnsFree: "Non presente nei dati",
+  columnsMenu: "Colonne",
+  columnsPosition: (name: string, i: number, n: number) => `${name}, posizione ${i} di ${n}`,
+
+  // valori
+  valuesPlaceholder: "Nessun valore scelto",
+  valuesAdd: "Scegli i valori",
+  valuesSearch: "Cerca tra i valori o scrivine di nuovi",
+  valuesSearchFree: "Scrivi i valori, anche più insieme",
+  valuesAll: "Tutti",
+  valuesNone: "Nessuno",
+  valuesCount: (n: number, m: number) =>
+    m > 0
+      ? `${n} ${n === 1 ? "selezionato" : "selezionati"} su ${m}`
+      : `${n} ${n === 1 ? "selezionato" : "selezionati"}`,
+  valuesAddTyped: (tokens: readonly string[]) =>
+    `+ Aggiungi ${tokens.map((t) => `“${t}”`).join(", ")}`,
+  valuesRemove: (v: string) => `Rimuovi ${v}`,
+  valuesOutside: (n: number) =>
+    `${n} ${n === 1 ? "valore non presente" : "valori non presenti"} nelle colonne scelte`,
+  valuesOutsideRemove: "Rimuovi",
+  valuesMenu: "Valori",
+  valuesFree: "Non presente nei dati",
+
+  // voci multiple
+  rowToggle: "Mostra o nascondi i campi",
+  rowTodo: "Da configurare",
+  rowRemove: "Rimuovi voce",
+  rowNote: "",
+  resultNameAuto: (names: readonly string[]) => `Nome automatico: ${names.join(", ")}`,
+  resultNameNone: "Il nome compare quando scegli le colonne",
+
+  // pulsanti sul nodo
+  nodeDelete: "Elimina nodo",
+  nodeExpand: "Espandi sequenza",
+
+  // pannello espanso
+  expandedSub: (n: number) => `${n} passaggi in sequenza`,
+  expandedNote: "Trascina le righe per cambiare l’ordine di esecuzione.",
+  expandedNoteOutside: "Rilascia qui fuori per sganciare il passaggio sul canvas",
+  expandedClose: "Chiudi",
+  expandedTitle: "Sequenza del box",
+
+  // conferme e annunci
+  announceMoved: (name: string, pos: number, n: number) =>
+    `${name} spostato in posizione ${pos} di ${n}`,
+} as const;
+```
+
+### `src/etl-canvas/inspector/family.ts`
+
+13 righe
+
+```ts
+/** La famiglia di un nodo, per l'intestazione dell'Inspector. */
+import { sectionOf } from "../../etl-core";
+import type { Card } from "../../etl-core";
+import { copy } from "./copy";
+
+/** La famiglia da mostrare: il tipo di nodo, o la sezione della cassetta per una lavorazione semplice. */
+export function familyLabel(card: Card): string {
+  if (card.kind === "dataset") return card.isOutput ? copy.kindResult : copy.kindSource;
+  if (card.components.length > 1) return copy.kindBox;
+  const first = card.components[0];
+  return (first ? sectionOf(first)?.name : undefined) ?? copy.kindOperation;
+}
+```
+
+### `src/etl-canvas/inspector/icons.tsx`
+
+87 righe
+
+```tsx
+/** Icone dell'Inspector: tracciati statici, ereditano il colore del testo. */
+import type { ReactNode } from "react";
+
+function Svg(props: { children: ReactNode; strokeWidth?: number }) {
+  return (
+    <svg
+      className="ei-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={props.strokeWidth ?? 2.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {props.children}
+    </svg>
+  );
+}
+
+export const ChevronDown = () => (
+  <Svg strokeWidth={2.6}>
+    <polyline points="6 9 12 15 18 9" />
+  </Svg>
+);
+export const ChevronRight = () => (
+  <Svg strokeWidth={2.6}>
+    <polyline points="9 18 15 12 9 6" />
+  </Svg>
+);
+export const XIcon = () => (
+  <Svg>
+    <line x1="17" y1="7" x2="7" y2="17" />
+    <line x1="7" y1="7" x2="17" y2="17" />
+  </Svg>
+);
+export const LockIcon = () => (
+  <Svg strokeWidth={2}>
+    <rect x="4" y="11" width="16" height="9" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </Svg>
+);
+export const GripIcon = () => (
+  <Svg strokeWidth={2.6}>
+    <circle cx="9" cy="6" r="0.6" />
+    <circle cx="15" cy="6" r="0.6" />
+    <circle cx="9" cy="12" r="0.6" />
+    <circle cx="15" cy="12" r="0.6" />
+    <circle cx="9" cy="18" r="0.6" />
+    <circle cx="15" cy="18" r="0.6" />
+  </Svg>
+);
+export const PlusIcon = () => (
+  <Svg>
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </Svg>
+);
+export const CheckIcon = () => (
+  <Svg strokeWidth={3}>
+    <polyline points="5 12.5 10 17.5 19 7" />
+  </Svg>
+);
+export const DetachIcon = () => (
+  <Svg strokeWidth={2.2}>
+    <path d="M14 3h7v7" />
+    <path d="M21 3l-9 9" />
+    <path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5" />
+  </Svg>
+);
+export const MoreIcon = () => (
+  <Svg strokeWidth={2.6}>
+    <circle cx="5" cy="12" r="1" />
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="19" cy="12" r="1" />
+  </Svg>
+);
+export const ExpandIcon = () => (
+  <Svg strokeWidth={2.2}>
+    <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+    <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+    <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+    <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+  </Svg>
+);
+```
 
 ### `src/etl-canvas/inspector/inspector.css`
 
@@ -1152,807 +1904,6 @@ const NONE: readonly ColumnDef[] = [];
 export function useActiveSchema(store: EtlStore, nodeId: string | null): readonly ColumnDef[] {
   const graph = useEtlState((s) => s.graph, store);
   return useMemo(() => (nodeId ? (schemaOf(graph, nodeId) ?? NONE) : NONE), [graph, nodeId]);
-}
-```
-
-### `src/etl-canvas/interaction.ts`
-
-671 righe
-
-```ts
-/**
- * Il livello dei gesti del canvas: dal puntatore e dalla tastiera ai comandi
- * di etl-store. TypeScript puro, senza DOM né React: gli eventi arrivano già
- * tradotti (coordinate relative all'area, bersaglio classificato), così si
- * può provare con eventi simulati.
- *
- * Questo livello NON contiene logica di dominio. Ogni gesto chiama una
- * funzione che esiste già:
- *   trascinamento     → store.beginGesture / updateGesture / commitGesture / cancelGesture
- *   esito del rilascio → etl-core `relation`, `insertable`; etl-layout `nodeAt`, `linkAt`
- *   porte             → comando `connect`; geometria `nodePorts`
- *   selezione         → comandi `select` e `inspect`; geometria `nodeRect`
- *   tastiera          → comandi `deleteNodes`, `duplicate`, `moveNodes`, `select`; `undo`/`redo`
- *   anteprima eliminazione → etl-core `nodesRemovedBy`
- * Vedi la tabella nel README.
- */
-import { boxCapacity, inputsOf, insertable, nodesRemovedBy, relation } from "../etl-core";
-import type { Graph, Link } from "../etl-core";
-import {
-  DRAG_THRESHOLD_PX,
-  GRID,
-  linkAt,
-  linkKey,
-  nodeAt,
-  nodePorts,
-  nodeRect,
-} from "../etl-layout";
-import type { LinkRoutes, Point, Rect } from "../etl-layout";
-import type { CommandResult, EtlStore } from "../etl-store";
-import { handleCanvasDrop, previewCanvasDrop } from "./drop";
-import type { CanvasDropPayload, DropPreview } from "./drop";
-import { toWorld } from "./view";
-
-/** Soglia del riquadro di selezione (prototipo, riga 4064). */
-export const MARQUEE_THRESHOLD = 4;
-/** Passo singolo delle frecce (prototipo, riga 4638: `GRID` con Maiusc, altrimenti 2). */
-export const NUDGE_STEP = 2;
-
-/** Esito mostrato su un nodo durante un trascinamento. */
-export type DragOutcome = "merge" | "link" | "link-reverse" | "displace" | "reject";
-
-/** Dove è iniziato il gesto, classificato dal livello che legge il DOM. */
-export type DownTarget =
-  | { readonly kind: "node"; readonly id: string }
-  | { readonly kind: "port"; readonly id: string; readonly side: PortSide }
-  | { readonly kind: "background" }
-  | { readonly kind: "ignore" };
-
-export type PortSide = "r" | "b" | "l" | "t";
-/** Ordine di `PORTS` (etl-layout): destra, sotto, sinistra, sopra. */
-const PORT_INDEX: Readonly<Record<PortSide, number>> = { r: 0, b: 1, l: 2, t: 3 };
-
-/** Puntatore in coordinate dell'area (pixel dello schermo relativi in alto a sinistra dell'area). */
-export interface PointerInput {
-  readonly x: number;
-  readonly y: number;
-  readonly shiftKey?: boolean;
-  readonly button?: number;
-}
-
-export interface KeyInput {
-  readonly key: string;
-  readonly metaKey?: boolean;
-  readonly ctrlKey?: boolean;
-  readonly shiftKey?: boolean;
-  /** Il fuoco è in un campo di testo: le scorciatoie non si applicano. */
-  readonly typing?: boolean;
-}
-
-export interface ConfirmState {
-  /** «delete» (Canc, Fase 5) o «clear» (Svuota, Fase 6a.2: `ids` è vuoto, tutto il canvas sparisce). */
-  readonly kind?: "delete" | "clear";
-  readonly ids: readonly string[];
-  /** Tutto ciò che sparirebbe: i nodi scelti e gli output a valle (etl-core `nodesRemovedBy`). */
-  readonly removed: readonly string[];
-  readonly title: string;
-  readonly text: string;
-}
-
-export interface InteractionUi {
-  /** Nodi in movimento. */
-  readonly dragging: readonly string[];
-  /** Nodo sotto il puntatore e cosa succederebbe al rilascio. */
-  readonly drop: { readonly id: string; readonly outcome: DragOutcome } | null;
-  /** Chiave (`da|a`) del cavo in cui si inserirebbe la lavorazione. */
-  readonly insertLink: string | null;
-  /** Cavo provvisorio tirato da una porta (coordinate del mondo). */
-  readonly tempLink: { readonly from: Point; readonly to: Point; readonly valid: boolean } | null;
-  /** Riquadro di selezione (coordinate dell'area) e nodi che comprende. */
-  readonly marquee: { readonly rect: Rect; readonly ids: readonly string[] } | null;
-  readonly confirm: ConfirmState | null;
-  readonly hint: string | null;
-}
-
-export const IDLE_UI: InteractionUi = {
-  dragging: [],
-  drop: null,
-  insertLink: null,
-  tempLink: null,
-  marquee: null,
-  confirm: null,
-  hint: null,
-};
-
-type Active =
-  | {
-      readonly kind: "node";
-      readonly id: string;
-      readonly start: Point;
-      readonly shift: boolean;
-      readonly group: readonly string[] | null;
-      readonly canInsert: boolean;
-      moved: boolean;
-      /** Esito mostrato nell'ultimo aggiornamento: è quello applicato al rilascio. */
-      drop: { id: string; outcome: DragOutcome } | null;
-      insertLink: Link | null;
-      /** Percorsi dei cavi prima del gesto (vedi `moveNode`). */
-      startRoutes: LinkRoutes | null;
-    }
-  | {
-      readonly kind: "port";
-      readonly id: string;
-      readonly from: Point;
-      rel: "link" | "link-reverse" | null;
-      target: string | null;
-    }
-  | {
-      /** Pressione su un cavo: un click lo elimina (prototipo, righe 4575-4580). */
-      readonly kind: "link";
-      readonly link: Link;
-      readonly start: Point;
-      moved: boolean;
-    }
-  | {
-      readonly kind: "marquee";
-      readonly start: Point;
-      readonly base: readonly string[];
-      moved: boolean;
-      ids: readonly string[];
-    };
-
-export interface InteractionController {
-  getUi(): InteractionUi;
-  subscribe(listener: () => void): () => void;
-  /** Un gesto è in corso (il livello DOM ascolta i movimenti finché è vero). */
-  isActive(): boolean;
-  /** Barra spaziatrice premuta: navigazione, nessun gesto di selezione. */
-  setSpace(down: boolean): void;
-  down(target: DownTarget, input: PointerInput): boolean;
-  move(input: PointerInput): void;
-  up(input: PointerInput): void;
-  /** Interrompe il gesto (pointercancel, Esc). */
-  cancel(): void;
-  key(input: KeyInput): boolean;
-  confirmDelete(): CommandResult | null;
-  cancelConfirm(): void;
-  /** Elimina i nodi indicati (pulsante × sul nodo): subito se isolati, altrimenti con la conferma di `nodesRemovedBy`. */
-  requestDeleteNodes(ids: readonly string[]): void;
-  /** Chiede conferma per svuotare il canvas (comando `clearAll`); non fa nulla se è già vuoto. */
-  requestClearAll(): void;
-  /**
-   * Un clic su un nodo (rilascio senza trascinamento) che lascia selezionato
-   * solo quel nodo: è l'unico evento che apre l'Inspector. `id` è il nodo.
-   */
-  subscribeClick(listener: (id: string) => void): () => void;
-  /** Punto dell'area → coordinate del mondo (per chi rilascia dalla cassetta). */
-  toWorld(x: number, y: number): Point;
-  /** Rilascio di un nuovo elemento: vedi drop.ts. */
-  handleCanvasDrop(payload: CanvasDropPayload, point: Point): CommandResult;
-  previewCanvasDrop(payload: CanvasDropPayload, point: Point): DropPreview;
-  /**
-   * Un elemento trascinato da fuori (la cassetta) passa sopra il canvas:
-   * mostra gli stessi contorni del trascinamento tra nodi. `point` è in
-   * coordinate dell'area, `null` se il puntatore è fuori dall'area.
-   */
-  hoverExternal(payload: CanvasDropPayload, point: Point | null): void;
-  /** Rilascio dell'elemento trascinato da fuori; `null` se il puntatore è fuori dall'area. */
-  dropExternal(payload: CanvasDropPayload, point: Point | null): CommandResult | null;
-}
-
-function sameIds(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && a.every((id, i) => id === b[i]);
-}
-
-/** Testi della conferma (prototipo, righe 4509-4552). */
-function confirmCopy(
-  ids: readonly string[],
-  removedCount: number,
-): { title: string; text: string } {
-  const downstream = removedCount - ids.length;
-  if (ids.length === 1) {
-    const n = downstream;
-    return {
-      title: "Eliminare il nodo?",
-      text:
-        n > 0
-          ? `Fa parte del flusso. Verranno rimossi i suoi collegamenti e ${n}${n > 1 ? " risultati a valle." : " risultato a valle."}`
-          : "Fa parte del flusso: i suoi collegamenti verranno rimossi.",
-    };
-  }
-  return {
-    title: `Eliminare ${ids.length} nodi?`,
-    text:
-      "Alcuni fanno parte del flusso: verranno rimossi i loro collegamenti" +
-      (downstream > 0
-        ? ` e ${downstream} ${downstream > 1 ? "risultati" : "risultato"} a valle.`
-        : "."),
-  };
-}
-
-export function createInteractionController(store: EtlStore): InteractionController {
-  let ui: InteractionUi = IDLE_UI;
-  let active: Active | null = null;
-  let space = false;
-  const listeners = new Set<() => void>();
-  const clickListeners = new Set<(id: string) => void>();
-
-  const setUi = (patch: Partial<InteractionUi>): void => {
-    const next = { ...ui, ...patch };
-    const keys = Object.keys(next) as (keyof InteractionUi)[];
-    if (keys.every((k) => next[k] === ui[k])) return;
-    ui = next;
-    for (const l of [...listeners]) l();
-  };
-  const graph = (): Graph => store.getState().graph;
-  const worldOf = (p: Point): Point => toWorld(store.getState().view, p.x, p.y);
-  const linkOfKey = (key: string): Link | null =>
-    graph().links.find((l) => linkKey(l) === key) ?? null;
-
-  /** `select` + `inspect`: l'Inspector segue la selezione (nessun pannello, solo stato). */
-  const applySelection = (ids: readonly string[]): void => {
-    const s = store.getState();
-    const unique = Array.from(new Set(ids));
-    if (!sameIds(s.selection, unique)) store.dispatch({ type: "select", payload: { ids: unique } });
-    const keep = s.inspector.nodeId && unique.includes(s.inspector.nodeId);
-    const node = unique.length ? (keep ? s.inspector.nodeId : (unique[0] as string)) : null;
-    if (node !== s.inspector.nodeId || (node !== null && s.inspector.step !== 0 && !keep)) {
-      store.dispatch({ type: "inspect", payload: { node, step: 0 } });
-    }
-  };
-
-  const hintForLink = (g: Graph, dragged: string, over: string): string => {
-    const boxId = relation(g, dragged, over).relation === "link" ? over : dragged;
-    const box = g.cards[boxId];
-    const need = box ? boxCapacity(box) - inputsOf(g, boxId).length : 1;
-    return need > 1
-      ? "Rilascia: sarà la tabella di sinistra, poi servirà la seconda"
-      : "Rilascia per collegare e generare l’output";
-  };
-
-  // --- trascinamento di un nodo ---------------------------------------------------
-
-  const moveNode = (a: Extract<Active, { kind: "node" }>, input: PointerInput): void => {
-    const view = store.getState().view;
-    const sx = input.x - a.start.x;
-    const sy = input.y - a.start.y;
-    if (!a.moved) {
-      if (Math.hypot(sx, sy) < DRAG_THRESHOLD_PX) return;
-      const ids = a.group ?? [a.id];
-      if (a.canInsert) a.startRoutes = store.getRoutes();
-      const r = store.beginGesture({ ids });
-      if (!r.ok) {
-        active = null;
-        return;
-      }
-      a.moved = true;
-      setUi({ dragging: ids });
-    }
-    const dx = sx / view.zoom;
-    const dy = sy / view.zoom;
-    if (a.group) {
-      store.updateGesture({ dx, dy });
-      return;
-    }
-    const p = worldOf(input);
-    const over = nodeAt(graph(), p, a.id);
-    // l'esito si calcola sul grafo PRIMA dell'aggiornamento: l'aggiornamento può spingere via l'altro nodo
-    const rel = over ? relation(graph(), a.id, over) : null;
-    store.updateGesture({ dx, dy, over });
-
-    if (over && rel) {
-      const outcome: DragOutcome = rel.relation ?? "reject";
-      a.drop = { id: over, outcome };
-      a.insertLink = null;
-      setUi({
-        drop: a.drop,
-        insertLink: null,
-        hint:
-          outcome === "merge"
-            ? "Rilascia per fondere le lavorazioni"
-            : outcome === "link" || outcome === "link-reverse"
-              ? hintForLink(graph(), a.id, over)
-              : (rel.displaceReason ?? null),
-      });
-      return;
-    }
-    a.drop = null;
-    // sopra un cavo, senza un nodo sotto: una lavorazione slegata si inserisce nel collegamento
-    let insert: Link | null = null;
-    if (a.canInsert) {
-      // il nodo in mano è un ostacolo e fa scansare i cavi: si prova anche sui percorsi di prima del gesto
-      const key = linkAt(store.getRoutes(), p) ?? (a.startRoutes ? linkAt(a.startRoutes, p) : null);
-      const link = key ? linkOfKey(key) : null;
-      if (link && insertable(graph(), link, a.id)) insert = link;
-    }
-    a.insertLink = insert;
-    setUi({
-      drop: null,
-      insertLink: insert ? linkKey(insert) : null,
-      hint: insert ? "Rilascia per inserire la lavorazione nel collegamento" : null,
-    });
-  };
-
-  const releaseNode = (a: Extract<Active, { kind: "node" }>, input: PointerInput): void => {
-    if (!a.moved) {
-      // un click: Maiusc aggiunge o toglie; altrimenti seleziona solo questo (riga 2069)
-      if (a.shift || input.shiftKey) {
-        const sel = store.getState().selection;
-        applySelection(sel.includes(a.id) ? sel.filter((x) => x !== a.id) : [...sel, a.id]);
-      } else applySelection([a.id]);
-      const sel = store.getState().selection;
-      if (!a.shift && !input.shiftKey && sel.length === 1 && sel[0] === a.id)
-        for (const l of [...clickListeners]) l(a.id);
-      return;
-    }
-    const outcome = a.drop?.outcome;
-    const target =
-      a.drop && (outcome === "merge" || outcome === "link" || outcome === "link-reverse")
-        ? { node: a.drop.id }
-        : a.insertLink
-          ? { link: a.insertLink }
-          : undefined;
-    store.commitGesture(target ? { target } : {});
-  };
-
-  // --- porte ----------------------------------------------------------------------
-
-  const movePort = (a: Extract<Active, { kind: "port" }>, input: PointerInput): void => {
-    const p = worldOf(input);
-    const g = graph();
-    const over = nodeAt(g, p, a.id);
-    const r = over ? relation(g, a.id, over) : null;
-    // dalle porte si collega soltanto: fusione e spostamento diventano rifiuto (riga 3990)
-    const rel = r && (r.relation === "link" || r.relation === "link-reverse") ? r.relation : null;
-    a.rel = rel;
-    a.target = rel ? over : null;
-    setUi({
-      tempLink: { from: a.from, to: p, valid: !!rel },
-      drop: over ? { id: over, outcome: rel ?? "reject" } : null,
-      hint: rel
-        ? "Rilascia per collegare"
-        : over
-          ? (r?.displaceReason ?? "Questi due nodi non si possono collegare")
-          : "Trascina fino al nodo da collegare",
-    });
-  };
-
-  const releasePort = (a: Extract<Active, { kind: "port" }>): void => {
-    if (a.rel && a.target) {
-      if (a.rel === "link")
-        store.dispatch({ type: "connect", payload: { from: a.id, to: a.target } });
-      else store.dispatch({ type: "connect", payload: { from: a.target, to: a.id } });
-    }
-  };
-
-  // --- riquadro di selezione ------------------------------------------------------
-
-  const marqueeRect = (a: Extract<Active, { kind: "marquee" }>, input: PointerInput): Rect => ({
-    x: Math.min(a.start.x, input.x),
-    y: Math.min(a.start.y, input.y),
-    w: Math.abs(input.x - a.start.x),
-    h: Math.abs(input.y - a.start.y),
-  });
-
-  /** Nodi il cui quadrato tocca il riquadro (prototipo, righe 4071-4076: il riquadro è in coordinate dello schermo). */
-  const idsInRect = (rect: Rect): string[] => {
-    const a = worldOf({ x: rect.x, y: rect.y });
-    const b = worldOf({ x: rect.x + rect.w, y: rect.y + rect.h });
-    const out: string[] = [];
-    for (const c of Object.values(graph().cards)) {
-      const r = nodeRect(c);
-      if (r.x + r.w > a.x && r.x < b.x && r.y + r.h > a.y && r.y < b.y) out.push(c.id);
-    }
-    return out;
-  };
-
-  // --- eliminazione ---------------------------------------------------------------
-
-  /** `only`: elimina solo questi nodi (il pulsante × di un nodo); altrimenti la selezione. */
-  const requestDelete = (only?: readonly string[]): void => {
-    const ids = (only ?? store.getState().selection).filter((id) => !!graph().cards[id]);
-    if (!ids.length) return;
-    const attached = graph().links.some((l) => ids.includes(l.from) || ids.includes(l.to));
-    if (!attached) {
-      store.dispatch({ type: "deleteNodes", payload: { ids } });
-      return;
-    }
-    const removed = [...nodesRemovedBy(graph(), ids)];
-    setUi({ confirm: { ids, removed, ...confirmCopy(ids, removed.length) } });
-  };
-
-  const requestClearAll = (): void => {
-    const removed = Object.keys(graph().cards);
-    if (!removed.length) return;
-    setUi({
-      confirm: {
-        kind: "clear",
-        ids: [],
-        removed,
-        title: "Svuotare il canvas?",
-        text: "Eliminare tutti i nodi e i collegamenti? Puoi annullare con Cmd/Ctrl+Z.",
-      },
-    });
-  };
-
-  const nudge = (dx: number, dy: number): void => {
-    const ids = store.getState().selection;
-    if (ids.length) store.dispatch({ type: "moveNodes", payload: { ids, dx, dy } });
-  };
-
-  const finish = (): void => {
-    active = null;
-    setUi({
-      dragging: [],
-      drop: null,
-      insertLink: null,
-      tempLink: null,
-      marquee: null,
-      hint: null,
-    });
-  };
-
-  const controller: InteractionController = {
-    getUi: () => ui,
-    subscribe(l) {
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
-    isActive: () => active !== null,
-    setSpace(down) {
-      space = down;
-    },
-
-    down(target, input) {
-      if (active) return false;
-      if (input.button !== undefined && input.button !== 0) return false;
-      if (target.kind === "ignore") return false;
-      if (ui.confirm) setUi({ confirm: null });
-      if (space) return false;
-      const start = { x: input.x, y: input.y };
-
-      if (target.kind === "port") {
-        const card = graph().cards[target.id];
-        if (!card) return false;
-        const port = nodePorts(card)[PORT_INDEX[target.side]];
-        if (!port) return false;
-        const from = { x: port.anchor.x, y: port.anchor.y };
-        active = { kind: "port", id: target.id, from, rel: null, target: null };
-        setUi({
-          dragging: [target.id],
-          tempLink: { from, to: worldOf(start), valid: false },
-          hint: "Trascina fino al nodo da collegare",
-        });
-        return true;
-      }
-
-      if (target.kind === "node") {
-        const card = graph().cards[target.id];
-        if (!card) return false;
-        const sel = store.getState().selection;
-        const group =
-          sel.includes(target.id) && sel.length > 1
-            ? sel.filter((id) => !!graph().cards[id])
-            : null;
-        const canInsert =
-          !group &&
-          card.kind === "op" &&
-          !graph().links.some((l) => l.from === target.id || l.to === target.id);
-        active = {
-          kind: "node",
-          id: target.id,
-          start,
-          shift: !!input.shiftKey,
-          group,
-          canInsert,
-          moved: false,
-          drop: null,
-          insertLink: null,
-          startRoutes: null,
-        };
-        return true;
-      }
-
-      // su un cavo: niente riquadro, il click lo elimina (nel prototipo il cavo non è "sfondo", riga 4033)
-      const hit = linkAt(store.getRoutes(), worldOf(start));
-      const link = hit ? linkOfKey(hit) : null;
-      if (link) {
-        active = { kind: "link", link, start, moved: false };
-        return true;
-      }
-
-      // sfondo: riquadro di selezione (Maiusc = si aggiunge alla selezione)
-      const base = input.shiftKey ? [...store.getState().selection] : [];
-      active = { kind: "marquee", start, base, moved: false, ids: base };
-      return true;
-    },
-
-    move(input) {
-      const a = active;
-      if (!a) return;
-      if (a.kind === "node") moveNode(a, input);
-      else if (a.kind === "link") {
-        if (Math.hypot(input.x - a.start.x, input.y - a.start.y) >= DRAG_THRESHOLD_PX)
-          a.moved = true;
-      } else if (a.kind === "port") movePort(a, input);
-      else {
-        if (!a.moved && Math.hypot(input.x - a.start.x, input.y - a.start.y) < MARQUEE_THRESHOLD)
-          return;
-        a.moved = true;
-        const rect = marqueeRect(a, input);
-        const ids = Array.from(new Set([...a.base, ...idsInRect(rect)]));
-        a.ids = ids;
-        setUi({ marquee: { rect, ids } });
-      }
-    },
-
-    up(input) {
-      const a = active;
-      if (!a) return;
-      if (a.kind === "node") {
-        releaseNode(a, input);
-      } else if (a.kind === "port") {
-        releasePort(a);
-      } else if (a.kind === "link") {
-        if (!a.moved) store.dispatch({ type: "deleteLink", payload: { link: a.link } });
-      } else if (a.moved) {
-        applySelection(a.ids);
-      } else if (store.getState().selection.length || store.getState().inspector.nodeId) {
-        // un click sul vuoto deseleziona (riga 4584)
-        applySelection([]);
-      }
-      finish();
-    },
-
-    cancel() {
-      const a = active;
-      if (!a) return;
-      if (a.kind === "node" && a.moved) store.cancelGesture();
-      finish();
-    },
-
-    key(e) {
-      if (e.typing) return false;
-      const mod = !!(e.metaKey || e.ctrlKey);
-      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      // con una conferma aperta restano attivi solo Esc (annulla) e il normale uso da tastiera della finestra
-      if (ui.confirm && k !== "Escape") return false;
-      if (!mod) {
-        if (k === "Delete" || k === "Backspace") {
-          if (!store.getState().selection.length) return false;
-          requestDelete();
-          return true;
-        }
-        if (k === "Escape") {
-          if (active) {
-            controller.cancel();
-            return true;
-          }
-          if (ui.confirm) {
-            setUi({ confirm: null });
-            return true;
-          }
-          applySelection([]);
-          return true;
-        }
-        const step = e.shiftKey ? GRID : NUDGE_STEP;
-        const arrows: Record<string, [number, number]> = {
-          ArrowLeft: [-step, 0],
-          ArrowRight: [step, 0],
-          ArrowUp: [0, -step],
-          ArrowDown: [0, step],
-        };
-        const d = arrows[k];
-        if (d && store.getState().selection.length) {
-          nudge(d[0], d[1]);
-          return true;
-        }
-        return false;
-      }
-      if (k === "d") {
-        const r = store.dispatch({
-          type: "duplicate",
-          payload: { ids: store.getState().selection },
-        });
-        if (r.ok) applySelection(store.getState().selection);
-        return true;
-      }
-      if (k === "a") {
-        applySelection(Object.keys(graph().cards));
-        return true;
-      }
-      if (k === "z" && e.shiftKey) {
-        store.redo();
-        return true;
-      }
-      if (k === "z") {
-        store.undo();
-        return true;
-      }
-      if (k === "y") {
-        store.redo();
-        return true;
-      }
-      return false;
-    },
-
-    confirmDelete() {
-      const c = ui.confirm;
-      if (!c) return null;
-      setUi({ confirm: null });
-      if (c.kind === "clear") return store.dispatch({ type: "clearAll", payload: {} });
-      return store.dispatch({ type: "deleteNodes", payload: { ids: c.ids } });
-    },
-    cancelConfirm() {
-      setUi({ confirm: null });
-    },
-    requestClearAll,
-    requestDeleteNodes: (ids) => requestDelete(ids),
-
-    hoverExternal(payload, point) {
-      if (active) return;
-      if (!point) {
-        setUi({ drop: null, insertLink: null, hint: null });
-        return;
-      }
-      const preview = previewCanvasDrop(store, payload, worldOf(point));
-      const outcome = preview.outcome;
-      setUi({
-        drop:
-          preview.nodeId &&
-          (outcome === "merge" || outcome === "link" || outcome === "link-reverse")
-            ? { id: preview.nodeId, outcome }
-            : null,
-        insertLink: preview.linkKey ?? null,
-        hint:
-          outcome === "merge"
-            ? "Rilascia per fondere direttamente nel box"
-            : outcome === "link" || outcome === "link-reverse"
-              ? "Rilascia per collegare"
-              : outcome === "insert"
-                ? "Rilascia per inserire la lavorazione nel collegamento"
-                : null,
-      });
-    },
-    dropExternal(payload, point) {
-      setUi({ drop: null, insertLink: null, hint: null });
-      return point ? handleCanvasDrop(store, payload, worldOf(point)) : null;
-    },
-
-    subscribeClick(l) {
-      clickListeners.add(l);
-      return () => clickListeners.delete(l);
-    },
-
-    toWorld: (x, y) => toWorld(store.getState().view, x, y),
-    handleCanvasDrop: (payload, point) => handleCanvasDrop(store, payload, point),
-    previewCanvasDrop: (payload, point) => previewCanvasDrop(store, payload, point),
-  };
-  return controller;
-}
-```
-
-### `src/etl-canvas/loop.ts`
-
-118 righe
-
-```ts
-/**
- * Un solo ciclo requestAnimationFrame per tutto il canvas. Si ferma
- * quando la scheda è nascosta e quando nessun compito ha nulla da
- * animare; con `prefers-reduced-motion` non parte mai (i compiti
- * mostrano lo stato finale con `settle`). Tutto ciò che tocca il browser
- * passa da `LoopEnv`, quindi nei test si sostituisce.
- */
-
-export interface LoopEnv {
-  raf(cb: () => void): number;
-  caf(id: number): void;
-  /** Orologio in millisecondi (nel browser `performance.now`). */
-  now(): number;
-  hidden(): boolean;
-  reducedMotion(): boolean;
-  onVisibilityChange(cb: () => void): () => void;
-  onReducedMotionChange(cb: () => void): () => void;
-}
-
-export interface Task {
-  /** Disegna il frame a `now`; `true` se ha ancora qualcosa da animare. */
-  frame(now: number): boolean;
-  /** Mostra lo stato finale, senza movimento (movimento ridotto). */
-  settle(): void;
-}
-
-export interface Loop {
-  add(task: Task): () => void;
-  /** C'è (forse) lavoro nuovo: se serve, il ciclo riparte. */
-  wake(): void;
-  running(): boolean;
-  dispose(): void;
-}
-
-export function createLoop(env: LoopEnv): Loop {
-  const tasks = new Set<Task>();
-  let id: number | null = null;
-
-  const cancel = (): void => {
-    if (id !== null) {
-      env.caf(id);
-      id = null;
-    }
-  };
-
-  const settleAll = (): void => {
-    for (const t of [...tasks]) t.settle();
-  };
-
-  const tick = (): void => {
-    id = null;
-    const now = env.now();
-    let busy = false;
-    for (const t of [...tasks]) if (t.frame(now)) busy = true;
-    if (busy && !env.hidden() && !env.reducedMotion()) id = env.raf(tick);
-  };
-
-  const schedule = (): void => {
-    if (id !== null || tasks.size === 0) return;
-    if (env.hidden()) return;
-    if (env.reducedMotion()) {
-      settleAll();
-      return;
-    }
-    id = env.raf(tick);
-  };
-
-  const offVisibility = env.onVisibilityChange(() => {
-    if (env.hidden()) cancel();
-    else schedule();
-  });
-  const offMotion = env.onReducedMotionChange(() => {
-    if (env.reducedMotion()) {
-      cancel();
-      settleAll();
-    } else schedule();
-  });
-
-  return {
-    add(task) {
-      tasks.add(task);
-      schedule();
-      return () => {
-        tasks.delete(task);
-        if (tasks.size === 0) cancel();
-      };
-    },
-    wake: schedule,
-    running: () => id !== null,
-    dispose() {
-      cancel();
-      tasks.clear();
-      offVisibility();
-      offMotion();
-    },
-  };
-}
-
-/** Ambiente reale. Va creato solo nel browser (in un effetto), mai durante il rendering. */
-export function browserEnv(): LoopEnv {
-  const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-  return {
-    raf: (cb) => requestAnimationFrame(() => cb()),
-    caf: (id) => cancelAnimationFrame(id),
-    now: () => performance.now(),
-    hidden: () => document.hidden,
-    reducedMotion: () => mq.matches,
-    onVisibilityChange(cb) {
-      document.addEventListener("visibilitychange", cb);
-      return () => document.removeEventListener("visibilitychange", cb);
-    },
-    onReducedMotionChange(cb) {
-      mq.addEventListener("change", cb);
-      return () => mq.removeEventListener("change", cb);
-    },
-  };
 }
 ```
 

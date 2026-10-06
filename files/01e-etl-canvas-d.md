@@ -2,16 +2,872 @@
 
 File in questo blocco:
 
+- `src/etl-canvas/__tests__/inspector.test.tsx`
+- `src/etl-canvas/__tests__/interaction.test.ts`
 - `src/etl-canvas/__tests__/keyboard.test.ts`
 - `src/etl-canvas/__tests__/loop.test.ts`
 - `src/etl-canvas/__tests__/menu.test.ts`
 - `src/etl-canvas/__tests__/no-reroute.test.ts`
-- `src/etl-canvas/__tests__/overlay-layout.test.ts`
-- `src/etl-canvas/__tests__/panels-actions.test.ts`
-- `src/etl-canvas/__tests__/panels-layout.test.ts`
-- `src/etl-canvas/__tests__/render.test.ts`
 
 ---
+
+### `src/etl-canvas/__tests__/inspector.test.tsx`
+
+418 righe
+
+```tsx
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { MULTI_DEFS, createValuesField, defaultParams, outputOf } from "../../etl-core";
+import type { Card, ColumnDef, ComponentId, OperationType, Params } from "../../etl-core";
+import { createEtlStore } from "../../etl-store";
+import type { EtlStore } from "../../etl-store";
+import { copy } from "../inspector/copy";
+import { Inspector } from "../inspector/Inspector";
+import { prototypeScene } from "../seed";
+
+/** Una scena con `op-sort` trasformato in una lavorazione del tipo (o dei tipi) dati. */
+function sceneWith(components: ComponentId[], params?: Params[]): EtlStore {
+  const scene = prototypeScene();
+  const sort = scene.graph.cards["op-sort"] as Card;
+  const card: Card = {
+    ...sort,
+    components,
+    params: params ?? components.map((c) => defaultParams(c)),
+  };
+  return createEtlStore({
+    initial: {
+      ...scene,
+      graph: { ...scene.graph, cards: { ...scene.graph.cards, "op-sort": card } },
+    },
+  });
+}
+
+function connect(store: EtlStore, from = "ds1", to = "op-sort"): void {
+  expect(store.dispatch({ type: "connect", payload: { from, to } })).toEqual({ ok: true });
+}
+
+function render(store: EtlStore, node: string, step = 0): string {
+  store.dispatch({ type: "inspect", payload: { node, step } });
+  return renderToStaticMarkup(createElement(Inspector, { store }));
+}
+
+const count = (markup: string, needle: string) => markup.split(needle).length - 1;
+
+describe("Inspector: tipi di nodo", () => {
+  it("senza nodo: nessun nodo selezionato", () => {
+    const store = sceneWith(["sort"]);
+    expect(renderToStaticMarkup(createElement(Inspector, { store }))).toContain(
+      copy.emptyInspector,
+    );
+  });
+
+  it("dataset: nome, origine e colonne in sola lettura con il tipo", () => {
+    const m = render(sceneWith(["sort"]), "ds1");
+    expect(m).toContain('data-kind="dataset"');
+    expect(m).toContain(`>${copy.kindSource}<`);
+    expect(m).toContain('value="Vendite 2026"');
+    expect(m).toContain("Percorso o tabella");
+    expect(m).toContain('value="vendite_2026.csv"');
+    expect(count(m, 'class="ei-colrow"')).toBe(8);
+    expect(m).toContain(">integer<");
+    expect(m).toContain(">numerico<");
+    expect(m).toContain(">data<");
+    // le colonne non si modificano: nessun selettore di colonne
+    expect(m).not.toContain('data-picker="columns"');
+  });
+
+  it("output: nota del risultato e colonne dello schema del produttore", () => {
+    const store = sceneWith(["sort"]);
+    connect(store);
+    const out = outputOf(store.getState().graph, "op-sort") as string;
+    const m = render(store, out);
+    expect(m).toContain('data-kind="output"');
+    expect(m).toContain(`>${copy.kindResult}<`);
+    expect(m).toContain("Risultato generato da");
+    expect(count(m, 'class="ei-colrow"')).toBe(8);
+  });
+
+  it("lavorazione senza tabella in ingresso: stato bloccato, nessun campo", () => {
+    const m = render(sceneWith(["sort"]), "op-sort");
+    expect(m).toContain('data-testid="ei-blocked"');
+    expect(m).toContain(copy.lockedText);
+    expect(m).not.toContain("ei-fieldgroup");
+    expect(m).not.toContain("data-picker=");
+  });
+
+  it("un join senza ingressi ricorda quante tabelle servono", () => {
+    const m = render(sceneWith(["join"]), "op-sort");
+    expect(m).toContain(copy.lockedJoin(2));
+  });
+
+  it("lavorazione con ingresso: famiglia, nome modificabile, campi del catalogo", () => {
+    const store = sceneWith(["sort"]);
+    connect(store);
+    const m = render(store, "op-sort");
+    expect(m).not.toContain("ei-blocked");
+    expect(m).toContain("Filtra e ordina"); // la famiglia
+    expect(m).toContain('value="Ordina"'); // il nome, in un campo
+    expect(m).toContain("Criteri di ordinamento");
+    expect(m).toContain('data-picker="columns"');
+    expect(m).toContain(copy.inputsCount(1, 1));
+  });
+
+  it("l'elenco delle colonne segue il collegamento: cambia con lo schema in ingresso e si blocca se si scollega", () => {
+    const store = sceneWith(["sort"]);
+    connect(store);
+    expect(render(store, "op-sort")).toContain('data-total="8"');
+    // un altro dataset, con due colonne: collegato al posto del primo
+    const small: ColumnDef[] = [
+      { name: "a", type: "stringa", values: ["x"] },
+      { name: "b", type: "integer", values: ["1"] },
+    ];
+    const state = store.getState();
+    const ds1 = state.graph.cards["ds1"] as Card;
+    const other: Card = {
+      ...ds1,
+      id: "ds2",
+      name: "Piccolo",
+      params: [{ ...(ds1.params[0] as Params), columns: small }],
+    };
+    const store2 = createEtlStore({
+      initial: { ...state, graph: { ...state.graph, cards: { ...state.graph.cards, ds2: other } } },
+    });
+    store2.dispatch({
+      type: "deleteLink",
+      payload: { link: store2.getState().graph.links[0] as { from: string; to: string } },
+    });
+    expect(render(store2, "op-sort")).toContain("ei-blocked");
+    connect(store2, "ds2", "op-sort");
+    expect(render(store2, "op-sort")).toContain('data-total="2"');
+  });
+
+  it("filtro e join: solo la nota sulle condizioni", () => {
+    for (const type of ["filter", "join"] as ComponentId[]) {
+      const store = sceneWith([type]);
+      connect(store);
+      const m = render(store, "op-sort");
+      expect(m).toContain(copy.conditionsSoon);
+      expect(m).not.toContain('data-picker="columns"');
+      expect(m).not.toContain("ei-row-toggle");
+    }
+  });
+
+  it("una selezione multipla senza nodo nell'inspector non mostra nulla da configurare", () => {
+    const store = sceneWith(["sort"]);
+    store.dispatch({ type: "select", payload: { ids: ["op-sort", "op-join"] } });
+    const m = renderToStaticMarkup(createElement(Inspector, { store }));
+    expect(m).toContain(copy.emptyInspector);
+    expect(m).not.toContain("ei-fieldgroup");
+  });
+});
+
+describe("Inspector: selettori per tipo di campo, dal catalogo", () => {
+  it("ogni campo «columns» di MULTI_DEFS ha il ColumnPicker; ogni campo «column» una scelta singola", () => {
+    let checked = 0;
+    for (const [type, def] of Object.entries(MULTI_DEFS)) {
+      if (!def) continue;
+      const store = sceneWith([type as ComponentId]);
+      connect(store);
+      const m = render(store, "op-sort");
+      const columnsFields = def.lists.flatMap((l) => l.fields).filter((f) => f.type === "columns");
+      const columnFields = def.lists.flatMap((l) => l.fields).filter((f) => f.type === "column");
+      // in ogni lista la prima riga è aperta: un selettore per campo, una volta per lista
+      const perList = (t: string) =>
+        def.lists.reduce((n, l) => n + l.fields.filter((f) => f.type === t).length, 0);
+      expect(count(m, 'data-picker="columns"'), type).toBe(perList("columns"));
+      if (columnsFields.length) expect(count(m, 'data-picker="columns"'), type).toBeGreaterThan(0);
+      if (columnFields.length) expect(m, type).toContain('data-picker="select"');
+      checked++;
+    }
+    expect(checked).toBe(Object.keys(MULTI_DEFS).length);
+    // le operazioni con campi «columns» sono quelle della 6b.0, ricavate dal catalogo
+    const multiColumnOps = Object.entries(MULTI_DEFS)
+      .filter(([, d]) => d?.lists.some((l) => l.fields.some((f) => f.type === "columns")))
+      .map(([t]) => t)
+      .sort();
+    expect(multiColumnOps).toEqual(
+      [
+        "aggregate",
+        "cast",
+        "dedup",
+        "fillNa",
+        "replaceVal",
+        "round",
+        "scale",
+        "selectCols",
+        "sort",
+        "textClean",
+      ].sort(),
+    );
+  });
+
+  it("Rinomina e Dividi colonna usano una scelta singola, non il selettore multiplo", () => {
+    for (const type of ["rename", "splitCol"] as OperationType[]) {
+      const store = sceneWith([type]);
+      connect(store);
+      const m = render(store, "op-sort");
+      expect(m, type).toContain('data-picker="select"');
+      expect(m, type).not.toContain('data-picker="columns"');
+    }
+  });
+
+  it("sostituisci valori: il selettore di valori ha il dominio unito delle colonne scelte", () => {
+    const find = { ...createValuesField(), values: ["Nord"] };
+    const store = sceneWith(
+      ["replaceVal"],
+      [{ items: [{ columns: ["regione", "stato"], match: "è uguale a", find, with: "" }] }],
+    );
+    connect(store);
+    const m = render(store, "op-sort");
+    // 4 regioni + 4 stati
+    expect(m).toContain('data-picker="values"');
+    expect(m).toMatch(/data-picker="values"[^>]*data-total="8"/);
+  });
+
+  it("cambiare le colonne non azzera i valori: quelli fuori dominio restano in corsivo, con l'avviso", () => {
+    const find = { ...createValuesField(), values: ["Nord", "Mare"] };
+    const store = sceneWith(
+      ["replaceVal"],
+      [{ items: [{ columns: ["regione"], match: "è uguale a", find, with: "" }] }],
+    );
+    connect(store);
+    const m = render(store, "op-sort");
+    expect(m).toContain(copy.valuesOutside(1));
+    expect(m).toContain(copy.valuesOutsideRemove);
+    expect(m).toMatch(/class="ei-chip ei-free"[^>]*><span[^>]*>Mare</);
+    expect(m).toMatch(/class="ei-chip"[^>]*><span[^>]*>Nord</);
+    // i valori scelti sono ancora tutti nel campo
+    expect(m).toMatch(/data-picker="values"[^>]*data-selected="2"/);
+  });
+
+  it("Riempi vuoti: il valore è un elenco con una colonna, un campo di testo con più colonne", () => {
+    const one = sceneWith(["fillNa"], [{ items: [{ columns: ["regione"], value: "" }] }]);
+    connect(one);
+    const m1 = render(one, "op-sort");
+    expect(count(m1, 'data-picker="select"')).toBe(1);
+    expect(m1).not.toContain("ei-input");
+    const many = sceneWith(["fillNa"], [{ items: [{ columns: ["regione", "stato"], value: "" }] }]);
+    connect(many);
+    const m2 = render(many, "op-sort");
+    expect(m2).not.toContain('data-picker="select"');
+    expect(m2).toContain("ei-input");
+  });
+
+  it("Raggruppa: con più colonne il nome del risultato è disattivato con il nome automatico", () => {
+    const params = (columns: string[]): Params[] => [
+      {
+        groupBy: [{ columns: ["regione"] }],
+        measures: [{ columns, fn: "somma", alias: "tot" }],
+      },
+    ];
+    const many = sceneWith(["aggregate"], params(["importo", "quantita"]));
+    connect(many);
+    // le misure sono la seconda lista: si apre la sua prima riga
+    const m = render(many, "op-sort");
+    expect(m).toContain("somma_importo, somma_quantita");
+    expect(m).toMatch(/<input[^>]*disabled[^>]*value="somma_importo, somma_quantita"/);
+    const one = sceneWith(["aggregate"], params(["importo"]));
+    connect(one);
+    const m1 = render(one, "op-sort");
+    expect(m1).toContain('value="tot"');
+    expect(m1).not.toMatch(/<input[^>]*disabled/);
+  });
+});
+
+describe("Inspector: righe e riassunti", () => {
+  it("la prima riga è aperta, il riassunto è quello del catalogo, aggiungi/rimuovi riga", () => {
+    const store = sceneWith(
+      ["cast"],
+      [
+        {
+          items: [
+            { columns: ["importo", "quantita"], to: "intero" },
+            { columns: [], to: "testo" },
+          ],
+        },
+      ],
+    );
+    connect(store);
+    const m = render(store, "op-sort");
+    expect(count(m, 'class="ei-row ei-open"')).toBe(1);
+    expect(count(m, 'class="ei-row"')).toBe(1);
+    expect(m).toContain("importo, quantita → intero");
+    expect(m).toContain(copy.rowTodo);
+    expect(count(m, `aria-label="${copy.rowRemove}"`)).toBe(2); // più di una riga: si può rimuovere
+    expect(m).toContain("+ Aggiungi conversione");
+  });
+
+  it("i campi globali (tieni/escludi, mantieni) e le note", () => {
+    const sel = sceneWith(["selectCols"]);
+    connect(sel);
+    expect(render(sel, "op-sort")).toContain("Modo");
+    const dedup = sceneWith(
+      ["dedup"],
+      [
+        {
+          keep: "la prima",
+          items: [
+            { columns: ["id"], cmp: "esatto" },
+            { columns: ["cliente"], cmp: "esatto" },
+          ],
+        },
+      ],
+    );
+    connect(dedup);
+    const m = render(dedup, "op-sort");
+    expect(m).toContain("Mantieni");
+    expect(m).toContain("Due righe sono duplicate quando coincidono su tutte le chiavi.");
+  });
+});
+
+describe("Inspector: box combinato", () => {
+  it("elenco dei passaggi nell'ordine, quello scelto mostra i parametri", () => {
+    const store = sceneWith(["filter", "sort", "cast"]);
+    connect(store);
+    const m = render(store, "op-sort", 1);
+    expect(count(m, '<li class="ei-step')).toBe(3);
+    expect(m).toContain(`>${copy.kindBox}<`);
+    // il passaggio 2 (Ordina) è quello scelto
+    expect(m).toMatch(/class="ei-step ei-on"[^>]*data-step="1"/);
+    expect(m).toContain("Criteri di ordinamento");
+    expect(m).toContain(copy.stepDetach);
+    expect(m).toContain(copy.stepDelete);
+  });
+
+  it("prima di un join: tabella di riferimento; dopo: la nota «tabella unica»", () => {
+    const store = sceneWith(["filter", "join", "sort"]);
+    connect(store);
+    const before = render(store, "op-sort", 0);
+    expect(before).toContain(copy.tableReference);
+    const atJoin = render(store, "op-sort", 1);
+    expect(atJoin).toContain(copy.tableLeft);
+    expect(atJoin).toContain(copy.tableRight);
+    const after = render(store, "op-sort", 2);
+    expect(after).toContain(copy.tableSingle(1));
+    expect(after).not.toContain(copy.tableReference);
+  });
+});
+
+describe("pulsanti sul nodo e passaggi", () => {
+  it("ogni nodo ha il pulsante × ; l'espansione solo sui box combinati", async () => {
+    const { SIZE } = await import("./helpers");
+    const { CanvasSurface } = await import("../EtlCanvas");
+    const store = sceneWith(["filter", "sort"]);
+    const m = renderToStaticMarkup(
+      createElement(CanvasSurface, { store, size: SIZE, onExpand: () => {} }),
+    );
+    expect(count(m, 'class="ec-node-btn ec-del-btn"')).toBe(5); // ds1, filtro, join, box, esporta
+    expect(count(m, 'class="ec-node-btn ec-expand-btn"')).toBe(1); // solo il box combinato
+    expect(m).toContain(`aria-label="${copy.nodeDelete}"`);
+    expect(m).toContain(`aria-label="${copy.nodeExpand}"`);
+  });
+
+  it("il pulsante × elimina subito un nodo isolato e chiede conferma per uno collegato", async () => {
+    const { createInteractionController } = await import("../interaction");
+    const store = sceneWith(["sort"]);
+    const c = createInteractionController(store);
+    // isolato: via subito, senza domande
+    c.requestDeleteNodes(["op-export"]);
+    expect(c.getUi().confirm).toBeNull();
+    expect(store.getState().graph.cards["op-export"]).toBeUndefined();
+    // collegato: conferma con l'anteprima di ciò che sparirebbe (nodesRemovedBy)
+    connect(store);
+    const out = outputOf(store.getState().graph, "op-sort") as string;
+    c.requestDeleteNodes(["op-sort"]);
+    const confirm = c.getUi().confirm;
+    expect(confirm?.ids).toEqual(["op-sort"]);
+    expect(confirm?.removed).toEqual(expect.arrayContaining(["op-sort", out]));
+    expect(store.getState().graph.cards["op-sort"]).toBeDefined();
+    c.cancelConfirm();
+    expect(store.getState().graph.cards["op-sort"]).toBeDefined();
+    c.requestDeleteNodes(["op-sort"]);
+    expect(c.confirmDelete()).toEqual({ ok: true });
+    expect(store.getState().graph.cards["op-sort"]).toBeUndefined();
+  });
+
+  it("l'elenco dei passaggi: nell'Inspector sgancio ed eliminazione, nel pannello espanso il menu", async () => {
+    const { StepList } = await import("../inspector/StepList");
+    const store = sceneWith(["filter", "sort", "cast"]);
+    const card = store.getState().graph.cards["op-sort"] as Card;
+    const base = { store, card, selectedStep: 1, onSelect: () => {} };
+    const insp = renderToStaticMarkup(createElement(StepList, { ...base, variant: "inspector" }));
+    expect(count(insp, `aria-label="${copy.stepDetach}"`)).toBe(3);
+    expect(count(insp, `aria-label="${copy.stepDelete}"`)).toBe(3);
+    expect(insp).not.toContain('aria-haspopup="menu"');
+    const exp = renderToStaticMarkup(createElement(StepList, { ...base, variant: "expanded" }));
+    expect(count(exp, 'aria-haspopup="menu"')).toBe(3);
+    expect(exp).not.toContain(`aria-label="${copy.stepDetach}"`);
+    // il riordino da tastiera è annunciato ai lettori di schermo
+    expect(exp).toContain('role="status"');
+  });
+
+  it("i comandi dei passaggi: riordina, sgancia, elimina (comandi di etl-store)", () => {
+    const store = sceneWith(["filter", "sort", "cast"]);
+    connect(store);
+    store.dispatch({ type: "inspect", payload: { node: "op-sort" } });
+    expect(
+      store.dispatch({ type: "reorderSteps", payload: { box: "op-sort", from: 0, to: 2 } }),
+    ).toEqual({ ok: true });
+    expect((store.getState().graph.cards["op-sort"] as Card).components).toEqual([
+      "sort",
+      "cast",
+      "filter",
+    ]);
+    expect(store.getState().inspector.step).toBe(2);
+    expect(store.dispatch({ type: "deleteStep", payload: { box: "op-sort", index: 1 } })).toEqual({
+      ok: true,
+    });
+    expect((store.getState().graph.cards["op-sort"] as Card).components).toEqual([
+      "sort",
+      "filter",
+    ]);
+    const before = Object.keys(store.getState().graph.cards).length;
+    expect(
+      store.dispatch({
+        type: "detachStep",
+        payload: { box: "op-sort", index: 1, dropPoint: { x: 600, y: 120 } },
+      }),
+    ).toEqual({ ok: true });
+    expect(Object.keys(store.getState().graph.cards).length).toBeGreaterThan(before - 1);
+  });
+});
+```
+
+### `src/etl-canvas/__tests__/interaction.test.ts`
+
+428 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import { CARD, DRAG_THRESHOLD_PX, nodeCenter } from "../../etl-layout";
+import type { EtlStore } from "../../etl-store";
+import { createInteractionController } from "../interaction";
+import type { InteractionController } from "../interaction";
+import { storeWith } from "./helpers";
+
+/** Il centro di un nodo, in coordinate dell'area (vista identica al mondo: zoom 1, origine 0). */
+function center(store: EtlStore, id: string) {
+  return nodeCenter(store.getState().graph.cards[id]!);
+}
+
+function setup(): { store: EtlStore; c: InteractionController } {
+  const store = storeWith();
+  return { store, c: createInteractionController(store) };
+}
+
+/** Trascina il nodo `id` fino a `to` in 30 aggiornamenti, e rilascia se `release`. */
+function drag(
+  c: InteractionController,
+  store: EtlStore,
+  id: string,
+  to: { x: number; y: number },
+  release = true,
+) {
+  const from = center(store, id);
+  expect(c.down({ kind: "node", id }, { x: from.x, y: from.y })).toBe(true);
+  for (let i = 1; i <= 30; i++) {
+    c.move({ x: from.x + ((to.x - from.x) * i) / 30, y: from.y + ((to.y - from.y) * i) / 30 });
+  }
+  if (release) c.up(to);
+}
+
+const steps = (store: EtlStore) => store.historySize().past;
+
+describe("trascinamento di un nodo", () => {
+  it("sotto la soglia è un click: seleziona, nessun gesto", () => {
+    const { store, c } = setup();
+    const p = center(store, "op-sort");
+    c.down({ kind: "node", id: "op-sort" }, p);
+    c.move({ x: p.x + DRAG_THRESHOLD_PX - 1, y: p.y });
+    expect(store.isGesturing()).toBe(false);
+    c.up({ x: p.x + DRAG_THRESHOLD_PX - 1, y: p.y });
+    expect(store.getState().selection).toEqual(["op-sort"]);
+    expect(store.getState().inspector.nodeId).toBe("op-sort");
+    expect(store.getState().graph.cards["op-sort"]).toMatchObject({ x: 260, y: 338 });
+    expect(steps(store)).toBe(0);
+  });
+
+  it("esattamente alla soglia (5 px) il gesto parte", () => {
+    const { store, c } = setup();
+    const p = center(store, "op-sort");
+    c.down({ kind: "node", id: "op-sort" }, p);
+    c.move({ x: p.x + DRAG_THRESHOLD_PX, y: p.y });
+    expect(store.isGesturing()).toBe(true);
+    c.cancel();
+  });
+
+  it("30 aggiornamenti e il rilascio fanno UN solo passo di cronologia", () => {
+    const { store, c } = setup();
+    drag(c, store, "op-sort", { x: 700, y: 600 }, false);
+    expect(store.isGesturing()).toBe(true);
+    expect(c.getUi().dragging).toEqual(["op-sort"]);
+    expect(steps(store)).toBe(0);
+    c.up({ x: 700, y: 600 });
+    expect(store.isGesturing()).toBe(false);
+    expect(steps(store)).toBe(1);
+    expect(store.getState().graph.cards["op-sort"]!.x).toBeGreaterThan(500);
+    expect(c.getUi().dragging).toEqual([]);
+    store.undo();
+    expect(store.getState().graph.cards["op-sort"]).toMatchObject({ x: 260, y: 338 });
+  });
+
+  it("Esc a metà trascinamento annulla il gesto: nessun passo, nodo al suo posto", () => {
+    const { store, c } = setup();
+    drag(c, store, "op-sort", { x: 700, y: 600 }, false);
+    expect(c.key({ key: "Escape" })).toBe(true);
+    expect(store.isGesturing()).toBe(false);
+    expect(steps(store)).toBe(0);
+    expect(store.getState().graph.cards["op-sort"]).toMatchObject({ x: 260, y: 338 });
+  });
+
+  it("con zoom e vista spostata, lo spostamento si divide per lo zoom", () => {
+    const { store, c } = setup();
+    store.dispatch({ type: "setView", payload: { x: 100, y: 0, zoom: 2 } });
+    const start = { x: 100 + (260 + CARD / 2) * 2, y: (338 + CARD / 2) * 2 };
+    c.down({ kind: "node", id: "op-sort" }, start);
+    c.move({ x: start.x + 80, y: start.y });
+    c.up({ x: start.x + 80, y: start.y });
+    const x = store.getState().graph.cards["op-sort"]!.x;
+    expect(x).toBeGreaterThanOrEqual(260 + 40 - 26);
+    expect(x).toBeLessThanOrEqual(260 + 40 + 26);
+  });
+});
+
+describe("esiti di relation() durante il trascinamento", () => {
+  it("fusione: lavorazione su lavorazione → contorno merge, al rilascio una sola fusione", () => {
+    const { store, c } = setup();
+    const to = center(store, "op-export");
+    drag(c, store, "op-sort", to, false);
+    expect(c.getUi().drop).toEqual({ id: "op-export", outcome: "merge" });
+    expect(c.getUi().hint).toContain("fondere");
+    c.up(to);
+    const cards = store.getState().graph.cards;
+    expect(cards["op-sort"]).toBeUndefined();
+    expect(cards["op-export"]!.components).toHaveLength(2);
+    expect(steps(store)).toBe(1);
+    expect(c.getUi().drop).toBeNull();
+  });
+
+  it("collegamento: dataset su lavorazione → link, il dataset torna al suo posto", () => {
+    const { store, c } = setup();
+    const to = center(store, "op-filter");
+    drag(c, store, "ds1", to, false);
+    expect(c.getUi().drop).toEqual({ id: "op-filter", outcome: "link" });
+    c.up(to);
+    expect(store.getState().graph.links).toContainEqual({ from: "ds1", to: "op-filter" });
+    expect(store.getState().graph.cards["ds1"]).toMatchObject({ x: 26, y: 182 });
+    expect(steps(store)).toBe(1);
+  });
+
+  it("collegamento inverso: lavorazione su dataset → link-reverse", () => {
+    const { store, c } = setup();
+    const to = center(store, "ds1");
+    drag(c, store, "op-filter", to, false);
+    expect(c.getUi().drop).toEqual({ id: "ds1", outcome: "link-reverse" });
+    c.up(to);
+    expect(store.getState().graph.links).toContainEqual({ from: "ds1", to: "op-filter" });
+    expect(store.getState().graph.cards["op-filter"]).toMatchObject({ x: 260, y: 52 });
+  });
+
+  it("spostamento per incompatibilità: due dataset → displace con il motivo di etl-core", () => {
+    const { store, c } = setup();
+    store.dispatch({
+      type: "addNode",
+      payload: { component: "dataset", point: { x: 700, y: 500 } },
+    });
+    const ds2 = Object.values(store.getState().graph.cards).find(
+      (k) => k.id !== "ds1" && k.kind === "dataset",
+    )!.id;
+    const before = Object.keys(store.getState().graph.cards).length;
+    const to = center(store, "ds1");
+    drag(c, store, ds2, to, false);
+    expect(c.getUi().drop).toEqual({ id: "ds1", outcome: "displace" });
+    expect(c.getUi().hint).toContain("Due dataset non si fondono");
+    c.up(to);
+    expect(store.getState().graph.links).toEqual([]);
+    expect(Object.keys(store.getState().graph.cards)).toHaveLength(before);
+  });
+
+  it("rifiuto: dalla porta di una lavorazione su un'altra lavorazione → reject, nessun collegamento", () => {
+    const { store, c } = setup();
+    expect(c.down({ kind: "port", id: "op-sort", side: "r" }, center(store, "op-sort"))).toBe(true);
+    const to = center(store, "op-export");
+    c.move(to);
+    expect(c.getUi().drop).toEqual({ id: "op-export", outcome: "reject" });
+    expect(c.getUi().tempLink?.valid).toBe(false);
+    c.up(to);
+    expect(store.getState().graph.links).toEqual([]);
+    expect(store.getState().graph.cards["op-export"]!.components).toHaveLength(1);
+  });
+
+  it("nel vuoto non c'è nessun contorno", () => {
+    const { store, c } = setup();
+    drag(c, store, "op-sort", { x: 900, y: 900 }, false);
+    expect(c.getUi().drop).toBeNull();
+    expect(c.getUi().insertLink).toBeNull();
+    c.up({ x: 900, y: 900 });
+  });
+});
+
+describe("trascinamento su un cavo", () => {
+  function withLink() {
+    const { store, c } = setup();
+    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
+    const key = Object.keys(store.getRoutes())[0]!;
+    const pts = store.getRoutes()[key]!.pts;
+    // metà del primo tratto: sul cavo e fuori da qualunque nodo
+    const mid = { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 };
+    return { store, c, key, mid };
+  }
+
+  it("lavorazione slegata su un cavo dataset→lavorazione: anteprima e insertOnLink al rilascio", () => {
+    const { store, c, key, mid } = withLink();
+    const p = center(store, "op-sort");
+    c.down({ kind: "node", id: "op-sort" }, p);
+    c.move({ x: p.x + 10, y: p.y });
+    c.move(mid);
+    expect(c.getUi().insertLink).toBe(key);
+    expect(c.getUi().hint).toContain("inserire");
+    const before = steps(store);
+    c.up(mid);
+    const links = store.getState().graph.links;
+    expect(links).toContainEqual({ from: "ds1", to: "op-sort" });
+    // la lavorazione produce un output, che entra nella lavorazione a valle (etl-core insertOnLink)
+    const out = links.find((l) => l.from !== "ds1" && l.to === "op-join");
+    expect(out).toBeDefined();
+    expect(links).toContainEqual({ from: "op-sort", to: out!.from });
+    expect(links).not.toContainEqual({ from: "ds1", to: "op-join" });
+    expect(steps(store)).toBe(before + 1);
+  });
+
+  it("nessuna anteprima se il nodo ha già collegamenti", () => {
+    const { store, c, mid } = withLink();
+    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-filter" } });
+    const p = center(store, "op-filter");
+    c.down({ kind: "node", id: "op-filter" }, p);
+    c.move({ x: p.x + 10, y: p.y + 10 });
+    c.move(mid);
+    expect(c.getUi().insertLink).toBeNull();
+    c.cancel();
+  });
+
+  it("nessuna anteprima su un cavo lavorazione→output, né trascinando un dataset", () => {
+    const { store, c } = withLink();
+    const outKey = Object.keys(store.getRoutes()).find((k) => k.startsWith("op-join|"));
+    expect(outKey).toBeDefined();
+    const pts = store.getRoutes()[outKey!]!.pts;
+    const mid = { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 };
+    const p = center(store, "op-sort");
+    c.down({ kind: "node", id: "op-sort" }, p);
+    c.move({ x: p.x + 10, y: p.y });
+    c.move(mid);
+    expect(c.getUi().insertLink).toBeNull();
+    c.cancel();
+
+    const d = center(store, "ds1");
+    c.down({ kind: "node", id: "ds1" }, d);
+    c.move({ x: d.x + 10, y: d.y });
+    c.move(mid);
+    expect(c.getUi().insertLink).toBeNull();
+    c.cancel();
+  });
+});
+
+describe("porte", () => {
+  it("si crea solo un collegamento; il nodo di origine non si sposta e non c'è nessun gesto", () => {
+    const { store, c } = setup();
+    const before = { ...store.getState().graph.cards["ds1"]! };
+    expect(c.down({ kind: "port", id: "ds1", side: "r" }, center(store, "ds1"))).toBe(true);
+    expect(c.getUi().tempLink?.from).toEqual({ x: before.x + CARD, y: before.y + CARD / 2 });
+    const to = center(store, "op-join");
+    for (let i = 1; i <= 20; i++) {
+      c.move({ x: before.x + CARD / 2 + ((to.x - before.x - CARD / 2) * i) / 20, y: to.y });
+      expect(store.isGesturing()).toBe(false);
+    }
+    expect(c.getUi().drop).toEqual({ id: "op-join", outcome: "link" });
+    expect(c.getUi().tempLink?.valid).toBe(true);
+    c.up(to);
+    expect(store.getState().graph.links).toContainEqual({ from: "ds1", to: "op-join" });
+    expect(store.getState().graph.cards["ds1"]).toMatchObject({ x: before.x, y: before.y });
+    expect(steps(store)).toBe(1);
+    expect(c.getUi().tempLink).toBeNull();
+  });
+
+  it("dal lato di una lavorazione verso un dataset si collega in senso inverso", () => {
+    const { store, c } = setup();
+    c.down({ kind: "port", id: "op-join", side: "l" }, center(store, "op-join"));
+    const to = center(store, "ds1");
+    c.move(to);
+    expect(c.getUi().drop).toEqual({ id: "ds1", outcome: "link-reverse" });
+    c.up(to);
+    expect(store.getState().graph.links).toContainEqual({ from: "ds1", to: "op-join" });
+  });
+
+  it("rilasciato nel vuoto non succede nulla", () => {
+    const { store, c } = setup();
+    c.down({ kind: "port", id: "ds1", side: "b" }, center(store, "ds1"));
+    c.move({ x: 900, y: 700 });
+    expect(c.getUi().hint).toContain("Trascina fino al nodo");
+    c.up({ x: 900, y: 700 });
+    expect(store.getState().graph.links).toEqual([]);
+    expect(steps(store)).toBe(0);
+  });
+});
+
+describe("selezione", () => {
+  it("click singolo seleziona e aggiorna l'Inspector nello store", () => {
+    const { store, c } = setup();
+    const p = center(store, "op-join");
+    c.down({ kind: "node", id: "op-join" }, p);
+    c.up(p);
+    expect(store.getState().selection).toEqual(["op-join"]);
+    expect(store.getState().inspector).toEqual({ nodeId: "op-join", step: 0 });
+  });
+
+  it("Maiusc+click aggiunge e toglie", () => {
+    const { store, c } = setup();
+    const click = (id: string, shiftKey: boolean) => {
+      const p = center(store, id);
+      c.down({ kind: "node", id }, { ...p, shiftKey });
+      c.up({ ...p, shiftKey });
+    };
+    click("op-join", false);
+    click("op-sort", true);
+    expect(store.getState().selection).toEqual(["op-join", "op-sort"]);
+    click("op-join", true);
+    expect(store.getState().selection).toEqual(["op-sort"]);
+    expect(store.getState().inspector.nodeId).toBe("op-sort");
+    click("op-sort", true);
+    expect(store.getState().selection).toEqual([]);
+    expect(store.getState().inspector.nodeId).toBeNull();
+  });
+
+  it("riquadro sul vuoto: seleziona i nodi che tocca", () => {
+    const { store, c } = setup();
+    expect(c.down({ kind: "background" }, { x: 240, y: 30 })).toBe(true);
+    c.move({ x: 250, y: 40 });
+    expect(c.getUi().marquee).not.toBeNull();
+    c.move({ x: 380, y: 300 });
+    expect(c.getUi().marquee!.ids.slice().sort()).toEqual(["op-filter", "op-join"]);
+    c.up({ x: 380, y: 300 });
+    expect(store.getState().selection.slice().sort()).toEqual(["op-filter", "op-join"]);
+    expect(store.getState().inspector.nodeId).not.toBeNull();
+    expect(c.getUi().marquee).toBeNull();
+    expect(steps(store)).toBe(0);
+  });
+
+  it("riquadro con Maiusc si aggiunge alla selezione", () => {
+    const { store, c } = setup();
+    store.dispatch({ type: "select", payload: { ids: ["ds1"] } });
+    c.down({ kind: "background" }, { x: 240, y: 30, shiftKey: true });
+    c.move({ x: 380, y: 100 });
+    c.up({ x: 380, y: 100 });
+    expect(store.getState().selection.slice().sort()).toEqual(["ds1", "op-filter"]);
+  });
+
+  it("un click sul vuoto deseleziona", () => {
+    const { store, c } = setup();
+    store.dispatch({ type: "select", payload: { ids: ["ds1"] } });
+    c.down({ kind: "background" }, { x: 900, y: 900 });
+    c.up({ x: 900, y: 900 });
+    expect(store.getState().selection).toEqual([]);
+  });
+
+  it("il gruppo selezionato si trascina insieme, con un solo passo di cronologia", () => {
+    const { store, c } = setup();
+    store.dispatch({ type: "select", payload: { ids: ["op-join", "op-sort"] } });
+    const before = ["op-join", "op-sort"].map((id) => ({ ...store.getState().graph.cards[id]! }));
+    const from = center(store, "op-join");
+    c.down({ kind: "node", id: "op-join" }, from);
+    for (let i = 1; i <= 30; i++) c.move({ x: from.x + 3 * i, y: from.y + 2 * i });
+    expect(c.getUi().dragging.slice().sort()).toEqual(["op-join", "op-sort"]);
+    c.up({ x: from.x + 90, y: from.y + 60 });
+    const after = ["op-join", "op-sort"].map((id) => store.getState().graph.cards[id]!);
+    expect(after[0]!.x - before[0]!.x).toBeGreaterThan(60);
+    expect(Math.abs(after[0]!.x - before[0]!.x - (after[1]!.x - before[1]!.x))).toBeLessThanOrEqual(
+      26,
+    );
+    expect(steps(store)).toBe(1);
+    expect(store.getState().selection.slice().sort()).toEqual(["op-join", "op-sort"]);
+  });
+
+  it("un click su un nodo di un gruppo lo seleziona da solo", () => {
+    const { store, c } = setup();
+    store.dispatch({ type: "select", payload: { ids: ["op-join", "op-sort"] } });
+    const p = center(store, "op-join");
+    c.down({ kind: "node", id: "op-join" }, p);
+    c.up(p);
+    expect(store.getState().selection).toEqual(["op-join"]);
+  });
+});
+
+describe("barra spaziatrice", () => {
+  it("con lo spazio premuto nessun gesto di selezione parte", () => {
+    const { store, c } = setup();
+    c.setSpace(true);
+    expect(c.down({ kind: "background" }, { x: 240, y: 30 })).toBe(false);
+    expect(c.down({ kind: "node", id: "op-join" }, center(store, "op-join"))).toBe(false);
+    c.move({ x: 400, y: 400 });
+    expect(c.getUi().marquee).toBeNull();
+    expect(c.isActive()).toBe(false);
+    c.setSpace(false);
+    expect(c.down({ kind: "background" }, { x: 240, y: 30 })).toBe(true);
+    c.cancel();
+  });
+
+  it("i tasti diversi dal sinistro e i bersagli da ignorare non avviano nulla", () => {
+    const { c } = setup();
+    expect(c.down({ kind: "background" }, { x: 0, y: 0, button: 1 })).toBe(false);
+    expect(c.down({ kind: "ignore" }, { x: 0, y: 0 })).toBe(false);
+  });
+});
+
+describe("clic su un cavo", () => {
+  function withLink() {
+    const { store, c } = setup();
+    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
+    const pts = store.getRoutes()["ds1|op-join"]!.pts;
+    const mid = { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 };
+    return { store, c, mid };
+  }
+
+  it("un click elimina il collegamento (deleteLink) in un solo passo; l'output a valle sparisce con lui", () => {
+    const { store, c, mid } = withLink();
+    const before = steps(store);
+    expect(c.down({ kind: "background" }, mid)).toBe(true);
+    expect(c.getUi().marquee).toBeNull();
+    c.up(mid);
+    const links = store.getState().graph.links;
+    expect(links).not.toContainEqual({ from: "ds1", to: "op-join" });
+    expect(links.some((l) => l.from === "op-join")).toBe(false);
+    expect(steps(store)).toBe(before + 1);
+    store.undo();
+    expect(store.getState().graph.links).toContainEqual({ from: "ds1", to: "op-join" });
+  });
+
+  it("un trascinamento che parte dal cavo non lo elimina", () => {
+    const { store, c, mid } = withLink();
+    c.down({ kind: "background" }, mid);
+    c.move({ x: mid.x + 20, y: mid.y + 20 });
+    c.up({ x: mid.x + 20, y: mid.y + 20 });
+    expect(store.getState().graph.links).toContainEqual({ from: "ds1", to: "op-join" });
+  });
+
+  it("con lo spazio premuto non elimina; lontano dal cavo parte il riquadro", () => {
+    const { store, c, mid } = withLink();
+    c.setSpace(true);
+    expect(c.down({ kind: "background" }, mid)).toBe(false);
+    c.setSpace(false);
+    expect(c.down({ kind: "background" }, { x: mid.x, y: mid.y + 200 })).toBe(true);
+    c.move({ x: mid.x + 30, y: mid.y + 240 });
+    expect(c.getUi().marquee).not.toBeNull();
+    c.cancel();
+    expect(store.getState().graph.links).toContainEqual({ from: "ds1", to: "op-join" });
+  });
+});
+```
 
 ### `src/etl-canvas/__tests__/keyboard.test.ts`
 
@@ -641,875 +1497,6 @@ describe("le animazioni non ricalcolano né alterano i percorsi", () => {
     store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-sort" } });
     store.getRoutes();
     expect(layout.settleLinks).toHaveBeenCalled();
-  });
-});
-```
-
-### `src/etl-canvas/__tests__/overlay-layout.test.ts`
-
-158 righe
-
-```ts
-import { describe, expect, it } from "vitest";
-import type { PanelKey, Side } from "../../etl-store";
-import {
-  HINT_HEIGHT,
-  MINIMAP_COMPACT,
-  MINIMAP_SIZE,
-  ZOOM_SIZE,
-  intersects,
-  overlayLayout,
-} from "../panels/overlayLayout";
-import type { OverlayInput, OverlayLayout, Rect } from "../panels/overlayLayout";
-
-const SIDES: readonly Side[] = ["left", "right", "top", "bottom"];
-/** Aree del canvas di finestre 1440×900, 1280×720 e 1280×600 con un pannello o la barra, più aree strette. */
-const AREAS = [
-  { w: 1384, h: 690 },
-  { w: 1384, h: 516 },
-  { w: 1384, h: 246 },
-  { w: 1232, h: 510 },
-  { w: 1232, h: 288 },
-  { w: 1232, h: 168 },
-  { w: 720, h: 516 },
-  { w: 560, h: 300 },
-  { w: 420, h: 260 },
-  { w: 300, h: 200 },
-];
-
-function scenario(
-  area: { w: number; h: number },
-  open: PanelKey | null,
-  tools: Side,
-  insp: Side,
-): OverlayInput {
-  const sideOf = (k: PanelKey) => (k === "tools" ? tools : insp);
-  return {
-    area,
-    openSide: open ? sideOf(open) : null,
-    notches: (["tools", "insp"] as const).map((key) => ({
-      key,
-      side: sideOf(key),
-      offset: tools === insp ? (key === "tools" ? -40 : 40) : 0,
-      visible: key !== open && !(open && tools === insp),
-    })),
-  };
-}
-
-/** Tutti gli ingombri non nulli: minimappa, zoom, suggerimento e tacche visibili. */
-function rectsOf(input: OverlayInput, l: OverlayLayout): { name: string; r: Rect }[] {
-  const out: { name: string; r: Rect }[] = [{ name: "zoom", r: l.zoom }];
-  if (l.minimap.rect) out.push({ name: "minimappa", r: l.minimap.rect });
-  if (l.hint) out.push({ name: "suggerimento", r: l.hint });
-  for (const n of input.notches)
-    if (n.visible) out.push({ name: `tacca ${n.key}`, r: l.notches[n.key] });
-  return out;
-}
-
-describe("overlayLayout: matrice bordi × misure", () => {
-  it("nessun widget interseca un altro widget o una tacca, e stanno tutti dentro l'area", () => {
-    let cases = 0;
-    for (const area of AREAS) {
-      for (const open of [null, "tools", "insp"] as const) {
-        for (const tools of SIDES) {
-          for (const insp of SIDES) {
-            const input = scenario(area, open, tools, insp);
-            const l = overlayLayout(input);
-            const rects = rectsOf(input, l);
-            const label = `${area.w}×${area.h} aperto=${open} cassetta=${tools} inspector=${insp}`;
-            for (const { name, r } of rects) {
-              if (name.startsWith("tacca")) continue;
-              expect(
-                r.x >= 0 && r.y >= 0 && r.x + r.w <= area.w && r.y + r.h <= area.h,
-                `${label}: ${name} fuori dall'area`,
-              ).toBe(true);
-            }
-            for (let i = 0; i < rects.length; i++) {
-              for (let j = i + 1; j < rects.length; j++) {
-                expect(
-                  intersects(rects[i]!.r, rects[j]!.r),
-                  `${label}: ${rects[i]!.name} tocca ${rects[j]!.name}`,
-                ).toBe(false);
-              }
-            }
-            cases++;
-          }
-        }
-      }
-    }
-    expect(cases).toBe(AREAS.length * 3 * 16);
-  });
-});
-
-describe("overlayLayout: regole di posizione", () => {
-  const roomy = { w: 1384, h: 690 };
-
-  it("senza pannello aperto: minimappa in basso a sinistra, zoom in basso a destra", () => {
-    const l = overlayLayout(scenario(roomy, null, "left", "right"));
-    expect(l.minimap.corner).toBe("bl");
-    expect(l.minimap.compact).toBe(false);
-    expect(l.minimap.rect).toMatchObject({ w: MINIMAP_SIZE.w, h: MINIMAP_SIZE.h });
-    expect(l.minimap.rect!.y + l.minimap.rect!.h).toBeLessThan(roomy.h);
-    expect(l.zoom).toMatchObject({ w: ZOOM_SIZE.w, h: ZOOM_SIZE.h });
-    expect(l.zoom.x + l.zoom.w).toBeLessThan(roomy.w);
-    expect(l.zoom.y).toBeGreaterThan(roomy.h / 2);
-  });
-
-  it("con il pannello in basso la minimappa va in alto a sinistra; con il pannello in alto resta in basso a sinistra", () => {
-    const bottom = overlayLayout(scenario(roomy, "tools", "bottom", "right"));
-    expect(bottom.minimap.corner).toBe("tl");
-    expect(bottom.minimap.rect!.y).toBeLessThan(roomy.h / 2);
-    const top = overlayLayout(scenario(roomy, "tools", "top", "right"));
-    expect(top.minimap.corner).toBe("bl");
-    for (const side of ["left", "right"] as const) {
-      expect(overlayLayout(scenario(roomy, "tools", side, "right")).minimap.corner).toBe("bl");
-    }
-  });
-
-  it("i controlli di zoom restano in basso a destra con ogni pannello", () => {
-    for (const side of SIDES) {
-      const l = overlayLayout(scenario(roomy, "tools", side, "right"));
-      expect(l.zoom.x + l.zoom.w).toBeGreaterThan(roomy.w - 40);
-      expect(l.zoom.y + l.zoom.h).toBeGreaterThan(roomy.h - 40);
-    }
-  });
-
-  it("area troppo piccola: la minimappa passa all'angolo opposto, poi diventa un pulsante compatto", () => {
-    // con le due tacche sul bordo inferiore e lo zoom, la minimappa in basso a sinistra non ci sta
-    const tight = { w: 330, h: 150 };
-    const l = overlayLayout(scenario(tight, null, "bottom", "bottom"));
-    expect(l.minimap.compact || l.minimap.corner !== "bl").toBe(true);
-    // area minuscola: compatta
-    const tiny = overlayLayout(scenario({ w: 260, h: 200 }, null, "left", "right"));
-    expect(tiny.minimap.compact || tiny.minimap.rect === null).toBe(true);
-    if (tiny.minimap.rect) {
-      expect(tiny.minimap.rect.w).toBe(MINIMAP_COMPACT);
-      expect(tiny.minimap.expanded).toMatchObject({ w: MINIMAP_SIZE.w, h: MINIMAP_SIZE.h });
-    }
-  });
-
-  it("il suggerimento sta al centro, in basso o in alto, e non tocca nulla", () => {
-    for (const area of AREAS) {
-      const input = scenario(area, null, "bottom", "top");
-      const l = overlayLayout(input);
-      if (!l.hint) continue;
-      expect(l.hint.h).toBe(HINT_HEIGHT);
-      expect(Math.abs(l.hint.x + l.hint.w / 2 - area.w / 2)).toBeLessThanOrEqual(1);
-    }
-  });
-
-  it("gli ingombri dei widget diventano margini di sicurezza dell'area visibile", () => {
-    const l = overlayLayout(scenario(roomy, null, "left", "right"));
-    const total = l.insets.top + l.insets.right + l.insets.bottom + l.insets.left;
-    expect(total).toBeGreaterThan(0);
-    // i margini non portano via più di metà dell'area in nessuna direzione
-    expect(l.insets.left + l.insets.right).toBeLessThan(roomy.w / 2);
-    expect(l.insets.top + l.insets.bottom).toBeLessThan(roomy.h / 2);
-  });
-});
-```
-
-### `src/etl-canvas/__tests__/panels-actions.test.ts`
-
-242 righe
-
-```ts
-import { describe, expect, it } from "vitest";
-import { createEtlStore, fromSaved, initialState, parseSaved, toSaved } from "../../etl-store";
-import type { EtlStore } from "../../etl-store";
-import { createInteractionController } from "../interaction";
-import type { InteractionController } from "../interaction";
-import { createPanelActions, followInspector } from "../panels/actions";
-import { storeWith } from "./helpers";
-
-const panels = (s: EtlStore) => s.getState().panels;
-const view = (s: EtlStore) => s.getState().view;
-const open = (s: EtlStore) => [panels(s).tools.open, panels(s).insp.open];
-
-describe("aprire, chiudere, spostare un pannello", () => {
-  it("lo stato iniziale è quello del prototipo: cassetta aperta a sinistra, Inspector chiuso a destra", () => {
-    const s = createEtlStore();
-    expect(panels(s)).toEqual({
-      tools: { side: "left", open: true },
-      insp: { side: "right", open: false },
-    });
-  });
-
-  it("le azioni sui pannelli non toccano mai la vista (la tiene visibile keepVisible, a parte)", () => {
-    const s = createEtlStore();
-    const a = createPanelActions(s);
-    a.close("tools");
-    a.open("tools");
-    a.moveTo("tools", "top");
-    a.moveTo("tools", "bottom");
-    a.moveTo("insp", "left");
-    a.open("insp");
-    expect(view(s)).toEqual({ x: 0, y: 0, zoom: 1 });
-  });
-
-  it("trascinare la tacca su ciascuno dei quattro bordi sposta il pannello e lo riapre", () => {
-    for (const side of ["left", "right", "top", "bottom"] as const) {
-      const s = createEtlStore();
-      const a = createPanelActions(s);
-      a.close("tools");
-      a.moveTo("tools", side === "left" ? "right" : "left");
-      a.moveTo("tools", side);
-      expect(panels(s).tools).toEqual({ side, open: true });
-    }
-  });
-
-  it("due pannelli sullo stesso bordo diventano schede: se ne apre uno alla volta; separati, tornano due pannelli", () => {
-    const s = createEtlStore();
-    const a = createPanelActions(s);
-    a.moveTo("insp", "left"); // si apre sullo stesso bordo della cassetta
-    expect(panels(s).insp).toEqual({ side: "left", open: true });
-    expect(panels(s).tools).toEqual({ side: "left", open: false }); // l'altra scheda si chiude
-    a.open("tools");
-    expect(open(s)).toEqual([true, false]);
-    a.moveTo("insp", "right");
-    expect(panels(s).insp.side).toBe("right");
-    expect(panels(s).tools.side).toBe("left");
-  });
-
-  it("un solo pannello aperto alla volta anche su bordi diversi, per ogni combinazione di bordi", () => {
-    const sides = ["left", "right", "top", "bottom"] as const;
-    for (const a of sides) {
-      for (const b of sides) {
-        const s = createEtlStore();
-        const act = createPanelActions(s);
-        act.moveTo("tools", a);
-        act.moveTo("insp", b);
-        act.open("insp"); // sullo stesso bordo di prima il solo spostamento non apre: come il clic sulla tacca
-        expect(open(s)).toEqual([false, true]);
-        act.open("tools");
-        expect(open(s)).toEqual([true, false]);
-        act.open("insp");
-        expect(open(s)).toEqual([false, true]);
-      }
-    }
-  });
-});
-
-describe("persistenza", () => {
-  it("lato, aperto/chiuso e scheda attiva sopravvivono a salvataggio e caricamento", () => {
-    const s = createEtlStore();
-    const a = createPanelActions(s);
-    a.moveTo("insp", "top");
-    a.moveTo("tools", "top");
-    a.open("insp"); // scheda attiva: Inspector, in alto
-    const saved = JSON.stringify(toSaved(s.getState()));
-    const loaded = parseSaved(saved);
-    expect(loaded?.panels).toEqual(panels(s));
-    expect(loaded?.panels).toEqual({
-      tools: { side: "top", open: false },
-      insp: { side: "top", open: true },
-    });
-    expect(fromSaved(toSaved(s.getState()))?.panels).toEqual(panels(s));
-  });
-
-  it("lo stato dei pannelli non è locale ai componenti: un altro store caricato dallo stesso salvataggio ha gli stessi pannelli", () => {
-    const s = createEtlStore();
-    createPanelActions(s).moveTo("tools", "bottom");
-    const copy = createEtlStore({
-      initial: parseSaved(JSON.stringify(toSaved(s.getState()))) ?? initialState(),
-    });
-    expect(copy.getState().panels.tools).toEqual({ side: "bottom", open: true });
-  });
-});
-
-/** Un clic: pressione e rilascio nello stesso punto. */
-function click(c: InteractionController, id: string, shiftKey = false): void {
-  c.down({ kind: "node", id }, { x: 304, y: 226, shiftKey });
-  c.up({ x: 304, y: 226, shiftKey });
-}
-
-function setup() {
-  const store = storeWith();
-  const actions = createPanelActions(store);
-  const controller = createInteractionController(store);
-  const stop = followInspector(store, controller, actions);
-  return { store, actions, controller, stop };
-}
-
-describe("l'Inspector segue la selezione: apertura solo al clic", () => {
-  it("un clic su un nodo apre l'Inspector con il suo nome e chiude la cassetta; deselezionare chiude l'Inspector e riapre la cassetta", () => {
-    const { store, controller, stop } = setup();
-    expect(open(store)).toEqual([true, false]);
-    click(controller, "op-join");
-    expect(store.getState().inspector.nodeId).toBe("op-join");
-    expect(open(store)).toEqual([false, true]);
-    controller.key({ key: "Escape" });
-    expect(store.getState().inspector.nodeId).toBeNull();
-    expect(open(store)).toEqual([true, false]); // memoria di sostituzione
-    stop();
-  });
-
-  it("non apre alla sola pressione", () => {
-    const { store, controller, stop } = setup();
-    controller.down({ kind: "node", id: "op-join" }, { x: 304, y: 226 });
-    expect(open(store)).toEqual([true, false]);
-    controller.up({ x: 304, y: 226 });
-    expect(open(store)).toEqual([false, true]);
-    stop();
-  });
-
-  it("non apre durante né dopo un trascinamento", () => {
-    const { store, controller, stop } = setup();
-    controller.down({ kind: "node", id: "op-join" }, { x: 304, y: 226 });
-    controller.move({ x: 340, y: 260 });
-    expect(open(store)).toEqual([true, false]);
-    controller.up({ x: 340, y: 260 });
-    expect(open(store)).toEqual([true, false]);
-    stop();
-  });
-
-  it("non apre con un riquadro di selezione", () => {
-    const { store, controller, stop } = setup();
-    controller.down({ kind: "background" }, { x: 2, y: 2 });
-    controller.move({ x: 2000, y: 2000 });
-    controller.up({ x: 2000, y: 2000 });
-    expect(store.getState().selection.length).toBeGreaterThan(1);
-    expect(open(store)).toEqual([true, false]);
-    stop();
-  });
-
-  it("non apre con una selezione multipla (Maiusc+clic)", () => {
-    const { store, controller, stop } = setup();
-    click(controller, "op-join", true);
-    expect(open(store)).toEqual([true, false]);
-    click(controller, "op-sort", true);
-    expect(store.getState().selection).toHaveLength(2);
-    expect(open(store)).toEqual([true, false]);
-    stop();
-  });
-
-  it("non apre dopo un rilascio dalla cassetta: creare nodi in serie non fa sparire la cassetta", () => {
-    const { store, controller, stop } = setup();
-    for (let i = 0; i < 3; i++) {
-      controller.hoverExternal({ component: "filter" }, { x: 900 + i * 30, y: 500 });
-      controller.dropExternal({ component: "filter" }, { x: 900 + i * 30, y: 500 });
-      expect(open(store)).toEqual([true, false]);
-    }
-    stop();
-  });
-
-  it("se l'utente lo chiude con un nodo selezionato, resta chiuso finché non si clicca di nuovo", () => {
-    const { store, actions, controller, stop } = setup();
-    click(controller, "op-join");
-    expect(open(store)).toEqual([false, true]);
-    actions.close("insp");
-    expect(open(store)).toEqual([false, false]);
-    click(controller, "op-sort");
-    expect(open(store)).toEqual([false, true]);
-    stop();
-  });
-
-  it("smettere di ascoltare lascia i pannelli come sono", () => {
-    const { store, controller, stop } = setup();
-    stop();
-    click(controller, "op-join");
-    expect(open(store)).toEqual([true, false]);
-  });
-});
-
-describe("memoria di sostituzione", () => {
-  it("se la cassetta era chiusa, la chiusura automatica dell'Inspector non la apre", () => {
-    const { store, actions, controller, stop } = setup();
-    actions.close("tools");
-    click(controller, "op-join");
-    expect(open(store)).toEqual([false, true]);
-    controller.key({ key: "Escape" });
-    expect(open(store)).toEqual([false, false]);
-    stop();
-  });
-
-  it("qualunque azione esplicita sui pannelli azzera la memoria", () => {
-    const explicit: [string, (a: ReturnType<typeof createPanelActions>) => void][] = [
-      ["chiusura dell'Inspector", (a) => a.close("insp")],
-      ["tacca o scheda: apertura dell'Inspector", (a) => a.open("insp")],
-      ["tacca o scheda: apertura della cassetta", (a) => a.open("tools")],
-      ["trascinamento della tacca", (a) => a.moveTo("insp", "top")],
-    ];
-    for (const [name, act] of explicit) {
-      const { store, actions, controller, stop } = setup();
-      click(controller, "op-join"); // la cassetta è stata sostituita: memoria attiva
-      act(actions);
-      const before = open(store);
-      // un Inspector chiuso da deselezione non deve riaprire la cassetta se la memoria è azzerata
-      actions.close("tools");
-      controller.key({ key: "Escape" });
-      expect(open(store), name).toEqual([false, false]);
-      void before;
-      stop();
-    }
-  });
-
-  it("senza azioni esplicite la memoria resta: cassetta → Inspector → cassetta più volte", () => {
-    const { store, controller, stop } = setup();
-    for (let i = 0; i < 3; i++) {
-      click(controller, "op-join");
-      expect(open(store)).toEqual([false, true]);
-      controller.key({ key: "Escape" });
-      expect(open(store)).toEqual([true, false]);
-    }
-    stop();
-  });
-});
-```
-
-### `src/etl-canvas/__tests__/panels-layout.test.ts`
-
-259 righe
-
-```ts
-import { describe, expect, it } from "vitest";
-import type { Card } from "../../etl-core";
-import type { Panels, View } from "../../etl-store";
-import {
-  EXTENT_PAD,
-  MIN_CANVAS_HEIGHT,
-  PANEL_HEIGHT_CAP,
-  cappedPanelHeight,
-  PANEL_SIZE,
-  activeTab,
-  isGrouped,
-  nearestSide,
-  notchHidden,
-  notchOffset,
-  openExtent,
-  panelExtent,
-  panelSize,
-  keepVisible,
-  visibleIds,
-} from "../panels/layout";
-import { createPanelActions } from "../panels/actions";
-import { storeWith } from "./helpers";
-
-const P = (tools: Panels["tools"], insp: Panels["insp"]): Panels => ({ tools, insp });
-const closedSplit = P({ side: "left", open: false }, { side: "right", open: false });
-
-describe("misure dei pannelli", () => {
-  it("separati hanno la misura propria; in gruppo prendono la maggiore", () => {
-    const split = P({ side: "left", open: true }, { side: "right", open: false });
-    expect(isGrouped(split)).toBe(false);
-    expect(panelSize(split, "tools")).toEqual(PANEL_SIZE.tools);
-    expect(panelSize(split, "insp")).toEqual(PANEL_SIZE.insp);
-    const grouped = P({ side: "left", open: true }, { side: "left", open: false });
-    expect(isGrouped(grouped)).toBe(true);
-    const w = Math.max(PANEL_SIZE.tools.w, PANEL_SIZE.insp.w);
-    expect(panelSize(grouped, "tools").w).toBe(w);
-    expect(panelSize(grouped, "insp").w).toBe(w);
-    expect(panelExtent(grouped, "tools")).toBe(w + EXTENT_PAD);
-  });
-
-  it("l'ingombro dei bordi verticali è la larghezza, quello degli orizzontali l'altezza", () => {
-    const top = P({ side: "top", open: true }, { side: "right", open: false });
-    expect(panelExtent(top, "tools")).toBe(PANEL_SIZE.tools.h + EXTENT_PAD);
-    expect(openExtent(top, "top")).toBe(PANEL_SIZE.tools.h + EXTENT_PAD);
-    expect(openExtent(closedSplit, "top")).toBe(0);
-  });
-
-  it("due pannelli come schede in alto o in basso usano l'altezza maggiore dei due", () => {
-    for (const side of ["top", "bottom"] as const) {
-      const grouped = P({ side, open: true }, { side, open: false });
-      const h = Math.max(PANEL_SIZE.tools.h, PANEL_SIZE.insp.h);
-      expect(panelSize(grouped, "tools").h).toBe(h);
-      expect(panelSize(grouped, "insp").h).toBe(h);
-      expect(openExtent(grouped, side)).toBe(h + EXTENT_PAD);
-    }
-  });
-
-  it("l'altezza minima del canvas è una misura positiva, definita in layout.ts", () => {
-    expect(MIN_CANVAS_HEIGHT).toBeGreaterThan(0);
-  });
-
-  it("solo i pannelli aperti sottraggono spazio", () => {
-    expect(openExtent(closedSplit, "left")).toBe(0);
-    expect(
-      openExtent(P({ side: "left", open: true }, { side: "right", open: false }), "left"),
-    ).toBe(PANEL_SIZE.tools.w + EXTENT_PAD);
-  });
-});
-
-describe("spinta e visibilità dei nodi (keepVisible)", () => {
-  const card = (id: string, x: number, y: number): Card => ({ id, x, y }) as Card;
-  const view0 = { x: 0, y: 0, zoom: 1 };
-  const NOINS = { top: 0, right: 0, bottom: 0, left: 0 };
-  const vis = (w: number, h: number, insets = NOINS) => ({ size: { w, h }, insets });
-  /** Nodi sparsi su tutta un'area di 1000 × 600. */
-  const cards = [
-    card("a", 20, 20),
-    card("b", 400, 20),
-    card("c", 880, 20),
-    card("d", 20, 480),
-    card("e", 880, 480),
-    card("m", 450, 250),
-  ];
-  const fullyIn = (ids: readonly string[], v: View, area: ReturnType<typeof vis>) =>
-    ids.every((id) => visibleIds(cards, v, area).includes(id));
-
-  it("se tutto resta visibile la vista non cambia (stessa istanza)", () => {
-    const v = keepVisible(cards, view0, vis(1000, 600), vis(1000, 600));
-    expect(v).toBe(view0);
-    expect(keepVisible(cards, view0, vis(1000, 600), vis(1200, 800))).toBe(view0);
-  });
-
-  it("per ogni bordo i nodi prima interamente visibili restano interamente visibili: nessuno è coperto dal pannello", () => {
-    const prev = vis(1000, 600);
-    // a ciascun bordo il pannello toglie spazio da un lato dell'area
-    const shrink: Record<string, { w: number; h: number }> = {
-      left: { w: 1000 - (PANEL_SIZE.tools.w + EXTENT_PAD), h: 600 },
-      right: { w: 1000 - (PANEL_SIZE.tools.w + EXTENT_PAD), h: 600 },
-      top: { w: 1000, h: 600 - (PANEL_SIZE.tools.h + EXTENT_PAD) },
-      bottom: { w: 1000, h: 600 - (PANEL_SIZE.tools.h + EXTENT_PAD) },
-    };
-    const before = visibleIds(cards, view0, prev);
-    expect(before).toHaveLength(cards.length);
-    for (const side of ["left", "right", "top", "bottom"]) {
-      const next = vis(shrink[side]!.w, shrink[side]!.h);
-      const v = keepVisible(cards, view0, prev, next);
-      expect(v.zoom, side).toBe(1);
-      // l'insieme entra: tutti dentro la nuova area
-      const bbox = { w: 880 + 88 - 20, h: 480 + 88 + 26 - 20 };
-      if (bbox.w <= next.size.w && bbox.h <= next.size.h)
-        expect(fullyIn(before, v, next), side).toBe(true);
-    }
-  });
-
-  it("lo scorrimento è il minimo necessario, solo sull'asse che serve", () => {
-    // il bordo destro avanza di 300: il nodo più a destra (x2 = 968) deve rientrare in 700
-    const v = keepVisible(cards, view0, vis(1000, 600), vis(700, 600));
-    expect(v.y).toBe(0);
-    // l'insieme dei nodi è largo 948 (20→968): non entra in 700, si allinea a sinistra (bordo di partenza)
-    expect(v.x).toBe(-20 + 0); // x1 minimo = 20 → 0
-  });
-
-  it("insieme che entra: scorre del minimo", () => {
-    const few = [card("p", 20, 20), card("q", 440, 20)]; // da x = 20 a x = 528
-    const next = vis(520, 600);
-    const v = keepVisible(few, view0, vis(1000, 600), next);
-    expect(v.x).toBe(-8); // 528 - 520: solo quanto serve
-    expect(v.y).toBe(0);
-    expect(visibleIds(few as Card[], v, next)).toEqual(["p", "q"]);
-  });
-
-  it("insieme troppo largo: si allinea al bordo di partenza (sinistra e alto) e il resto resta raggiungibile", () => {
-    const next = vis(300, 200, { top: 10, right: 0, bottom: 0, left: 30 });
-    const v = keepVisible(cards, view0, vis(1000, 600), next);
-    const boxes = cards.map((c) => ({ x: c.x + v.x, y: c.y + v.y }));
-    expect(Math.min(...boxes.map((b) => b.x))).toBe(30); // inizia dal margine sinistro sicuro
-    expect(Math.min(...boxes.map((b) => b.y))).toBe(10); // e da quello superiore
-    expect(v.zoom).toBe(1);
-  });
-
-  it("il margine di sicurezza tiene fuori i nodi dagli ingombri dei widget", () => {
-    const insets = { top: 0, right: 0, bottom: 100, left: 0 };
-    const near = [card("n", 100, 460)]; // y1 = 460, y2 = 460 + 88 + 26 = 574: dentro 600, fuori da 500
-    expect(visibleIds(near, view0, vis(1000, 600))).toEqual(["n"]);
-    expect(visibleIds(near, view0, vis(1000, 600, insets))).toEqual([]);
-  });
-
-  it("i nodi non interamente visibili prima non fanno scorrere la vista", () => {
-    const off = [card("x", 1500, 100), card("y", 100, 100)];
-    const v = keepVisible(off, view0, vis(1000, 600), vis(800, 600));
-    expect(v).toBe(view0); // y resta dentro; x non contava
-  });
-
-  it("lo zoom non cambia mai", () => {
-    const z = { x: 10, y: 20, zoom: 1.7 };
-    for (const [w, h] of [
-      [300, 300],
-      [700, 400],
-      [1200, 900],
-    ] as const) {
-      expect(keepVisible(cards, z, vis(1000, 600), vis(w, h)).zoom).toBe(1.7);
-    }
-  });
-});
-
-describe("le posizioni nel mondo non cambiano mai (Libero e Organizzato)", () => {
-  for (const mode of ["free", "grid"] as const) {
-    it(`modalità ${mode}: aprire, chiudere e spostare i pannelli e tenere visibili i nodi non tocca il grafo`, () => {
-      const store = storeWith();
-      store.dispatch({ type: "setMode", payload: { mode } });
-      const graph = store.getState().graph;
-      const actions = createPanelActions(store);
-      const prev = { size: { w: 1000, h: 600 }, insets: { top: 0, right: 0, bottom: 0, left: 0 } };
-      for (const side of ["right", "top", "bottom", "left"] as const) {
-        actions.moveTo("tools", side);
-        const st = store.getState();
-        const v = keepVisible(Object.values(st.graph.cards), st.view, prev, {
-          size: { w: 700, h: 300 },
-          insets: prev.insets,
-        });
-        store.dispatch({ type: "setView", payload: { x: v.x, y: v.y } });
-        actions.close("tools");
-      }
-      expect(store.getState().graph).toBe(graph); // stessa istanza: nessun nodo si è mosso
-      expect(store.getState().view.zoom).toBe(1);
-    });
-  }
-});
-
-describe("schede in alto e in basso", () => {
-  it("due pannelli come schede usano l'altezza maggiore dei due, anche per la spinta", () => {
-    for (const side of ["top", "bottom"] as const) {
-      const grouped = P({ side, open: false }, { side, open: true });
-      const h = Math.max(PANEL_SIZE.tools.h, PANEL_SIZE.insp.h);
-      expect(panelSize(grouped, "tools").h).toBe(h);
-      expect(openExtent(grouped, side)).toBe(h + EXTENT_PAD);
-    }
-  });
-});
-
-describe("tacche e schede", () => {
-  it("il bordo più vicino a un punto", () => {
-    const rect = { left: 0, right: 1000, top: 0, bottom: 600 };
-    expect(nearestSide({ x: 10, y: 300 }, rect)).toBe("left");
-    expect(nearestSide({ x: 990, y: 300 }, rect)).toBe("right");
-    expect(nearestSide({ x: 500, y: 12 }, rect)).toBe("top");
-    expect(nearestSide({ x: 500, y: 590 }, rect)).toBe("bottom");
-  });
-
-  it("due tacche sullo stesso bordo si affiancano", () => {
-    expect(notchOffset(closedSplit, "tools")).toBe(0);
-    const same = P({ side: "top", open: false }, { side: "top", open: false });
-    expect(notchOffset(same, "tools")).toBeLessThan(0);
-    expect(notchOffset(same, "insp")).toBeGreaterThan(0);
-  });
-
-  it("la tacca si nasconde se il pannello è aperto o se l'altro, sullo stesso bordo, è aperto (si raggiunge dalla scheda)", () => {
-    expect(notchHidden(closedSplit, "tools")).toBe(false);
-    expect(
-      notchHidden(P({ side: "left", open: true }, { side: "right", open: false }), "tools"),
-    ).toBe(true);
-    const grouped = P({ side: "left", open: true }, { side: "left", open: false });
-    expect(notchHidden(grouped, "insp")).toBe(true);
-    expect(
-      notchHidden(P({ side: "left", open: true }, { side: "right", open: false }), "insp"),
-    ).toBe(false);
-  });
-
-  it("la scheda attiva è il pannello aperto sul bordo", () => {
-    expect(activeTab(closedSplit, "left")).toBeNull();
-    expect(activeTab(P({ side: "left", open: false }, { side: "left", open: true }), "left")).toBe(
-      "insp",
-    );
-  });
-});
-
-describe("tetto all'altezza dei pannelli orizzontali (Fase 6b.1)", () => {
-  it("min(altezza propria, 45% dell'altezza disponibile)", () => {
-    expect(PANEL_HEIGHT_CAP).toBe(0.45);
-    expect(cappedPanelHeight(300, 1000)).toBe(300); // 450 > 300: resta la propria
-    expect(cappedPanelHeight(300, 600)).toBe(270);
-    expect(cappedPanelHeight(206, 438)).toBe(197); // 1280 × 600: 45% di 438, arrotondato per difetto
-    expect(cappedPanelHeight(300, 738)).toBe(300); // 900: il tetto è 332
-    expect(cappedPanelHeight(300, 558)).toBe(251); // 720: il tetto è 251
-    expect(cappedPanelHeight(300, 0)).toBe(0);
-  });
-
-  it("non supera mai il 45% e non è mai negativo", () => {
-    for (const own of [100, 206, 300, 900]) {
-      for (const avail of [0, 100, 438, 558, 738, 2000]) {
-        const h = cappedPanelHeight(own, avail);
-        expect(h).toBeLessThanOrEqual(own);
-        expect(h).toBeLessThanOrEqual(avail * 0.45 + 0.0001);
-        expect(h).toBeGreaterThanOrEqual(0);
-      }
-    }
-  });
-});
-```
-
-### `src/etl-canvas/__tests__/render.test.ts`
-
-186 righe
-
-```ts
-import { describe, expect, it, vi } from "vitest";
-import { EMPTY_SLOT_ICON } from "../../etl-core";
-import { createEtlStore, initialState } from "../../etl-store";
-import type { EtlStore } from "../../etl-store";
-import { prototypeScene } from "../seed";
-import { html, nodeHtml, storeWith } from "./helpers";
-
-function count(markup: string, needle: string): number {
-  return markup.split(needle).length - 1;
-}
-
-function ids(store: EtlStore): string[] {
-  return Object.keys(store.getState().graph.cards);
-}
-
-describe("scena del prototipo", () => {
-  it("rende 5 nodi con le posizioni del prototipo e nessun cavo", () => {
-    const store = storeWith();
-    const markup = html(store);
-    expect(count(markup, "data-node-id=")).toBe(5);
-    expect(count(markup, 'class="ec-link"')).toBe(0);
-    expect(nodeHtml(markup, "ds1")).toContain("left:26px;top:182px");
-    expect(nodeHtml(markup, "op-filter")).toContain("left:260px;top:52px");
-    expect(nodeHtml(markup, "op-join")).toContain("left:260px;top:182px");
-    expect(nodeHtml(markup, "op-sort")).toContain("left:260px;top:338px");
-    expect(nodeHtml(markup, "op-export")).toContain("left:442px;top:338px");
-    expect(markup).toContain("Vendite 2026");
-    expect(markup).toContain("Filtra Righe");
-    expect(markup).toContain("Unisci (Join)");
-  });
-
-  it("classi per tipo di nodo", () => {
-    const markup = html(storeWith());
-    expect(nodeHtml(markup, "ds1")).toMatch(/class="ec-card ec-dataset"/);
-    for (const id of ["op-filter", "op-join", "op-sort", "op-export"]) {
-      expect(nodeHtml(markup, id)).toMatch(/class="ec-card( ec-warn)?"/);
-      expect(nodeHtml(markup, id)).not.toContain("ec-dataset");
-    }
-  });
-
-  it("indicatore ambra sui nodi incompleti, non sul dataset completo", () => {
-    const markup = html(storeWith());
-    expect(nodeHtml(markup, "ds1")).not.toContain("ec-state-dot");
-    for (const id of ["op-filter", "op-join", "op-sort", "op-export"]) {
-      expect(nodeHtml(markup, id)).toContain("ec-state-dot");
-      expect(nodeHtml(markup, id)).toContain("ec-warn");
-    }
-    // il motivo di etl-core è nell'attributo title
-    expect(nodeHtml(markup, "op-join")).toContain("Mancano tabelle in ingresso");
-  });
-
-  it("icona a una colonna per i nodi semplici", () => {
-    expect(nodeHtml(html(storeWith()), "op-filter")).toContain("ec-icon-wrap ec-count-1");
-  });
-});
-
-describe("cavi, output e box combinati", () => {
-  function connected(): { store: EtlStore; ds: string } {
-    const store = storeWith();
-    const r = store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-filter" } });
-    expect(r).toEqual({ ok: true });
-    return { store, ds: "ds1" };
-  }
-
-  it("un cavo per collegamento, con i due capi", () => {
-    const { store } = connected();
-    const links = store.getState().graph.links;
-    expect(links.length).toBeGreaterThanOrEqual(2); // ds → filtro e filtro → output generato
-    const markup = html(store);
-    expect(count(markup, 'class="ec-link"')).toBe(links.length);
-    expect(count(markup, 'r="2.6"')).toBe(links.length * 2);
-    expect(markup).toMatch(/<path class="ec-link" d="M /);
-  });
-
-  it("l'output generato ha le classi dataset e output", () => {
-    const { store } = connected();
-    const out = ids(store).find((id) => store.getState().graph.cards[id]?.isOutput);
-    expect(out).toBeDefined();
-    expect(nodeHtml(html(store), out as string)).toMatch(/class="ec-card ec-dataset ec-output"/);
-  });
-
-  it("output parziale di un join con una sola tabella: due fette, una vuota", () => {
-    const store = storeWith();
-    expect(store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } })).toEqual({
-      ok: true,
-    });
-    const out = ids(store).find((id) => store.getState().graph.cards[id]?.isOutput) as string;
-    const card = store.getState().graph.cards[out];
-    expect(card?.capacity).toBe(2);
-    expect(card?.filled).toBe(1);
-    const node = nodeHtml(html(store), out);
-    expect(node).toContain("ec-split");
-    // le fette non devono usare la classe dello stato vuoto del canvas (position:absolute; inset:0)
-    expect(node).not.toMatch(/class="[^"]*\bec-empty\b/);
-    expect(node).toContain("ec-partial");
-    expect(count(node, "ec-slice ")).toBe(2);
-    expect(count(node, "ec-slice ec-slice-full")).toBe(1);
-    expect(count(node, "ec-slice ec-slice-empty")).toBe(1);
-    // la fetta vuota mostra il simbolo <>
-    const empty = node.slice(node.indexOf("ec-slice ec-slice-empty"));
-    expect(empty).toContain(EMPTY_SLOT_ICON.slice(0, 27));
-    // la fetta piena è la prima (riempita da sinistra)
-    expect(node.indexOf("ec-slice ec-slice-full")).toBeLessThan(
-      node.indexOf("ec-slice ec-slice-empty"),
-    );
-  });
-
-  it("box combinato: classe combined e icone in file da 3", () => {
-    const store = storeWith();
-    expect(
-      store.dispatch({ type: "merge", payload: { dragged: "op-sort", target: "op-filter" } }),
-    ).toEqual({ ok: true });
-    const box = ids(store).find(
-      (id) => (store.getState().graph.cards[id]?.components.length ?? 0) > 1,
-    );
-    expect(box).toBeDefined();
-    const node = nodeHtml(html(store), box as string);
-    expect(node).toContain("ec-combined");
-    expect(node).toContain("ec-icon-wrap ec-count-2");
-  });
-});
-
-describe("selezione, vista, stato vuoto", () => {
-  it("contorno di selezione per i nodi in selection", () => {
-    const store = storeWith();
-    store.dispatch({ type: "select", payload: { ids: ["op-sort"] } });
-    const markup = html(store);
-    expect(nodeHtml(markup, "op-sort")).toContain("ec-selected");
-    expect(nodeHtml(markup, "op-filter")).not.toContain("ec-selected");
-  });
-
-  it("la vista dello store diventa la trasformazione del mondo e la percentuale", () => {
-    const store = storeWith();
-    store.dispatch({ type: "setView", payload: { x: 40, y: -12, zoom: 1.5 } });
-    const markup = html(store);
-    expect(markup).toContain("translate(40px, -12px) scale(1.5)");
-    expect(markup).toContain(">150%<");
-  });
-
-  it("canvas vuoto: stato vuoto centrato, senza minimappa di nodi", () => {
-    const markup = html(createEtlStore({ initial: initialState() }));
-    expect(markup).toContain("ec-empty");
-    expect(markup).toContain("Aggiungi un dataset");
-    expect(count(markup, "ec-mm-node")).toBe(0);
-  });
-
-  it("con nodi lo stato vuoto non c'è; controlli e minimappa ci sono", () => {
-    const markup = html(storeWith());
-    expect(markup).not.toContain("ec-empty");
-    expect(markup).toContain('aria-label="Riduci"');
-    expect(markup).toContain('aria-label="Ingrandisci"');
-    expect(markup).toContain(">Adatta<");
-    expect(count(markup, "ec-mm-node")).toBeGreaterThanOrEqual(5);
-    expect(prototypeScene().graph.links).toHaveLength(0);
-  });
-});
-
-describe("animazioni e rendering lato server", () => {
-  it("il rendering non chiama requestAnimationFrame né matchMedia", () => {
-    const g = globalThis as unknown as Record<string, unknown>;
-    const raf = vi.fn();
-    const mm = vi.fn();
-    g["requestAnimationFrame"] = raf;
-    g["matchMedia"] = mm;
-    try {
-      const store = storeWith();
-      store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-join" } });
-      html(store);
-      expect(raf).not.toHaveBeenCalled();
-      expect(mm).not.toHaveBeenCalled();
-    } finally {
-      delete g["requestAnimationFrame"];
-      delete g["matchMedia"];
-    }
-  });
-
-  it("i cavi rendono anche gli elementi che il motore aggiorna, vuoti e senza movimento", () => {
-    const store = storeWith();
-    store.dispatch({ type: "connect", payload: { from: "ds1", to: "op-filter" } });
-    const markup = html(store);
-    expect(count(markup, 'class="ec-flow"')).toBe(store.getState().graph.links.length);
-    expect(markup).toContain('class="ec-link-ghost"');
-    expect(markup).not.toMatch(/<path class="ec-flow" d="M/);
   });
 });
 ```

@@ -98,6 +98,18 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `docs/visual/fase6b1/tendina-valori-aperta-scuro.png` — binary, 141981 B
 - `docs/visual/fase6b1/tendina-vicino-al-bordo-1280x720-chiaro.png` — binary, 183132 B
 - `docs/visual/fase6b1/tendina-vicino-al-bordo-1280x720-scuro.png` — binary, 156745 B
+- `docs/visual/fase6b11/REPORT.md` — 89 righe (5655 B)
+- `docs/visual/fase6b11/cassetta-a-sinistra-scena-densa-1280x720-chiaro.png` — binary, 163561 B
+- `docs/visual/fase6b11/cassetta-a-sinistra-scena-densa-1280x720-scuro.png` — binary, 128678 B
+- `docs/visual/fase6b11/cassetta-a-sinistra-scena-densa-1440-chiaro.png` — binary, 158644 B
+- `docs/visual/fase6b11/cassetta-a-sinistra-scena-densa-1440-scuro.png` — binary, 132042 B
+- `docs/visual/fase6b11/inspector-in-basso-1280x720-dopo-chiaro.png` — binary, 145955 B
+- `docs/visual/fase6b11/inspector-in-basso-1280x720-dopo-scuro.png` — binary, 105820 B
+- `docs/visual/fase6b11/inspector-in-basso-1440-dopo-chiaro.png` — binary, 132428 B
+- `docs/visual/fase6b11/inspector-in-basso-1440-dopo-scuro.png` — binary, 104015 B
+- `docs/visual/fase6b11/misure.json` — 1859 righe (66516 B)
+- `docs/visual/fase6b11/striscia-apertura-inspector-in-basso.png` — binary, 164873 B
+- `docs/visual/fase6b11/striscia-chiusura-inspector-in-basso.png` — binary, 170578 B
 - `docs/visual/temi/notte-chiaro-canvas.png` — binary, 71351 B
 - `docs/visual/temi/notte-chiaro-soluzioni.png` — binary, 312366 B
 - `docs/visual/temi/notte-scuro-canvas.png` — binary, 54177 B
@@ -126,6 +138,7 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `scripts/e2e-fase5.mjs` — 299 righe (11570 B)
 - `scripts/e2e-fase6a.mjs` — 770 righe (30714 B)
 - `scripts/e2e-fase6b1.mjs` — 939 righe (37660 B)
+- `scripts/e2e-fase6b11.mjs` — 820 righe (31210 B)
 - `scripts/extract-golden.mjs` — 386 righe (13437 B)
 - `scripts/generate-index.mjs` — 114 righe (3872 B)
 - `scripts/generate-snapshot.mjs` — 528 righe (17668 B)
@@ -242,12 +255,14 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `src/components/ui/toggle-group.tsx` — 58 righe (1752 B)
 - `src/components/ui/toggle.tsx` — 43 righe (1534 B)
 - `src/components/ui/tooltip.tsx` — 33 righe (1278 B)
-- `src/etl-canvas/EtlCanvas.tsx` — 564 righe (21036 B)
+- `src/etl-canvas/EtlCanvas.tsx` — 579 righe (21860 B)
 - `src/etl-canvas/Links.tsx` — 79 righe (2285 B)
 - `src/etl-canvas/Minimap.tsx` — 88 righe (2882 B)
 - `src/etl-canvas/NOTE_DIVERGENZE.md` — 173 righe (9676 B)
 - `src/etl-canvas/Node.tsx` — 93 righe (2917 B)
 - `src/etl-canvas/README.md` — 280 righe (32021 B)
+- `src/etl-canvas/__tests__/animator.test.ts` — 267 righe (11819 B)
+- `src/etl-canvas/__tests__/autofit.test.ts` — 413 righe (15136 B)
 - `src/etl-canvas/__tests__/controlbar.test.tsx` — 145 righe (5873 B)
 - `src/etl-canvas/__tests__/drop.test.ts` — 84 righe (3964 B)
 - `src/etl-canvas/__tests__/engine.test.ts` — 354 righe (12327 B)
@@ -265,19 +280,19 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `src/etl-canvas/__tests__/no-reroute.test.ts` — 129 righe (4977 B)
 - `src/etl-canvas/__tests__/overlay-layout.test.ts` — 158 righe (6349 B)
 - `src/etl-canvas/__tests__/panels-actions.test.ts` — 242 righe (9642 B)
-- `src/etl-canvas/__tests__/panels-layout.test.ts` — 259 righe (11271 B)
+- `src/etl-canvas/__tests__/panels-layout.test.ts` — 152 righe (6319 B)
 - `src/etl-canvas/__tests__/render.test.ts` — 186 righe (7859 B)
 - `src/etl-canvas/__tests__/ssr.test.tsx` — 92 righe (3532 B)
 - `src/etl-canvas/__tests__/tokens.test.ts` — 114 righe (4094 B)
 - `src/etl-canvas/__tests__/toolbox-drop.test.ts` — 115 righe (5266 B)
-- `src/etl-canvas/__tests__/toolbox.test.tsx` — 190 righe (8205 B)
+- `src/etl-canvas/__tests__/toolbox.test.tsx` — 193 righe (8322 B)
 - `src/etl-canvas/__tests__/transitions.test.ts` — 142 righe (4778 B)
 - `src/etl-canvas/__tests__/view.test.ts` — 194 righe (7183 B)
 - `src/etl-canvas/actions.ts` — 42 righe (1403 B)
 - `src/etl-canvas/canvas.css` — 658 righe (15433 B)
 - `src/etl-canvas/contrast.ts` — 93 righe (4352 B)
 - `src/etl-canvas/drop.ts` — 94 righe (3394 B)
-- `src/etl-canvas/engine.ts` — 335 righe (9816 B)
+- `src/etl-canvas/engine.ts` — 338 righe (10046 B)
 - `src/etl-canvas/flow.ts` — 180 righe (6740 B)
 - `src/etl-canvas/icons.tsx` — 24 righe (710 B)
 - `src/etl-canvas/index.ts` — 21 righe (812 B)
@@ -307,21 +322,24 @@ Albero completo (esclusi node_modules, dist, build, coverage, .git, cache di bui
 - `src/etl-canvas/model.ts` — 112 righe (3753 B)
 - `src/etl-canvas/motion.tsx` — 10 righe (357 B)
 - `src/etl-canvas/panels/ControlBar.tsx` — 97 righe (3463 B)
-- `src/etl-canvas/panels/Dock.tsx` — 346 righe (12245 B)
-- `src/etl-canvas/panels/EtlWorkspace.tsx` — 175 righe (6465 B)
+- `src/etl-canvas/panels/Dock.tsx` — 381 righe (13783 B)
+- `src/etl-canvas/panels/EtlWorkspace.tsx` — 187 righe (6936 B)
 - `src/etl-canvas/panels/InspectorShell.tsx` — 29 righe (903 B)
 - `src/etl-canvas/panels/Toolbox.tsx` — 166 righe (5554 B)
-- `src/etl-canvas/panels/actions.ts` — 88 righe (3491 B)
+- `src/etl-canvas/panels/actions.ts` — 88 righe (3481 B)
+- `src/etl-canvas/panels/animator.ts` — 321 righe (9410 B)
+- `src/etl-canvas/panels/autoFit.ts` — 281 righe (10599 B)
 - `src/etl-canvas/panels/csv.ts` — 37 righe (1480 B)
+- `src/etl-canvas/panels/dockArea.ts` — 94 righe (3238 B)
 - `src/etl-canvas/panels/families.ts` — 17 righe (581 B)
-- `src/etl-canvas/panels/layout.ts` — 227 righe (8312 B)
+- `src/etl-canvas/panels/layout.ts` — 131 righe (4968 B)
 - `src/etl-canvas/panels/overlayLayout.ts` — 249 righe (9111 B)
-- `src/etl-canvas/panels/panels.css` — 724 righe (15336 B)
+- `src/etl-canvas/panels/panels.css` — 715 righe (15226 B)
 - `src/etl-canvas/panels/ui-icons.tsx` — 113 righe (2620 B)
 - `src/etl-canvas/seed.ts` — 68 righe (2307 B)
 - `src/etl-canvas/tokens.css` — 144 righe (6240 B)
 - `src/etl-canvas/transitions.ts` — 109 righe (3889 B)
-- `src/etl-canvas/view.ts` — 172 righe (5587 B)
+- `src/etl-canvas/view.ts` — 180 righe (6041 B)
 - `src/etl-core/NOTE_DIVERGENZE.md` — 117 righe (5902 B)
 - `src/etl-core/README.md` — 203 righe (22817 B)
 - `src/etl-core/__tests__/csv.test.ts` — 66 righe (2416 B)
