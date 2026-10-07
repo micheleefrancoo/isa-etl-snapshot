@@ -12,7 +12,7 @@ File in questo blocco:
 
 ### `src/etl-canvas/EtlCanvas.tsx`
 
-579 righe
+581 righe
 
 ```tsx
 import {
@@ -213,6 +213,8 @@ export function CanvasSurface(props: CanvasSurfaceProps) {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.code === "Space") return;
+      // Alt+frecce riordinano le righe dell'Inspector: non spostano i nodi selezionati
+      if (e.altKey) return;
       const handled = controller.key({
         key: e.key,
         metaKey: e.metaKey,
@@ -776,7 +778,7 @@ export function Minimap(props: {
 
 ### `src/etl-canvas/NOTE_DIVERGENZE.md`
 
-173 righe
+199 righe
 
 ```md
 # Note di divergenza — etl-canvas (Fase 4b)
@@ -951,6 +953,32 @@ tocca) e chiede sempre conferma.
   e l'area che si preme è di almeno 32 px.
 - **Tetto d'altezza.** I pannelli sui bordi alto e basso non superano il 45%
   dell'altezza dello spazio di lavoro; il contenuto scorre dentro.
+
+## 13. Tacche nell'area sicura (Fase 6b.2, Passo 0)
+
+**Misura.** Con la scena densa della 6b.1.1 (32 nodi che riempiono l'area sicura) la
+distanza tra un nodo richiesto e la tacca di un pannello chiuso era **0 px**: il margine
+dell'area sicura è 24 px e la tacca è larga 24 px, quindi un nodo al limite la toccava
+(nell'immagine `cassetta-a-sinistra-scena-densa-1440` la tacca destra a ridosso di N24).
+Il prototipo non ha la regola (le tacche e i nodi si sovrappongono liberamente).
+
+**Regola.** Ogni tacca visibile riserva ai nodi, lungo il proprio bordo, la sua larghezza
+più `NOTCH_CLEARANCE` (16 px): 40 px invece di 24. Sta in `overlayLayout` (`insets`), quindi
+vale per l'adattamento automatico, per «Adatta» e per le animazioni (stessa funzione,
+`restArea`). Una tacca nascosta (pannello aperto) non riserva nulla. La fascia è lungo
+tutto il bordo, come per minimappa e zoom (la «fascia meno costosa»), non solo dove sta la
+tacca.
+
+**Ripristino.** Con le tacche tra gli ingombri, spostare un pannello su un altro bordo
+cambia gli ingombri anche se l'area non si stringe. Il ripristino della vista (apri →
+chiudi) non richiede più aree _identiche_: vale se le dimensioni coincidono e l'area
+sicura è **almeno altrettanto ampia** (`canRestore`, ingombri uguali o minori su ogni
+lato), perché ogni nodo che era dentro lo è ancora. Se l'area finale è più stretta (per
+esempio un pannello chiuso che lascia la sua tacca sul bordo alto, dove prima non c'era)
+la vista non può tornare identica: si adatta, e i nodi richiesti restano nell'area.
+
+**Verifica.** `e2e-fase6b11.mjs`, prova R7: a riposo ogni nodo richiesto dista dalle
+tacche almeno 16 px (minimo misurato su 34 stati: 16,00 px).
 ```
 
 ### `src/etl-canvas/Node.tsx`

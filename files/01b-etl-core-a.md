@@ -9,6 +9,7 @@ File in questo blocco:
 - `src/etl-core/__tests__/fase11-requisiti.test.ts`
 - `src/etl-core/__tests__/fase11.test.ts`
 - `src/etl-core/__tests__/helpers.ts`
+- `src/etl-core/__tests__/join-tables.test.ts`
 
 ---
 
@@ -137,7 +138,7 @@ deliberato — vedi il commento in testa a `rules/mutations.ts`.
 
 ### `src/etl-core/README.md`
 
-203 righe
+233 righe
 
 ```md
 # etl-core — Fase 1: dominio ETL in TypeScript puro
@@ -284,6 +285,7 @@ funzioni pure).
 | `columnsDomain`, `valuesOutsideDomain`                                                                    | `catalog/params.ts`     | (assenti: dominio di una sola colonna)          | —                    |
 | `ensureParams`                                                                                            | `catalog/params.ts`     | (assente: migrazioni al primo uso)              | —                    |
 | `schemaOf`                                                                                                | `schema/schema.ts`      | `schemaOf`                                      | 2415-2430            |
+| `columnsOutsideSchema`                                                                                    | `schema/schema.ts`      | (assente: una riga con una colonna sparita)     | —                    |
 | `parseCSV`                                                                                                | `data/csv.ts`           | `parseCSV` (su stringa, non `File`)             | 4672-4708            |
 
 **Non portata**: `logicPreview` (prototipo, righe 3386-3392) — superseduta
@@ -323,6 +325,35 @@ domain)`: i valori scelti fuori dal dominio. Cambiare le colonne non azzera i
   riga ha una sola colonna (decisione dell'interfaccia, Fase 6b.1).
 - Salvataggio (`etl-store`): versione del formato 1 → 2; un v1 si carica con
   `ensureParams` su ogni card, un v2 non cambia.
+
+## Colonne assenti dallo schema in ingresso (Fase 6b.2, Passo 0)
+
+`columnsOutsideSchema(columns, schema)`: le colonne elencate che non sono nello
+schema (nell'ordine, senza ripetizioni); con lo schema vuoto o sconosciuto
+nessuna, perché non si sa cosa manchi. `stepMissing(type, par, schema?)` e
+`nodeState` ne tengono conto: una riga di un'operazione a voci multiple con
+una colonna assente è incompleta («Da configurare: …», puntino ambra). Nulla
+si azzera da solo: le colonne restano nei parametri finché l'utente non preme
+«Rimuovi» nell'Inspector.
+
+## Tabelle di riferimento del join
+
+Le tabelle di un passaggio di join stanno nei parametri (`leftTable`,
+`rightTable`; `table` per i passaggi prima di un join) e **non si salvano
+finché l'utente non le sceglie**. Quando mancano nei parametri valgono queste
+regole, e **l'Engine deve rispettarle**:
+
+- la tabella **sinistra** è la **prima** tabella in ingresso;
+- la tabella **destra** è la **seconda** tabella in ingresso (se ce n'è una sola,
+  la prima);
+- «prima» e «seconda» sono nell'ordine di `inputsOf`, cioè l'ordine dei
+  collegamenti nel grafo;
+- un valore salvato che non è più tra i nomi delle tabelle in ingresso si
+  tratta come assente.
+
+Prototipo, righe 3741 e 3747-3774. Il test `__tests__/join-tables.test.ts`
+documenta la regola; l'Inspector la applica per mostrare i valori predefiniti
+senza scriverli.
 
 ## Test
 
@@ -1037,5 +1068,79 @@ export function testIdGenerator(prefix = "id"): () => string {
     return `${prefix}-${n}`;
   };
 }
+```
+
+### `src/etl-core/__tests__/join-tables.test.ts`
+
+68 righe
+
+```ts
+import { describe, expect, it } from "vitest";
+import { defaultParams, inputsOf } from "..";
+import { addLink } from "../model/graph";
+import { buildGraph, dataset, op } from "./helpers";
+
+/**
+ * Regola documentata nel README («Tabelle di riferimento del join»): senza `leftTable` e
+ * `rightTable` nei parametri, la sinistra è la prima tabella in ingresso, la destra la seconda.
+ * «Prima» e «seconda» sono nell'ordine di `inputsOf` (l'ordine dei collegamenti). L'Engine deve
+ * rispettarla. La funzione che risolve i nomi è questa, qui scritta per esteso perché il test la
+ * documenti: se cambia la regola, cambia il test.
+ */
+function resolveJoinTable(
+  stored: unknown,
+  side: "left" | "right",
+  inputNames: readonly string[],
+): string | undefined {
+  if (typeof stored === "string" && inputNames.includes(stored)) return stored;
+  return side === "right" && inputNames[1] ? inputNames[1] : inputNames[0];
+}
+
+function joinGraph(order: readonly ["a" | "b", "a" | "b"]) {
+  let g = buildGraph([
+    dataset("a", { name: "Vendite" }),
+    dataset("b", { name: "Clienti" }),
+    op("j", ["join"], { name: "Join" }),
+  ]);
+  for (const from of order) g = addLink(g, { from, to: "j" });
+  return g;
+}
+
+const namesOf = (g: ReturnType<typeof joinGraph>) =>
+  inputsOf(g, "j").map((l) => g.cards[l.from]?.name ?? "");
+
+describe("tabelle del join assenti nei parametri", () => {
+  it("i parametri predefiniti del join non hanno tabelle: non si salvano finché non si sceglie", () => {
+    const par = defaultParams("join");
+    expect("leftTable" in par).toBe(false);
+    expect("rightTable" in par).toBe(false);
+    expect("table" in par).toBe(false);
+  });
+
+  it("la sinistra è la prima tabella in ingresso, la destra la seconda", () => {
+    const names = namesOf(joinGraph(["a", "b"]));
+    expect(names).toEqual(["Vendite", "Clienti"]);
+    expect(resolveJoinTable(undefined, "left", names)).toBe("Vendite");
+    expect(resolveJoinTable(undefined, "right", names)).toBe("Clienti");
+  });
+
+  it("«prima» e «seconda» seguono l'ordine dei collegamenti, non quello dei nodi", () => {
+    const names = namesOf(joinGraph(["b", "a"]));
+    expect(names).toEqual(["Clienti", "Vendite"]);
+    expect(resolveJoinTable(undefined, "left", names)).toBe("Clienti");
+    expect(resolveJoinTable(undefined, "right", names)).toBe("Vendite");
+  });
+
+  it("con una sola tabella in ingresso la destra ripiega sulla prima", () => {
+    expect(resolveJoinTable(undefined, "right", ["Vendite"])).toBe("Vendite");
+  });
+
+  it("una tabella salvata vale finché è ancora in ingresso; altrimenti si torna al predefinito", () => {
+    const names = ["Vendite", "Clienti"];
+    expect(resolveJoinTable("Clienti", "left", names)).toBe("Clienti");
+    expect(resolveJoinTable("Sparita", "left", names)).toBe("Vendite");
+    expect(resolveJoinTable("Sparita", "right", names)).toBe("Clienti");
+  });
+});
 ```
 

@@ -22,7 +22,7 @@
     },
     {
       "name": "files/01b-etl-core-a.md",
-      "bytes": 52654,
+      "bytes": 57273,
       "files": [
         "src/etl-core/NOTE_DIVERGENZE.md",
         "src/etl-core/README.md",
@@ -30,12 +30,13 @@
         "src/etl-core/__tests__/expressions.test.ts",
         "src/etl-core/__tests__/fase11-requisiti.test.ts",
         "src/etl-core/__tests__/fase11.test.ts",
-        "src/etl-core/__tests__/helpers.ts"
+        "src/etl-core/__tests__/helpers.ts",
+        "src/etl-core/__tests__/join-tables.test.ts"
       ]
     },
     {
       "name": "files/01b-etl-core-b.md",
-      "bytes": 49125,
+      "bytes": 51927,
       "files": [
         "src/etl-core/__tests__/multi-columns.test.ts",
         "src/etl-core/__tests__/mutations.test.ts",
@@ -49,7 +50,7 @@
     },
     {
       "name": "files/01b-etl-core-c.md",
-      "bytes": 53171,
+      "bytes": 53193,
       "files": [
         "src/etl-core/catalog/params.ts",
         "src/etl-core/data/csv.ts",
@@ -61,7 +62,7 @@
     },
     {
       "name": "files/01b-etl-core-d.md",
-      "bytes": 28081,
+      "bytes": 29260,
       "files": [
         "src/etl-core/rules/mutations.ts",
         "src/etl-core/rules/relations.ts",
@@ -163,7 +164,7 @@
     },
     {
       "name": "files/01e-etl-canvas-a.md",
-      "bytes": 40117,
+      "bytes": 41943,
       "files": [
         "src/etl-canvas/EtlCanvas.tsx",
         "src/etl-canvas/Links.tsx",
@@ -174,48 +175,58 @@
     },
     {
       "name": "files/01e-etl-canvas-b.md",
-      "bytes": 59344,
+      "bytes": 51581,
       "files": [
         "src/etl-canvas/README.md",
-        "src/etl-canvas/__tests__/animator.test.ts",
-        "src/etl-canvas/__tests__/autofit.test.ts"
+        "src/etl-canvas/__tests__/animator.test.ts"
       ]
     },
     {
       "name": "files/01e-etl-canvas-c.md",
-      "bytes": 47236,
+      "bytes": 53565,
       "files": [
+        "src/etl-canvas/__tests__/autofit.test.ts",
+        "src/etl-canvas/__tests__/conditions-ui.test.tsx",
+        "src/etl-canvas/__tests__/conditions.test.ts",
         "src/etl-canvas/__tests__/controlbar.test.tsx",
-        "src/etl-canvas/__tests__/drop.test.ts",
+        "src/etl-canvas/__tests__/drop.test.ts"
+      ]
+    },
+    {
+      "name": "files/01e-etl-canvas-d.md",
+      "bytes": 58585,
+      "files": [
         "src/etl-canvas/__tests__/engine.test.ts",
         "src/etl-canvas/__tests__/fake-env.ts",
         "src/etl-canvas/__tests__/flow.test.ts",
         "src/etl-canvas/__tests__/gesture-render.test.ts",
         "src/etl-canvas/__tests__/helpers.ts",
         "src/etl-canvas/__tests__/inspector-logic.test.ts",
-        "src/etl-canvas/__tests__/inspector-rules.test.ts"
-      ]
-    },
-    {
-      "name": "files/01e-etl-canvas-d.md",
-      "bytes": 58838,
-      "files": [
-        "src/etl-canvas/__tests__/inspector.test.tsx",
-        "src/etl-canvas/__tests__/interaction.test.ts",
-        "src/etl-canvas/__tests__/keyboard.test.ts",
-        "src/etl-canvas/__tests__/loop.test.ts",
-        "src/etl-canvas/__tests__/menu.test.ts",
-        "src/etl-canvas/__tests__/no-reroute.test.ts"
+        "src/etl-canvas/__tests__/inspector-rules.test.ts",
+        "src/etl-canvas/__tests__/inspector.test.tsx"
       ]
     },
     {
       "name": "files/01e-etl-canvas-e.md",
-      "bytes": 57300,
+      "bytes": 50180,
       "files": [
-        "src/etl-canvas/__tests__/overlay-layout.test.ts",
+        "src/etl-canvas/__tests__/interaction.test.ts",
+        "src/etl-canvas/__tests__/keyboard.test.ts",
+        "src/etl-canvas/__tests__/loop.test.ts",
+        "src/etl-canvas/__tests__/menu.test.ts",
+        "src/etl-canvas/__tests__/no-reroute.test.ts",
+        "src/etl-canvas/__tests__/overlay-layout.test.ts"
+      ]
+    },
+    {
+      "name": "files/01e-etl-canvas-f.md",
+      "bytes": 58469,
+      "files": [
         "src/etl-canvas/__tests__/panels-actions.test.ts",
         "src/etl-canvas/__tests__/panels-layout.test.ts",
         "src/etl-canvas/__tests__/render.test.ts",
+        "src/etl-canvas/__tests__/reorder.test.ts",
+        "src/etl-canvas/__tests__/segmented.test.tsx",
         "src/etl-canvas/__tests__/ssr.test.tsx",
         "src/etl-canvas/__tests__/tokens.test.ts",
         "src/etl-canvas/__tests__/toolbox-drop.test.ts",
@@ -224,7 +235,7 @@
       ]
     },
     {
-      "name": "files/01e-etl-canvas-f.md",
+      "name": "files/01e-etl-canvas-g.md",
       "bytes": 53931,
       "files": [
         "src/etl-canvas/__tests__/view.test.ts",
@@ -241,54 +252,75 @@
       ]
     },
     {
-      "name": "files/01e-etl-canvas-g.md",
-      "bytes": 55279,
+      "name": "files/01e-etl-canvas-h.md",
+      "bytes": 58599,
       "files": [
         "src/etl-canvas/inspector/ColumnPicker.tsx",
+        "src/etl-canvas/inspector/Columns3.tsx",
+        "src/etl-canvas/inspector/ConditionList.tsx",
+        "src/etl-canvas/inspector/ConnectorSelect.tsx",
         "src/etl-canvas/inspector/ExpandedPanel.tsx",
+        "src/etl-canvas/inspector/ExpressionPreview.tsx",
         "src/etl-canvas/inspector/Field.tsx",
+        "src/etl-canvas/inspector/FilterCondition.tsx",
+        "src/etl-canvas/inspector/GroupFrame.tsx",
         "src/etl-canvas/inspector/Header.tsx",
         "src/etl-canvas/inspector/Inspector.tsx",
-        "src/etl-canvas/inspector/Menu.tsx",
-        "src/etl-canvas/inspector/MultiList.tsx",
-        "src/etl-canvas/inspector/NameInput.tsx",
-        "src/etl-canvas/inspector/StepList.tsx"
+        "src/etl-canvas/inspector/JoinCondition.tsx",
+        "src/etl-canvas/inspector/JoinSettings.tsx"
       ]
     },
     {
-      "name": "files/01e-etl-canvas-h.md",
-      "bytes": 56220,
+      "name": "files/01e-etl-canvas-i.md",
+      "bytes": 58982,
       "files": [
+        "src/etl-canvas/inspector/ListRow.tsx",
+        "src/etl-canvas/inspector/Menu.tsx",
+        "src/etl-canvas/inspector/MultiList.tsx",
+        "src/etl-canvas/inspector/NameInput.tsx",
+        "src/etl-canvas/inspector/Segmented.tsx",
+        "src/etl-canvas/inspector/StepList.tsx",
         "src/etl-canvas/inspector/StyledSelect.tsx",
         "src/etl-canvas/inspector/ValuePicker.tsx",
+        "src/etl-canvas/inspector/conditions.ts"
+      ]
+    },
+    {
+      "name": "files/01e-etl-canvas-j.md",
+      "bytes": 56527,
+      "files": [
         "src/etl-canvas/inspector/copy.ts",
         "src/etl-canvas/inspector/family.ts",
         "src/etl-canvas/inspector/icons.tsx",
         "src/etl-canvas/inspector/inspector.css",
+        "src/etl-canvas/inspector/joinKeys.ts",
+        "src/etl-canvas/inspector/joinSides.ts",
         "src/etl-canvas/inspector/logic.ts",
+        "src/etl-canvas/inspector/masterDetail.ts",
         "src/etl-canvas/inspector/menu.ts",
         "src/etl-canvas/inspector/params.ts",
         "src/etl-canvas/inspector/useActiveSchema.ts"
       ]
     },
     {
-      "name": "files/01e-etl-canvas-i.md",
-      "bytes": 57478,
+      "name": "files/01e-etl-canvas-k.md",
+      "bytes": 55072,
       "files": [
+        "src/etl-canvas/inspector/useReorder.ts",
         "src/etl-canvas/interaction.ts",
         "src/etl-canvas/loop.ts",
         "src/etl-canvas/model.ts",
         "src/etl-canvas/motion.tsx",
         "src/etl-canvas/panels/ControlBar.tsx",
-        "src/etl-canvas/panels/Dock.tsx",
-        "src/etl-canvas/panels/EtlWorkspace.tsx",
-        "src/etl-canvas/panels/InspectorShell.tsx"
+        "src/etl-canvas/panels/Dock.tsx"
       ]
     },
     {
-      "name": "files/01e-etl-canvas-j.md",
-      "bytes": 49373,
+      "name": "files/01e-etl-canvas-l.md",
+      "bytes": 59495,
       "files": [
+        "src/etl-canvas/panels/EtlWorkspace.tsx",
+        "src/etl-canvas/panels/InspectorShell.tsx",
         "src/etl-canvas/panels/Toolbox.tsx",
         "src/etl-canvas/panels/actions.ts",
         "src/etl-canvas/panels/animator.ts",
@@ -301,7 +333,7 @@
       ]
     },
     {
-      "name": "files/01e-etl-canvas-k.md",
+      "name": "files/01e-etl-canvas-m.md",
       "bytes": 36916,
       "files": [
         "src/etl-canvas/panels/panels.css",
@@ -493,51 +525,46 @@
     },
     {
       "name": "files/08-scripts-config-a.md",
-      "bytes": 35254,
+      "bytes": 58702,
       "files": [
-        ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",
         ".gitignore",
         ".prettierignore",
         ".prettierrc",
-        ".vscode/settings.json",
         "components.json",
         "eslint.config.js",
         "package.json",
-        "scripts/.tmpdbg.mjs",
-        "scripts/.tmpdiff.mjs",
-        "scripts/.tmpshot.mjs",
-        "scripts/.tmpshot2.mjs",
         "scripts/check-tokens.mjs",
-        "scripts/e2e-fase5.mjs"
-      ]
-    },
-    {
-      "name": "files/08-scripts-config-b.md",
-      "bytes": 30849,
-      "files": [
+        "scripts/e2e-fase5.mjs",
         "scripts/e2e-fase6a.mjs"
       ]
     },
     {
-      "name": "files/08-scripts-config-c.md",
+      "name": "files/08-scripts-config-b.md",
       "bytes": 37797,
       "files": [
         "scripts/e2e-fase6b1.mjs"
       ]
     },
     {
-      "name": "files/08-scripts-config-d.md",
-      "bytes": 48832,
+      "name": "files/08-scripts-config-c.md",
+      "bytes": 33581,
       "files": [
-        "scripts/e2e-fase6b11.mjs",
+        "scripts/e2e-fase6b11.mjs"
+      ]
+    },
+    {
+      "name": "files/08-scripts-config-d.md",
+      "bytes": 57148,
+      "files": [
+        "scripts/e2e-fase6b2.mjs",
         "scripts/extract-golden.mjs",
         "scripts/generate-index.mjs"
       ]
     },
     {
       "name": "files/08-scripts-config-e.md",
-      "bytes": 56066,
+      "bytes": 57894,
       "files": [
         "scripts/generate-snapshot.mjs",
         "scripts/snapshot-lib.mjs",
@@ -635,16 +662,30 @@
     },
     {
       "name": "files/12-docs-other-b.md",
-      "bytes": 49910,
+      "bytes": 49826,
       "files": [
         "docs/visual/fase6b11/misure.json"
       ]
     },
     {
       "name": "files/12-docs-other-c.md",
-      "bytes": 16953,
+      "bytes": 28011,
       "files": [
         "docs/visual/fase6b11/misure.json"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-d.md",
+      "bytes": 49893,
+      "files": [
+        "docs/visual/fase6b2/misure.json"
+      ]
+    },
+    {
+      "name": "files/12-docs-other-e.md",
+      "bytes": 17123,
+      "files": [
+        "docs/visual/fase6b2/misure.json"
       ]
     },
     {
@@ -663,7 +704,7 @@
     },
     {
       "name": "files/13-misc-b.md",
-      "bytes": 56388,
+      "bytes": 56626,
       "files": [
         "src/theme/__tests__/themes.test.ts",
         "src/theme/boot.ts",
@@ -680,10 +721,6 @@
     }
   ],
   "excluded": [
-    {
-      "file": ".claude/scheduled_tasks.lock",
-      "reason": "out-of-scope-dir"
-    },
     {
       "file": "docs/visual/fase4/cavi-chiaro.png",
       "reason": "binary"
@@ -1033,6 +1070,94 @@
       "reason": "binary"
     },
     {
+      "file": "docs/visual/fase6b2/anteprima-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/anteprima-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/condizioni-filtro-gruppi-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/condizioni-filtro-gruppi-notte-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/condizioni-filtro-gruppi-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/connettore-aperto-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/connettore-aperto-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/inspector-tre-colonne-1280x720-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/inspector-tre-colonne-1280x720-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/inspector-tre-colonne-1440-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/inspector-tre-colonne-1440-notte-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/inspector-tre-colonne-1440-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/inspector-tre-colonne-alto-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/inspector-tre-colonne-alto-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/join-avviso-prestazioni-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/join-avviso-prestazioni-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/join-condizioni-colonna-valore-lista-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/join-condizioni-colonna-valore-lista-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/operazione-a-voci-tre-colonne-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/operazione-a-voci-tre-colonne-scuro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/ordina-riordino-chiaro.png",
+      "reason": "binary"
+    },
+    {
+      "file": "docs/visual/fase6b2/ordina-riordino-scuro.png",
+      "reason": "binary"
+    },
+    {
       "file": "docs/visual/temi/notte-chiaro-canvas.png",
       "reason": "binary"
     },
@@ -1166,6 +1291,7 @@
         "src/etl-core/__tests__/fase11-requisiti.test.ts",
         "src/etl-core/__tests__/fase11.test.ts",
         "src/etl-core/__tests__/helpers.ts",
+        "src/etl-core/__tests__/join-tables.test.ts",
         "src/etl-core/__tests__/multi-columns.test.ts",
         "src/etl-core/__tests__/mutations.test.ts",
         "src/etl-core/__tests__/params.test.ts",
@@ -1271,6 +1397,8 @@
         "src/etl-canvas/README.md",
         "src/etl-canvas/__tests__/animator.test.ts",
         "src/etl-canvas/__tests__/autofit.test.ts",
+        "src/etl-canvas/__tests__/conditions-ui.test.tsx",
+        "src/etl-canvas/__tests__/conditions.test.ts",
         "src/etl-canvas/__tests__/controlbar.test.tsx",
         "src/etl-canvas/__tests__/drop.test.ts",
         "src/etl-canvas/__tests__/engine.test.ts",
@@ -1290,6 +1418,8 @@
         "src/etl-canvas/__tests__/panels-actions.test.ts",
         "src/etl-canvas/__tests__/panels-layout.test.ts",
         "src/etl-canvas/__tests__/render.test.ts",
+        "src/etl-canvas/__tests__/reorder.test.ts",
+        "src/etl-canvas/__tests__/segmented.test.tsx",
         "src/etl-canvas/__tests__/ssr.test.tsx",
         "src/etl-canvas/__tests__/tokens.test.ts",
         "src/etl-canvas/__tests__/toolbox-drop.test.ts",
@@ -1307,24 +1437,39 @@
         "src/etl-canvas/inspector/ActionMenu.tsx",
         "src/etl-canvas/inspector/BlockedNotice.tsx",
         "src/etl-canvas/inspector/ColumnPicker.tsx",
+        "src/etl-canvas/inspector/Columns3.tsx",
+        "src/etl-canvas/inspector/ConditionList.tsx",
+        "src/etl-canvas/inspector/ConnectorSelect.tsx",
         "src/etl-canvas/inspector/ExpandedPanel.tsx",
+        "src/etl-canvas/inspector/ExpressionPreview.tsx",
         "src/etl-canvas/inspector/Field.tsx",
+        "src/etl-canvas/inspector/FilterCondition.tsx",
+        "src/etl-canvas/inspector/GroupFrame.tsx",
         "src/etl-canvas/inspector/Header.tsx",
         "src/etl-canvas/inspector/Inspector.tsx",
+        "src/etl-canvas/inspector/JoinCondition.tsx",
+        "src/etl-canvas/inspector/JoinSettings.tsx",
+        "src/etl-canvas/inspector/ListRow.tsx",
         "src/etl-canvas/inspector/Menu.tsx",
         "src/etl-canvas/inspector/MultiList.tsx",
         "src/etl-canvas/inspector/NameInput.tsx",
+        "src/etl-canvas/inspector/Segmented.tsx",
         "src/etl-canvas/inspector/StepList.tsx",
         "src/etl-canvas/inspector/StyledSelect.tsx",
         "src/etl-canvas/inspector/ValuePicker.tsx",
+        "src/etl-canvas/inspector/conditions.ts",
         "src/etl-canvas/inspector/copy.ts",
         "src/etl-canvas/inspector/family.ts",
         "src/etl-canvas/inspector/icons.tsx",
         "src/etl-canvas/inspector/inspector.css",
+        "src/etl-canvas/inspector/joinKeys.ts",
+        "src/etl-canvas/inspector/joinSides.ts",
         "src/etl-canvas/inspector/logic.ts",
+        "src/etl-canvas/inspector/masterDetail.ts",
         "src/etl-canvas/inspector/menu.ts",
         "src/etl-canvas/inspector/params.ts",
         "src/etl-canvas/inspector/useActiveSchema.ts",
+        "src/etl-canvas/inspector/useReorder.ts",
         "src/etl-canvas/interaction.ts",
         "src/etl-canvas/loop.ts",
         "src/etl-canvas/model.ts",
@@ -1360,7 +1505,9 @@
         "01e-etl-canvas-h.md",
         "01e-etl-canvas-i.md",
         "01e-etl-canvas-j.md",
-        "01e-etl-canvas-k.md"
+        "01e-etl-canvas-k.md",
+        "01e-etl-canvas-l.md",
+        "01e-etl-canvas-m.md"
       ]
     },
     "02-isa-etl": {
@@ -1513,24 +1660,19 @@
     },
     "08-scripts-config": {
       "files": [
-        ".claude/settings.local.json",
         ".devcontainer/devcontainer.json",
         ".gitignore",
         ".prettierignore",
         ".prettierrc",
-        ".vscode/settings.json",
         "components.json",
         "eslint.config.js",
         "package.json",
-        "scripts/.tmpdbg.mjs",
-        "scripts/.tmpdiff.mjs",
-        "scripts/.tmpshot.mjs",
-        "scripts/.tmpshot2.mjs",
         "scripts/check-tokens.mjs",
         "scripts/e2e-fase5.mjs",
         "scripts/e2e-fase6a.mjs",
         "scripts/e2e-fase6b1.mjs",
         "scripts/e2e-fase6b11.mjs",
+        "scripts/e2e-fase6b2.mjs",
         "scripts/extract-golden.mjs",
         "scripts/generate-index.mjs",
         "scripts/generate-snapshot.mjs",
@@ -1598,12 +1740,15 @@
         "docs/visual/fase4b/misure.json",
         "docs/visual/fase6a/posizioni-nodi.json",
         "docs/visual/fase6b11/REPORT.md",
-        "docs/visual/fase6b11/misure.json"
+        "docs/visual/fase6b11/misure.json",
+        "docs/visual/fase6b2/misure.json"
       ],
       "outFiles": [
         "12-docs-other-a.md",
         "12-docs-other-b.md",
-        "12-docs-other-c.md"
+        "12-docs-other-c.md",
+        "12-docs-other-d.md",
+        "12-docs-other-e.md"
       ]
     },
     "13-misc": {
@@ -1658,6 +1803,6 @@
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T11-15-00Z.md",
     "src/canvas/.reports/VALIDATION_REPORT_2026-10-04T14-30-00Z.md"
   ],
-  "inScopeFileCount": 347,
+  "inScopeFileCount": 363,
   "reportFileCount": 22
 }

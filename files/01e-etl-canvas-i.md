@@ -2,1667 +2,1707 @@
 
 File in questo blocco:
 
-- `src/etl-canvas/interaction.ts`
-- `src/etl-canvas/loop.ts`
-- `src/etl-canvas/model.ts`
-- `src/etl-canvas/motion.tsx`
-- `src/etl-canvas/panels/ControlBar.tsx`
-- `src/etl-canvas/panels/Dock.tsx`
-- `src/etl-canvas/panels/EtlWorkspace.tsx`
-- `src/etl-canvas/panels/InspectorShell.tsx`
+- `src/etl-canvas/inspector/ListRow.tsx`
+- `src/etl-canvas/inspector/Menu.tsx`
+- `src/etl-canvas/inspector/MultiList.tsx`
+- `src/etl-canvas/inspector/NameInput.tsx`
+- `src/etl-canvas/inspector/Segmented.tsx`
+- `src/etl-canvas/inspector/StepList.tsx`
+- `src/etl-canvas/inspector/StyledSelect.tsx`
+- `src/etl-canvas/inspector/ValuePicker.tsx`
+- `src/etl-canvas/inspector/conditions.ts`
 
 ---
 
-### `src/etl-canvas/interaction.ts`
+### `src/etl-canvas/inspector/ListRow.tsx`
 
-671 righe
+123 righe
 
-```ts
+```tsx
 /**
- * Il livello dei gesti del canvas: dal puntatore e dalla tastiera ai comandi
- * di etl-store. TypeScript puro, senza DOM né React: gli eventi arrivano già
- * tradotti (coordinate relative all'area, bersaglio classificato), così si
- * può provare con eventi simulati.
+ * Una riga comprimibile di una lista (una condizione, una chiave di join, una
+ * voce di Converti tipo...): intestazione con numero e riassunto dal vivo, il
+ * pulsante per toglierla e il corpo con i campi.
  *
- * Questo livello NON contiene logica di dominio. Ogni gesto chiama una
- * funzione che esiste già:
- *   trascinamento     → store.beginGesture / updateGesture / commitGesture / cancelGesture
- *   esito del rilascio → etl-core `relation`, `insertable`; etl-layout `nodeAt`, `linkAt`
- *   porte             → comando `connect`; geometria `nodePorts`
- *   selezione         → comandi `select` e `inspect`; geometria `nodeRect`
- *   tastiera          → comandi `deleteNodes`, `duplicate`, `moveNodes`, `select`; `undo`/`redo`
- *   anteprima eliminazione → etl-core `nodesRemovedBy`
- * Vedi la tabella nel README.
+ * Nel layout normale (bordi laterali, pannello stretto) la riga si apre e si chiude
+ * sul posto, una per volta. Nel layout a tre colonne (`Columns3`) un clic la rende
+ * ATTIVA: resta nell'elenco, evidenziata, e il suo titolo e il suo corpo compaiono nel
+ * dettaglio (portale); un clic non la comprime.
  */
-import { boxCapacity, inputsOf, insertable, nodesRemovedBy, relation } from "../etl-core";
-import type { Graph, Link } from "../etl-core";
-import {
-  DRAG_THRESHOLD_PX,
-  GRID,
-  linkAt,
-  linkKey,
-  nodeAt,
-  nodePorts,
-  nodeRect,
-} from "../etl-layout";
-import type { LinkRoutes, Point, Rect } from "../etl-layout";
-import type { CommandResult, EtlStore } from "../etl-store";
-import { handleCanvasDrop, previewCanvasDrop } from "./drop";
-import type { CanvasDropPayload, DropPreview } from "./drop";
-import { toWorld } from "./view";
+import { useId } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useMasterDetail } from "./masterDetail";
+import { copy } from "./copy";
+import { ChevronRight, GripIcon, XIcon } from "./icons";
+import type { RowReorder } from "./useReorder";
 
-/** Soglia del riquadro di selezione (prototipo, riga 4064). */
-export const MARQUEE_THRESHOLD = 4;
-/** Passo singolo delle frecce (prototipo, riga 4638: `GRID` con Maiusc, altrimenti 2). */
-export const NUDGE_STEP = 2;
-
-/** Esito mostrato su un nodo durante un trascinamento. */
-export type DragOutcome = "merge" | "link" | "link-reverse" | "displace" | "reject";
-
-/** Dove è iniziato il gesto, classificato dal livello che legge il DOM. */
-export type DownTarget =
-  | { readonly kind: "node"; readonly id: string }
-  | { readonly kind: "port"; readonly id: string; readonly side: PortSide }
-  | { readonly kind: "background" }
-  | { readonly kind: "ignore" };
-
-export type PortSide = "r" | "b" | "l" | "t";
-/** Ordine di `PORTS` (etl-layout): destra, sotto, sinistra, sopra. */
-const PORT_INDEX: Readonly<Record<PortSide, number>> = { r: 0, b: 1, l: 2, t: 3 };
-
-/** Puntatore in coordinate dell'area (pixel dello schermo relativi in alto a sinistra dell'area). */
-export interface PointerInput {
-  readonly x: number;
-  readonly y: number;
-  readonly shiftKey?: boolean;
-  readonly button?: number;
+export interface ListRowProps {
+  /** Identificativo della voce (`lista:indice`), per il layout a tre colonne. */
+  readonly rowId: string;
+  /** «Condizione», «Conversione», ... */
+  readonly noun: string;
+  /** Posizione, da 0. */
+  readonly index: number;
+  /** Il riassunto dal vivo, o `null` se la riga è da configurare. */
+  readonly summary: string | null;
+  /** Aperta sul posto (solo nel layout normale). */
+  readonly open: boolean;
+  readonly onToggle: () => void;
+  /** Senza, il pulsante per togliere la riga non compare (di solito: con una sola riga). */
+  readonly onRemove?: (() => void) | undefined;
+  readonly removeLabel?: string;
+  /** Per riportare il focus su questa riga dopo un'azione che la ridisegna (`data-focus`). */
+  readonly focusKey?: string;
+  /** Riordino con la maniglia (solo nelle liste in cui l'ordine conta). */
+  readonly reorder?: RowReorder | undefined;
+  /** Il nome da dire per la maniglia («Criterio 2»). */
+  readonly gripLabel?: string;
+  /** I campi della riga. */
+  readonly children: ReactNode;
 }
 
-export interface KeyInput {
-  readonly key: string;
-  readonly metaKey?: boolean;
-  readonly ctrlKey?: boolean;
-  readonly shiftKey?: boolean;
-  /** Il fuoco è in un campo di testo: le scorciatoie non si applicano. */
-  readonly typing?: boolean;
-}
-
-export interface ConfirmState {
-  /** «delete» (Canc, Fase 5) o «clear» (Svuota, Fase 6a.2: `ids` è vuoto, tutto il canvas sparisce). */
-  readonly kind?: "delete" | "clear";
-  readonly ids: readonly string[];
-  /** Tutto ciò che sparirebbe: i nodi scelti e gli output a valle (etl-core `nodesRemovedBy`). */
-  readonly removed: readonly string[];
-  readonly title: string;
-  readonly text: string;
-}
-
-export interface InteractionUi {
-  /** Nodi in movimento. */
-  readonly dragging: readonly string[];
-  /** Nodo sotto il puntatore e cosa succederebbe al rilascio. */
-  readonly drop: { readonly id: string; readonly outcome: DragOutcome } | null;
-  /** Chiave (`da|a`) del cavo in cui si inserirebbe la lavorazione. */
-  readonly insertLink: string | null;
-  /** Cavo provvisorio tirato da una porta (coordinate del mondo). */
-  readonly tempLink: { readonly from: Point; readonly to: Point; readonly valid: boolean } | null;
-  /** Riquadro di selezione (coordinate dell'area) e nodi che comprende. */
-  readonly marquee: { readonly rect: Rect; readonly ids: readonly string[] } | null;
-  readonly confirm: ConfirmState | null;
-  readonly hint: string | null;
-}
-
-export const IDLE_UI: InteractionUi = {
-  dragging: [],
-  drop: null,
-  insertLink: null,
-  tempLink: null,
-  marquee: null,
-  confirm: null,
-  hint: null,
-};
-
-type Active =
-  | {
-      readonly kind: "node";
-      readonly id: string;
-      readonly start: Point;
-      readonly shift: boolean;
-      readonly group: readonly string[] | null;
-      readonly canInsert: boolean;
-      moved: boolean;
-      /** Esito mostrato nell'ultimo aggiornamento: è quello applicato al rilascio. */
-      drop: { id: string; outcome: DragOutcome } | null;
-      insertLink: Link | null;
-      /** Percorsi dei cavi prima del gesto (vedi `moveNode`). */
-      startRoutes: LinkRoutes | null;
-    }
-  | {
-      readonly kind: "port";
-      readonly id: string;
-      readonly from: Point;
-      rel: "link" | "link-reverse" | null;
-      target: string | null;
-    }
-  | {
-      /** Pressione su un cavo: un click lo elimina (prototipo, righe 4575-4580). */
-      readonly kind: "link";
-      readonly link: Link;
-      readonly start: Point;
-      moved: boolean;
-    }
-  | {
-      readonly kind: "marquee";
-      readonly start: Point;
-      readonly base: readonly string[];
-      moved: boolean;
-      ids: readonly string[];
-    };
-
-export interface InteractionController {
-  getUi(): InteractionUi;
-  subscribe(listener: () => void): () => void;
-  /** Un gesto è in corso (il livello DOM ascolta i movimenti finché è vero). */
-  isActive(): boolean;
-  /** Barra spaziatrice premuta: navigazione, nessun gesto di selezione. */
-  setSpace(down: boolean): void;
-  down(target: DownTarget, input: PointerInput): boolean;
-  move(input: PointerInput): void;
-  up(input: PointerInput): void;
-  /** Interrompe il gesto (pointercancel, Esc). */
-  cancel(): void;
-  key(input: KeyInput): boolean;
-  confirmDelete(): CommandResult | null;
-  cancelConfirm(): void;
-  /** Elimina i nodi indicati (pulsante × sul nodo): subito se isolati, altrimenti con la conferma di `nodesRemovedBy`. */
-  requestDeleteNodes(ids: readonly string[]): void;
-  /** Chiede conferma per svuotare il canvas (comando `clearAll`); non fa nulla se è già vuoto. */
-  requestClearAll(): void;
-  /**
-   * Un clic su un nodo (rilascio senza trascinamento) che lascia selezionato
-   * solo quel nodo: è l'unico evento che apre l'Inspector. `id` è il nodo.
-   */
-  subscribeClick(listener: (id: string) => void): () => void;
-  /** Punto dell'area → coordinate del mondo (per chi rilascia dalla cassetta). */
-  toWorld(x: number, y: number): Point;
-  /** Rilascio di un nuovo elemento: vedi drop.ts. */
-  handleCanvasDrop(payload: CanvasDropPayload, point: Point): CommandResult;
-  previewCanvasDrop(payload: CanvasDropPayload, point: Point): DropPreview;
-  /**
-   * Un elemento trascinato da fuori (la cassetta) passa sopra il canvas:
-   * mostra gli stessi contorni del trascinamento tra nodi. `point` è in
-   * coordinate dell'area, `null` se il puntatore è fuori dall'area.
-   */
-  hoverExternal(payload: CanvasDropPayload, point: Point | null): void;
-  /** Rilascio dell'elemento trascinato da fuori; `null` se il puntatore è fuori dall'area. */
-  dropExternal(payload: CanvasDropPayload, point: Point | null): CommandResult | null;
-}
-
-function sameIds(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && a.every((id, i) => id === b[i]);
-}
-
-/** Testi della conferma (prototipo, righe 4509-4552). */
-function confirmCopy(
-  ids: readonly string[],
-  removedCount: number,
-): { title: string; text: string } {
-  const downstream = removedCount - ids.length;
-  if (ids.length === 1) {
-    const n = downstream;
-    return {
-      title: "Eliminare il nodo?",
-      text:
-        n > 0
-          ? `Fa parte del flusso. Verranno rimossi i suoi collegamenti e ${n}${n > 1 ? " risultati a valle." : " risultato a valle."}`
-          : "Fa parte del flusso: i suoi collegamenti verranno rimossi.",
-    };
-  }
-  return {
-    title: `Eliminare ${ids.length} nodi?`,
-    text:
-      "Alcuni fanno parte del flusso: verranno rimossi i loro collegamenti" +
-      (downstream > 0
-        ? ` e ${downstream} ${downstream > 1 ? "risultati" : "risultato"} a valle.`
-        : "."),
-  };
-}
-
-export function createInteractionController(store: EtlStore): InteractionController {
-  let ui: InteractionUi = IDLE_UI;
-  let active: Active | null = null;
-  let space = false;
-  const listeners = new Set<() => void>();
-  const clickListeners = new Set<(id: string) => void>();
-
-  const setUi = (patch: Partial<InteractionUi>): void => {
-    const next = { ...ui, ...patch };
-    const keys = Object.keys(next) as (keyof InteractionUi)[];
-    if (keys.every((k) => next[k] === ui[k])) return;
-    ui = next;
-    for (const l of [...listeners]) l();
-  };
-  const graph = (): Graph => store.getState().graph;
-  const worldOf = (p: Point): Point => toWorld(store.getState().view, p.x, p.y);
-  const linkOfKey = (key: string): Link | null =>
-    graph().links.find((l) => linkKey(l) === key) ?? null;
-
-  /** `select` + `inspect`: l'Inspector segue la selezione (nessun pannello, solo stato). */
-  const applySelection = (ids: readonly string[]): void => {
-    const s = store.getState();
-    const unique = Array.from(new Set(ids));
-    if (!sameIds(s.selection, unique)) store.dispatch({ type: "select", payload: { ids: unique } });
-    const keep = s.inspector.nodeId && unique.includes(s.inspector.nodeId);
-    const node = unique.length ? (keep ? s.inspector.nodeId : (unique[0] as string)) : null;
-    if (node !== s.inspector.nodeId || (node !== null && s.inspector.step !== 0 && !keep)) {
-      store.dispatch({ type: "inspect", payload: { node, step: 0 } });
-    }
-  };
-
-  const hintForLink = (g: Graph, dragged: string, over: string): string => {
-    const boxId = relation(g, dragged, over).relation === "link" ? over : dragged;
-    const box = g.cards[boxId];
-    const need = box ? boxCapacity(box) - inputsOf(g, boxId).length : 1;
-    return need > 1
-      ? "Rilascia: sarà la tabella di sinistra, poi servirà la seconda"
-      : "Rilascia per collegare e generare l’output";
-  };
-
-  // --- trascinamento di un nodo ---------------------------------------------------
-
-  const moveNode = (a: Extract<Active, { kind: "node" }>, input: PointerInput): void => {
-    const view = store.getState().view;
-    const sx = input.x - a.start.x;
-    const sy = input.y - a.start.y;
-    if (!a.moved) {
-      if (Math.hypot(sx, sy) < DRAG_THRESHOLD_PX) return;
-      const ids = a.group ?? [a.id];
-      if (a.canInsert) a.startRoutes = store.getRoutes();
-      const r = store.beginGesture({ ids });
-      if (!r.ok) {
-        active = null;
-        return;
-      }
-      a.moved = true;
-      setUi({ dragging: ids });
-    }
-    const dx = sx / view.zoom;
-    const dy = sy / view.zoom;
-    if (a.group) {
-      store.updateGesture({ dx, dy });
-      return;
-    }
-    const p = worldOf(input);
-    const over = nodeAt(graph(), p, a.id);
-    // l'esito si calcola sul grafo PRIMA dell'aggiornamento: l'aggiornamento può spingere via l'altro nodo
-    const rel = over ? relation(graph(), a.id, over) : null;
-    store.updateGesture({ dx, dy, over });
-
-    if (over && rel) {
-      const outcome: DragOutcome = rel.relation ?? "reject";
-      a.drop = { id: over, outcome };
-      a.insertLink = null;
-      setUi({
-        drop: a.drop,
-        insertLink: null,
-        hint:
-          outcome === "merge"
-            ? "Rilascia per fondere le lavorazioni"
-            : outcome === "link" || outcome === "link-reverse"
-              ? hintForLink(graph(), a.id, over)
-              : (rel.displaceReason ?? null),
-      });
-      return;
-    }
-    a.drop = null;
-    // sopra un cavo, senza un nodo sotto: una lavorazione slegata si inserisce nel collegamento
-    let insert: Link | null = null;
-    if (a.canInsert) {
-      // il nodo in mano è un ostacolo e fa scansare i cavi: si prova anche sui percorsi di prima del gesto
-      const key = linkAt(store.getRoutes(), p) ?? (a.startRoutes ? linkAt(a.startRoutes, p) : null);
-      const link = key ? linkOfKey(key) : null;
-      if (link && insertable(graph(), link, a.id)) insert = link;
-    }
-    a.insertLink = insert;
-    setUi({
-      drop: null,
-      insertLink: insert ? linkKey(insert) : null,
-      hint: insert ? "Rilascia per inserire la lavorazione nel collegamento" : null,
-    });
-  };
-
-  const releaseNode = (a: Extract<Active, { kind: "node" }>, input: PointerInput): void => {
-    if (!a.moved) {
-      // un click: Maiusc aggiunge o toglie; altrimenti seleziona solo questo (riga 2069)
-      if (a.shift || input.shiftKey) {
-        const sel = store.getState().selection;
-        applySelection(sel.includes(a.id) ? sel.filter((x) => x !== a.id) : [...sel, a.id]);
-      } else applySelection([a.id]);
-      const sel = store.getState().selection;
-      if (!a.shift && !input.shiftKey && sel.length === 1 && sel[0] === a.id)
-        for (const l of [...clickListeners]) l(a.id);
-      return;
-    }
-    const outcome = a.drop?.outcome;
-    const target =
-      a.drop && (outcome === "merge" || outcome === "link" || outcome === "link-reverse")
-        ? { node: a.drop.id }
-        : a.insertLink
-          ? { link: a.insertLink }
-          : undefined;
-    store.commitGesture(target ? { target } : {});
-  };
-
-  // --- porte ----------------------------------------------------------------------
-
-  const movePort = (a: Extract<Active, { kind: "port" }>, input: PointerInput): void => {
-    const p = worldOf(input);
-    const g = graph();
-    const over = nodeAt(g, p, a.id);
-    const r = over ? relation(g, a.id, over) : null;
-    // dalle porte si collega soltanto: fusione e spostamento diventano rifiuto (riga 3990)
-    const rel = r && (r.relation === "link" || r.relation === "link-reverse") ? r.relation : null;
-    a.rel = rel;
-    a.target = rel ? over : null;
-    setUi({
-      tempLink: { from: a.from, to: p, valid: !!rel },
-      drop: over ? { id: over, outcome: rel ?? "reject" } : null,
-      hint: rel
-        ? "Rilascia per collegare"
-        : over
-          ? (r?.displaceReason ?? "Questi due nodi non si possono collegare")
-          : "Trascina fino al nodo da collegare",
-    });
-  };
-
-  const releasePort = (a: Extract<Active, { kind: "port" }>): void => {
-    if (a.rel && a.target) {
-      if (a.rel === "link")
-        store.dispatch({ type: "connect", payload: { from: a.id, to: a.target } });
-      else store.dispatch({ type: "connect", payload: { from: a.target, to: a.id } });
-    }
-  };
-
-  // --- riquadro di selezione ------------------------------------------------------
-
-  const marqueeRect = (a: Extract<Active, { kind: "marquee" }>, input: PointerInput): Rect => ({
-    x: Math.min(a.start.x, input.x),
-    y: Math.min(a.start.y, input.y),
-    w: Math.abs(input.x - a.start.x),
-    h: Math.abs(input.y - a.start.y),
-  });
-
-  /** Nodi il cui quadrato tocca il riquadro (prototipo, righe 4071-4076: il riquadro è in coordinate dello schermo). */
-  const idsInRect = (rect: Rect): string[] => {
-    const a = worldOf({ x: rect.x, y: rect.y });
-    const b = worldOf({ x: rect.x + rect.w, y: rect.y + rect.h });
-    const out: string[] = [];
-    for (const c of Object.values(graph().cards)) {
-      const r = nodeRect(c);
-      if (r.x + r.w > a.x && r.x < b.x && r.y + r.h > a.y && r.y < b.y) out.push(c.id);
-    }
-    return out;
-  };
-
-  // --- eliminazione ---------------------------------------------------------------
-
-  /** `only`: elimina solo questi nodi (il pulsante × di un nodo); altrimenti la selezione. */
-  const requestDelete = (only?: readonly string[]): void => {
-    const ids = (only ?? store.getState().selection).filter((id) => !!graph().cards[id]);
-    if (!ids.length) return;
-    const attached = graph().links.some((l) => ids.includes(l.from) || ids.includes(l.to));
-    if (!attached) {
-      store.dispatch({ type: "deleteNodes", payload: { ids } });
-      return;
-    }
-    const removed = [...nodesRemovedBy(graph(), ids)];
-    setUi({ confirm: { ids, removed, ...confirmCopy(ids, removed.length) } });
-  };
-
-  const requestClearAll = (): void => {
-    const removed = Object.keys(graph().cards);
-    if (!removed.length) return;
-    setUi({
-      confirm: {
-        kind: "clear",
-        ids: [],
-        removed,
-        title: "Svuotare il canvas?",
-        text: "Eliminare tutti i nodi e i collegamenti? Puoi annullare con Cmd/Ctrl+Z.",
-      },
-    });
-  };
-
-  const nudge = (dx: number, dy: number): void => {
-    const ids = store.getState().selection;
-    if (ids.length) store.dispatch({ type: "moveNodes", payload: { ids, dx, dy } });
-  };
-
-  const finish = (): void => {
-    active = null;
-    setUi({
-      dragging: [],
-      drop: null,
-      insertLink: null,
-      tempLink: null,
-      marquee: null,
-      hint: null,
-    });
-  };
-
-  const controller: InteractionController = {
-    getUi: () => ui,
-    subscribe(l) {
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
-    isActive: () => active !== null,
-    setSpace(down) {
-      space = down;
-    },
-
-    down(target, input) {
-      if (active) return false;
-      if (input.button !== undefined && input.button !== 0) return false;
-      if (target.kind === "ignore") return false;
-      if (ui.confirm) setUi({ confirm: null });
-      if (space) return false;
-      const start = { x: input.x, y: input.y };
-
-      if (target.kind === "port") {
-        const card = graph().cards[target.id];
-        if (!card) return false;
-        const port = nodePorts(card)[PORT_INDEX[target.side]];
-        if (!port) return false;
-        const from = { x: port.anchor.x, y: port.anchor.y };
-        active = { kind: "port", id: target.id, from, rel: null, target: null };
-        setUi({
-          dragging: [target.id],
-          tempLink: { from, to: worldOf(start), valid: false },
-          hint: "Trascina fino al nodo da collegare",
-        });
-        return true;
-      }
-
-      if (target.kind === "node") {
-        const card = graph().cards[target.id];
-        if (!card) return false;
-        const sel = store.getState().selection;
-        const group =
-          sel.includes(target.id) && sel.length > 1
-            ? sel.filter((id) => !!graph().cards[id])
-            : null;
-        const canInsert =
-          !group &&
-          card.kind === "op" &&
-          !graph().links.some((l) => l.from === target.id || l.to === target.id);
-        active = {
-          kind: "node",
-          id: target.id,
-          start,
-          shift: !!input.shiftKey,
-          group,
-          canInsert,
-          moved: false,
-          drop: null,
-          insertLink: null,
-          startRoutes: null,
-        };
-        return true;
-      }
-
-      // su un cavo: niente riquadro, il click lo elimina (nel prototipo il cavo non è "sfondo", riga 4033)
-      const hit = linkAt(store.getRoutes(), worldOf(start));
-      const link = hit ? linkOfKey(hit) : null;
-      if (link) {
-        active = { kind: "link", link, start, moved: false };
-        return true;
-      }
-
-      // sfondo: riquadro di selezione (Maiusc = si aggiunge alla selezione)
-      const base = input.shiftKey ? [...store.getState().selection] : [];
-      active = { kind: "marquee", start, base, moved: false, ids: base };
-      return true;
-    },
-
-    move(input) {
-      const a = active;
-      if (!a) return;
-      if (a.kind === "node") moveNode(a, input);
-      else if (a.kind === "link") {
-        if (Math.hypot(input.x - a.start.x, input.y - a.start.y) >= DRAG_THRESHOLD_PX)
-          a.moved = true;
-      } else if (a.kind === "port") movePort(a, input);
-      else {
-        if (!a.moved && Math.hypot(input.x - a.start.x, input.y - a.start.y) < MARQUEE_THRESHOLD)
-          return;
-        a.moved = true;
-        const rect = marqueeRect(a, input);
-        const ids = Array.from(new Set([...a.base, ...idsInRect(rect)]));
-        a.ids = ids;
-        setUi({ marquee: { rect, ids } });
-      }
-    },
-
-    up(input) {
-      const a = active;
-      if (!a) return;
-      if (a.kind === "node") {
-        releaseNode(a, input);
-      } else if (a.kind === "port") {
-        releasePort(a);
-      } else if (a.kind === "link") {
-        if (!a.moved) store.dispatch({ type: "deleteLink", payload: { link: a.link } });
-      } else if (a.moved) {
-        applySelection(a.ids);
-      } else if (store.getState().selection.length || store.getState().inspector.nodeId) {
-        // un click sul vuoto deseleziona (riga 4584)
-        applySelection([]);
-      }
-      finish();
-    },
-
-    cancel() {
-      const a = active;
-      if (!a) return;
-      if (a.kind === "node" && a.moved) store.cancelGesture();
-      finish();
-    },
-
-    key(e) {
-      if (e.typing) return false;
-      const mod = !!(e.metaKey || e.ctrlKey);
-      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      // con una conferma aperta restano attivi solo Esc (annulla) e il normale uso da tastiera della finestra
-      if (ui.confirm && k !== "Escape") return false;
-      if (!mod) {
-        if (k === "Delete" || k === "Backspace") {
-          if (!store.getState().selection.length) return false;
-          requestDelete();
-          return true;
-        }
-        if (k === "Escape") {
-          if (active) {
-            controller.cancel();
-            return true;
-          }
-          if (ui.confirm) {
-            setUi({ confirm: null });
-            return true;
-          }
-          applySelection([]);
-          return true;
-        }
-        const step = e.shiftKey ? GRID : NUDGE_STEP;
-        const arrows: Record<string, [number, number]> = {
-          ArrowLeft: [-step, 0],
-          ArrowRight: [step, 0],
-          ArrowUp: [0, -step],
-          ArrowDown: [0, step],
-        };
-        const d = arrows[k];
-        if (d && store.getState().selection.length) {
-          nudge(d[0], d[1]);
-          return true;
-        }
-        return false;
-      }
-      if (k === "d") {
-        const r = store.dispatch({
-          type: "duplicate",
-          payload: { ids: store.getState().selection },
-        });
-        if (r.ok) applySelection(store.getState().selection);
-        return true;
-      }
-      if (k === "a") {
-        applySelection(Object.keys(graph().cards));
-        return true;
-      }
-      if (k === "z" && e.shiftKey) {
-        store.redo();
-        return true;
-      }
-      if (k === "z") {
-        store.undo();
-        return true;
-      }
-      if (k === "y") {
-        store.redo();
-        return true;
-      }
-      return false;
-    },
-
-    confirmDelete() {
-      const c = ui.confirm;
-      if (!c) return null;
-      setUi({ confirm: null });
-      if (c.kind === "clear") return store.dispatch({ type: "clearAll", payload: {} });
-      return store.dispatch({ type: "deleteNodes", payload: { ids: c.ids } });
-    },
-    cancelConfirm() {
-      setUi({ confirm: null });
-    },
-    requestClearAll,
-    requestDeleteNodes: (ids) => requestDelete(ids),
-
-    hoverExternal(payload, point) {
-      if (active) return;
-      if (!point) {
-        setUi({ drop: null, insertLink: null, hint: null });
-        return;
-      }
-      const preview = previewCanvasDrop(store, payload, worldOf(point));
-      const outcome = preview.outcome;
-      setUi({
-        drop:
-          preview.nodeId &&
-          (outcome === "merge" || outcome === "link" || outcome === "link-reverse")
-            ? { id: preview.nodeId, outcome }
-            : null,
-        insertLink: preview.linkKey ?? null,
-        hint:
-          outcome === "merge"
-            ? "Rilascia per fondere direttamente nel box"
-            : outcome === "link" || outcome === "link-reverse"
-              ? "Rilascia per collegare"
-              : outcome === "insert"
-                ? "Rilascia per inserire la lavorazione nel collegamento"
-                : null,
-      });
-    },
-    dropExternal(payload, point) {
-      setUi({ drop: null, insertLink: null, hint: null });
-      return point ? handleCanvasDrop(store, payload, worldOf(point)) : null;
-    },
-
-    subscribeClick(l) {
-      clickListeners.add(l);
-      return () => clickListeners.delete(l);
-    },
-
-    toWorld: (x, y) => toWorld(store.getState().view, x, y),
-    handleCanvasDrop: (payload, point) => handleCanvasDrop(store, payload, point),
-    previewCanvasDrop: (payload, point) => previewCanvasDrop(store, payload, point),
-  };
-  return controller;
-}
-```
-
-### `src/etl-canvas/loop.ts`
-
-118 righe
-
-```ts
-/**
- * Un solo ciclo requestAnimationFrame per tutto il canvas. Si ferma
- * quando la scheda è nascosta e quando nessun compito ha nulla da
- * animare; con `prefers-reduced-motion` non parte mai (i compiti
- * mostrano lo stato finale con `settle`). Tutto ciò che tocca il browser
- * passa da `LoopEnv`, quindi nei test si sostituisce.
- */
-
-export interface LoopEnv {
-  raf(cb: () => void): number;
-  caf(id: number): void;
-  /** Orologio in millisecondi (nel browser `performance.now`). */
-  now(): number;
-  hidden(): boolean;
-  reducedMotion(): boolean;
-  onVisibilityChange(cb: () => void): () => void;
-  onReducedMotionChange(cb: () => void): () => void;
-}
-
-export interface Task {
-  /** Disegna il frame a `now`; `true` se ha ancora qualcosa da animare. */
-  frame(now: number): boolean;
-  /** Mostra lo stato finale, senza movimento (movimento ridotto). */
-  settle(): void;
-}
-
-export interface Loop {
-  add(task: Task): () => void;
-  /** C'è (forse) lavoro nuovo: se serve, il ciclo riparte. */
-  wake(): void;
-  running(): boolean;
-  dispose(): void;
-}
-
-export function createLoop(env: LoopEnv): Loop {
-  const tasks = new Set<Task>();
-  let id: number | null = null;
-
-  const cancel = (): void => {
-    if (id !== null) {
-      env.caf(id);
-      id = null;
-    }
-  };
-
-  const settleAll = (): void => {
-    for (const t of [...tasks]) t.settle();
-  };
-
-  const tick = (): void => {
-    id = null;
-    const now = env.now();
-    let busy = false;
-    for (const t of [...tasks]) if (t.frame(now)) busy = true;
-    if (busy && !env.hidden() && !env.reducedMotion()) id = env.raf(tick);
-  };
-
-  const schedule = (): void => {
-    if (id !== null || tasks.size === 0) return;
-    if (env.hidden()) return;
-    if (env.reducedMotion()) {
-      settleAll();
-      return;
-    }
-    id = env.raf(tick);
-  };
-
-  const offVisibility = env.onVisibilityChange(() => {
-    if (env.hidden()) cancel();
-    else schedule();
-  });
-  const offMotion = env.onReducedMotionChange(() => {
-    if (env.reducedMotion()) {
-      cancel();
-      settleAll();
-    } else schedule();
-  });
-
-  return {
-    add(task) {
-      tasks.add(task);
-      schedule();
-      return () => {
-        tasks.delete(task);
-        if (tasks.size === 0) cancel();
-      };
-    },
-    wake: schedule,
-    running: () => id !== null,
-    dispose() {
-      cancel();
-      tasks.clear();
-      offVisibility();
-      offMotion();
-    },
-  };
-}
-
-/** Ambiente reale. Va creato solo nel browser (in un effetto), mai durante il rendering. */
-export function browserEnv(): LoopEnv {
-  const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-  return {
-    raf: (cb) => requestAnimationFrame(() => cb()),
-    caf: (id) => cancelAnimationFrame(id),
-    now: () => performance.now(),
-    hidden: () => document.hidden,
-    reducedMotion: () => mq.matches,
-    onVisibilityChange(cb) {
-      document.addEventListener("visibilitychange", cb);
-      return () => document.removeEventListener("visibilitychange", cb);
-    },
-    onReducedMotionChange(cb) {
-      mq.addEventListener("change", cb);
-      return () => mq.removeEventListener("change", cb);
-    },
-  };
-}
-```
-
-### `src/etl-canvas/model.ts`
-
-112 righe
-
-```ts
-/**
- * Dal grafo di etl-core a ciò che il canvas disegna: classi e icone di ogni
- * nodo, fette di un output parziale. Funzioni pure.
- */
-import { sectionOf } from "../etl-core";
-import type { Card, ComponentId } from "../etl-core";
-
-/** Classe di conteggio per la disposizione delle icone (prototipo `countClass`, righe 982-985). */
-export function countClass(n: number): string {
-  if (n <= 1) return "count-1";
-  if (n === 2) return "count-2";
-  if (n <= 3) return "count-3";
-  if (n <= 6) return "count-6";
-  return "count-many";
-}
-
-/** Un output è "parziale" se attende altre tabelle (riga 1620). */
-export function isPartial(card: Card): boolean {
-  return (
-    card.kind === "dataset" &&
-    card.isOutput === true &&
-    card.capacity !== undefined &&
-    card.capacity > 1 &&
-    (card.filled ?? 0) < card.capacity
-  );
-}
-
-export interface Slice {
-  readonly full: boolean;
-}
-
-/** Le fette di un output parziale, riempite da sinistra (righe 1622-1627). */
-export function slicesOf(card: Card): Slice[] {
-  const n = card.capacity ?? 0;
-  const f = card.filled ?? 0;
-  return Array.from({ length: n }, (_, i) => ({ full: i < f }));
-}
-
-/** Famiglia di operazioni (colore del nodo): una per sezione della cassetta, tranne i dataset. */
-export type OpFamily = "filter" | "transform" | "merge" | "output";
-
-const FAMILY_OF_SECTION: Readonly<Record<string, OpFamily>> = {
-  rows: "filter",
-  xform: "transform",
-  merge: "merge",
-  out: "output",
-};
-
-/** La famiglia di un nodo lavorazione (quella della prima operazione); i dataset non ne hanno. */
-export function familyOf(card: Card): OpFamily | undefined {
-  if (card.kind !== "op") return undefined;
-  const first = card.components[0];
-  const section = first === undefined ? null : sectionOf(first);
-  return section ? FAMILY_OF_SECTION[section.id] : undefined;
-}
-
-export interface NodeView {
-  readonly id: string;
-  readonly card: Card;
-  /** Classi del contenitore del nodo. */
-  readonly className: string;
-  readonly iconClass: string;
-  readonly partial: boolean;
-  readonly slices: readonly Slice[];
-  readonly family: OpFamily | undefined;
-  readonly icons: readonly ComponentId[];
-  readonly warn: string | null;
-  readonly selected: boolean;
-}
-
-/** Classi del nodo (prototipo `createCardEl`, righe 1003-1004, più `partial`, `warn`, `selected`). */
-/** Stato dei gesti che cambia l'aspetto di un nodo (classi `ec-dragging`, `ec-drop-*`, `ec-doomed`). */
-export interface NodeGestureState {
-  readonly dragging?: boolean;
-  readonly drop?: "merge" | "link" | "link-reverse" | "displace" | "reject" | null;
-  readonly doomed?: boolean;
-}
-
-export function nodeView(
-  card: Card,
-  warn: string | null,
-  selected: boolean,
-  gesture: NodeGestureState = {},
-): NodeView {
-  const combined = card.kind === "op" && card.components.length > 1;
-  const partial = isPartial(card);
-  const classes = ["ec-card"];
-  if (card.kind === "dataset") classes.push("ec-dataset");
-  if (card.kind === "dataset" && card.isOutput) classes.push("ec-output");
-  if (combined) classes.push("ec-combined");
-  if (partial) classes.push("ec-partial");
-  if (warn) classes.push("ec-warn");
-  if (selected) classes.push("ec-selected");
-  if (gesture.dragging) classes.push("ec-dragging");
-  if (gesture.drop) classes.push(`ec-drop-${gesture.drop}`);
-  if (gesture.doomed) classes.push("ec-doomed");
-  const icons: ComponentId[] =
-    card.kind === "dataset" && card.isOutput ? ["dataset"] : [...card.components];
-  return {
-    id: card.id,
-    card,
-    className: classes.join(" "),
-    iconClass: partial ? "ec-icon-wrap ec-split" : `ec-icon-wrap ec-${countClass(icons.length)}`,
-    partial,
-    slices: partial ? slicesOf(card) : [],
-    family: familyOf(card),
-    icons,
-    warn,
-    selected,
-  };
-}
-```
-
-### `src/etl-canvas/motion.tsx`
-
-10 righe
-
-```tsx
-import { createContext, useContext } from "react";
-import type { MotionEngine } from "./engine";
-
-/** Il motore delle animazioni, raggiungibile da cavi e nodi per registrare i propri elementi. */
-export const MotionContext = createContext<MotionEngine | null>(null);
-
-export function useMotion(): MotionEngine | null {
-  return useContext(MotionContext);
-}
-```
-
-### `src/etl-canvas/panels/ControlBar.tsx`
-
-97 righe
-
-```tsx
-/**
- * La barra dei controlli: una riga fissa sopra l'area del canvas, dentro lo
- * spazio di lavoro (non in sovrimpressione ai nodi). Interruttore
- * Libero/Organizzato (`setMode`), Riordina (`autoLayout`), Annulla e
- * Ripristina (disabilitati senza cronologia), Svuota (`clearAll`, sempre con
- * conferma). Nel prototipo i pulsanti «Funzionalità» e «Reimposta» non sono
- * portati: tutte le funzionalità sono sempre attive.
- */
-import type { Size } from "../../etl-layout";
-import type { EtlStore } from "../../etl-store";
-import { useEtlState } from "../../etl-store/react";
-import type { InteractionController } from "../interaction";
-import { RedoIcon, ReorderIcon, TrashIcon, UndoIcon } from "./ui-icons";
-
-export function ControlBar(props: {
-  store: EtlStore;
-  controller: InteractionController;
-  /** Area del canvas: serve a «Riordina»; `null` finché non è misurata. */
-  area: Size | null;
-}) {
-  const { store, controller, area } = props;
-  // ogni cambio di stato (anche annulla e ripristina) ridisegna la barra
-  const state = useEtlState((s) => s, store);
-  const hasNodes = Object.keys(state.graph.cards).length > 0;
-  const canUndo = store.canUndo();
-  const canRedo = store.canRedo();
-
-  return (
-    <div className="ec-bar" role="toolbar" aria-label="Controlli del canvas" data-testid="ec-bar">
-      <div className="ec-seg" role="group" aria-label="Disposizione dei nodi">
-        <button
-          type="button"
-          className={"ec-seg-btn" + (state.mode === "free" ? " ec-on" : "")}
-          aria-pressed={state.mode === "free"}
-          title="Libero: i nodi stanno dove li lasci"
-          onClick={() => store.dispatch({ type: "setMode", payload: { mode: "free" } })}
-        >
-          Libero
-        </button>
-        <button
-          type="button"
-          className={"ec-seg-btn" + (state.mode === "grid" ? " ec-on" : "")}
-          aria-pressed={state.mode === "grid"}
-          title="Organizzato: i nodi si allineano alla griglia"
-          onClick={() => store.dispatch({ type: "setMode", payload: { mode: "grid" } })}
-        >
-          Organizzato
-        </button>
-      </div>
-      <button
-        type="button"
-        className="ec-bar-btn"
-        title="Riordina i nodi"
-        disabled={!hasNodes || !area}
-        onClick={() => {
-          if (area) store.dispatch({ type: "autoLayout", payload: { viewport: area } });
-        }}
-      >
-        <ReorderIcon />
-        <span>Riordina</span>
-      </button>
-      <span className="ec-bar-sep" aria-hidden="true" />
-      <button
-        type="button"
-        className="ec-bar-btn ec-bar-icon"
-        aria-label="Annulla"
-        title="Annulla (Cmd/Ctrl+Z)"
-        disabled={!canUndo}
-        onClick={() => store.undo()}
-      >
-        <UndoIcon />
-      </button>
-      <button
-        type="button"
-        className="ec-bar-btn ec-bar-icon"
-        aria-label="Ripristina"
-        title="Ripristina (Cmd/Ctrl+Maiusc+Z)"
-        disabled={!canRedo}
-        onClick={() => store.redo()}
-      >
-        <RedoIcon />
-      </button>
-      <span className="ec-bar-sep" aria-hidden="true" />
-      <button
-        type="button"
-        className="ec-bar-btn ec-bar-icon ec-bar-danger"
-        aria-label="Svuota il canvas"
-        title="Svuota il canvas: elimina tutti i nodi e i collegamenti"
-        disabled={!hasNodes}
-        onClick={() => controller.requestClearAll()}
-      >
-        <TrashIcon />
-      </button>
-    </div>
-  );
-}
-```
-
-### `src/etl-canvas/panels/Dock.tsx`
-
-381 righe
-
-```tsx
-/**
- * Il guscio comune dei pannelli: quattro approdi attorno al canvas (sopra,
- * sinistra, destra, sotto), tacca quando un pannello è chiuso, trascinamento
- * della tacca su un altro bordo, schede condivise quando due pannelli stanno
- * sullo stesso bordo (prototipo, righe 4756-4905, CSS 211-346).
- *
- * Lo stato (lato, aperto/chiuso, scheda attiva = il pannello aperto sul
- * bordo) è in etl-store; qui si legge e si cambia solo con i comandi
- * `setPanel`/`setView` (vedi actions.ts). Niente accesso a window/document
- * durante il rendering: gli ascoltatori nascono nei gestori degli eventi.
- */
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import type { Size } from "../../etl-layout";
-import type { EtlStore, PanelKey, Panels, Side } from "../../etl-store";
-import { useEtlState } from "../../etl-store/react";
-import type { InteractionController } from "../interaction";
-import type { Loop } from "../loop";
-import type { PanelActions } from "./actions";
-import { createDockAnimator } from "./animator";
-import type { DockAnimator, GhostView } from "./animator";
-import { overlayFor } from "./dockArea";
-import { ControlBar } from "./ControlBar";
-import {
-  MIN_CANVAS_HEIGHT,
-  cappedPanelHeight,
-  PANEL_KEYS,
-  PANEL_LABEL,
-  PANEL_NAME,
-  SIDES,
-  SIDE_NAME,
-  isGrouped,
-  isVertical,
-  nearestSide,
-  notchHidden,
-  notchOffset,
-  panelSize,
-} from "./layout";
-import type { OverlayLayout } from "./overlayLayout";
-import "./panels.css";
-import { InspectorIcon, ToolsIcon } from "./ui-icons";
-
-/** Soglia prima che la tacca si stacchi dal bordo (prototipo, riga 4884). */
-const NOTCH_DRAG_THRESHOLD = 5;
-/** Durata della dissolvenza del contenuto al cambio di scheda (riga 4809). */
-const TAB_IN_MS = 280;
-
-const TAB_ICON: Record<PanelKey, () => ReactNode> = {
-  tools: () => <ToolsIcon />,
-  insp: () => <InspectorIcon />,
-};
-
-export interface DockLayoutProps {
-  readonly store: EtlStore;
-  readonly actions: PanelActions;
-  /** Controller dei gesti: la barra dei controlli chiede la conferma di «Svuota» al canvas. */
-  readonly controller: InteractionController;
-  /** Il canvas, al centro; riceve la disposizione dei widget in sovrimpressione, quando l'area è misurata. */
-  readonly canvas: (overlay: OverlayLayout | undefined, notice: string | null) => ReactNode;
-  /** Il ciclo di animazione condiviso con il canvas: l'animatore dei pannelli e della vista ci si aggiunge. */
-  readonly loop: Loop;
-  /** Contenuto di ciascun pannello; `side` è il bordo corrente, `horiz` l'orientamento. */
-  readonly content: Readonly<Record<PanelKey, (ctx: { side: Side; horiz: boolean }) => ReactNode>>;
-  /** Altro da disegnare sopra lo spazio di lavoro (per esempio l'anteprima del trascinamento). */
-  readonly overlay?: ReactNode;
-}
-
-interface NotchDrag {
-  readonly key: PanelKey;
-  readonly x: number;
-  readonly y: number;
-  readonly side: Side;
-}
-
-export function DockLayout(props: DockLayoutProps) {
-  const { store, actions, controller, canvas, content, overlay, loop } = props;
-  const panels = useEtlState((s) => s.panels, store);
-  const centerRef = useRef<HTMLDivElement>(null);
-  const workspaceRef = useRef<HTMLDivElement>(null);
-  // altezza dello spazio di lavoro: da qui il tetto all'altezza dei pannelli orizzontali
-  const [workspaceH, setWorkspaceH] = useState(0);
-  useEffect(() => {
-    const el = workspaceRef.current;
-    if (!el) return;
-    const measure = () => setWorkspaceH(el.clientHeight);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  // misura dell'area del canvas (la riga centrale): da qui la disposizione dei widget e la visibilità dei nodi
-  const [area, setArea] = useState<Size | null>(null);
-  useEffect(() => {
-    const el = centerRef.current;
-    if (!el) return;
-    const measure = () => {
-      const w = el.clientWidth;
-      const h = el.clientHeight;
-      setArea((prev) => (prev && prev.w === w && prev.h === h ? prev : { w, h }));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  const layout = useMemo(() => (area ? overlayFor(panels, area) : undefined), [area, panels]);
-  // un solo orologio: l'animatore imposta a ogni frame l'apertura dei pannelli e la vista
-  const [animator] = useState<DockAnimator>(() =>
-    createDockAnimator({
-      store,
-      loop,
-      metrics: () => {
-        const ws = workspaceRef.current;
-        if (!ws) return null;
-        const bar = ws.querySelector(".ec-bar-row");
-        return {
-          w: ws.clientWidth,
-          h: ws.clientHeight,
-          barH: bar?.getBoundingClientRect().height ?? 0,
-        };
-      },
-    }),
-  );
-  useEffect(() => animator.start(), [animator]);
-  const dock = useSyncExternalStore(animator.subscribe, animator.getSnapshot, animator.getSnapshot);
-  // l'area misurata a riposo cambia (finestra, tetto d'altezza): la vista segue senza animazione
-  useEffect(() => {
-    if (!area || !layout) return;
-    // `area` è intera (clientWidth) e può essere un valore di un frame fa: l'animatore riceve la misura di adesso, frazionaria come quella calcolata
-    const r = centerRef.current?.getBoundingClientRect();
-    animator.onMeasure({ size: r ? { w: r.width, h: r.height } : area, insets: layout.insets });
-  }, [area, layout, animator]);
-  const [drag, setDrag] = useState<NotchDrag | null>(null);
-  // cambiare scheda sostituisce il contenuto sul posto: niente animazione di larghezza, solo una dissolvenza
-  const [tabIn, setTabIn] = useState<PanelKey | null>(null);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const cleanup = useRef<(() => void) | null>(null);
-
-  useEffect(
-    () => () => {
-      timers.current.forEach(clearTimeout);
-      cleanup.current?.();
-    },
-    [],
-  );
-
-  const switchTab = (key: PanelKey) => {
-    animator.snapNext();
-    actions.open(key);
-    setTabIn(key);
-    timers.current.push(setTimeout(() => setTabIn(null), TAB_IN_MS));
-  };
-
-  const onNotchPointerDown = (key: PanelKey, e: ReactPointerEvent<HTMLButtonElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const sx = e.clientX;
-    const sy = e.clientY;
-    let moved = false;
-    const sideAt = (cx: number, cy: number): Side => {
-      const r = centerRef.current?.getBoundingClientRect();
-      return r ? nearestSide({ x: cx, y: cy }, r) : panels[key].side;
-    };
-    const move = (ev: PointerEvent) => {
-      if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < NOTCH_DRAG_THRESHOLD) return;
-      moved = true;
-      setDrag({ key, x: ev.clientX, y: ev.clientY, side: sideAt(ev.clientX, ev.clientY) });
-    };
-    const stop = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", abort);
-      cleanup.current = null;
-      setDrag(null);
-    };
-    const up = (ev: PointerEvent) => {
-      stop();
-      // un click apre soltanto
-      if (!moved) {
-        actions.open(key);
-        return;
-      }
-      const side = sideAt(ev.clientX, ev.clientY);
-      if (side === store.getState().panels[key].side) actions.open(key);
-      else actions.moveTo(key, side);
-    };
-    const abort = () => stop();
-    cleanup.current = abort;
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", abort);
-  };
+export function ListRow(props: ListRowProps) {
+  const { rowId, noun, index, summary } = props;
+  const md = useMasterDetail();
+  const bodyId = useId();
+  const active = md ? md.active === rowId : props.open;
+  const label = `${noun} ${index + 1}`;
+  const sum = summary ?? copy.rowTodo;
 
   return (
     <div
-      ref={workspaceRef}
-      className="ec-workspace"
-      data-testid="ec-workspace"
-      // l'area di lavoro ha l'altezza del contenitore: i pannelli in alto e in basso la sottraggono al canvas
-      style={{ "--ec-canvas-min-h": `${MIN_CANVAS_HEIGHT}px` } as CSSProperties}
+      className={
+        "ei-row" + (active ? " ei-open" : "") + (props.reorder?.dragging ? " ei-dragging" : "")
+      }
+      data-row={index}
+      data-active={md && active ? "" : undefined}
+      style={props.reorder?.style as CSSProperties | undefined}
     >
-      {SIDES.map((side) => (
-        <div key={side} className={`ec-dock ec-dock-${side}`} data-dock={side}>
-          {PANEL_KEYS.filter((k) => panels[k].side === side).map((k) => (
-            <PanelShell
-              key={k}
-              pkey={k}
-              panels={panels}
-              workspaceH={workspaceH}
-              animator={animator}
-              tabIn={tabIn === k}
-              onSwitch={switchTab}
-            >
-              {content[k]({ side, horiz: !isVertical(side) })}
-            </PanelShell>
-          ))}
-          {dock.ghosts
-            .filter((g) => g.side === side)
-            .map((g) => (
-              <GhostShell key={g.id} ghost={g} workspaceH={workspaceH} animator={animator} />
-            ))}
-        </div>
-      ))}
-      <div className="ec-bar-row">
-        <ControlBar store={store} controller={controller} area={area} />
-      </div>
-      <div
-        className="ec-center"
-        ref={centerRef}
-        // ingombri dei widget (alto, destra, basso, sinistra): le verifiche nel browser leggono l'area sicura da qui
-        data-insets={
-          layout
-            ? [
-                layout.insets.top,
-                layout.insets.right,
-                layout.insets.bottom,
-                layout.insets.left,
-              ].join(",")
-            : undefined
-        }
-      >
-        {canvas(layout, dock.notice)}
-        <div
-          className={"ec-edge-hint" + (drag ? ` ec-on ec-e-${drag.side}` : "")}
-          data-testid="ec-edge-hint"
-        />
-        {PANEL_KEYS.map((k) => {
-          const dragging = drag?.key === k;
-          const hidden = !dragging && notchHidden(panels, k);
-          const side = panels[k].side;
-          const rect = layout?.notches[k];
-          const pos: CSSProperties = dragging
-            ? { left: (drag?.x ?? 0) - 17, top: (drag?.y ?? 0) - 17 }
-            : rect
-              ? { left: rect.x, top: rect.y }
-              : {};
-          return (
-            <button
-              key={k}
-              type="button"
-              className={
-                `ec-notch ec-notch-${side}` +
-                (hidden ? " ec-hidden" : "") +
-                (dragging ? " ec-dragging" : "")
-              }
-              style={pos}
-              data-notch={k}
-              tabIndex={hidden ? -1 : 0}
-              aria-hidden={hidden || undefined}
-              aria-label={`${PANEL_LABEL[k]}: clicca per aprire, trascina per spostarlo`}
-              onPointerDown={(e) => onNotchPointerDown(k, e)}
-              onClick={(e) => {
-                e.stopPropagation();
-                // da tastiera (detail 0) il clic apre; col puntatore ha già aperto il rilascio
-                if (e.detail === 0) actions.open(k);
-              }}
-            >
-              {TAB_ICON[k]()}
-            </button>
-          );
-        })}
-        {drag && layout?.hint ? (
-          <div
-            className="ec-hint"
-            role="status"
-            style={{
-              left: layout.hint.x,
-              top: layout.hint.y,
-              width: layout.hint.w,
-              height: layout.hint.h,
-            }}
+      <div className="ei-row-head">
+        {props.reorder ? (
+          <button
+            type="button"
+            className="ei-icon-btn ei-row-grip"
+            aria-label={copy.rowGrip(props.gripLabel ?? label)}
+            aria-keyshortcuts={copy.rowGripKeys}
+            title={copy.rowReorderHelp}
+            {...props.reorder.gripProps}
           >
-            Rilascia per agganciare {PANEL_NAME[drag.key]} al bordo {SIDE_NAME[drag.side]}
-          </div>
+            <GripIcon />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="ei-row-toggle"
+          data-focus={props.focusKey}
+          aria-expanded={md ? undefined : active}
+          aria-current={md && active ? "true" : undefined}
+          aria-controls={!md && active ? bodyId : undefined}
+          onClick={() => (md ? md.setActive(rowId) : props.onToggle())}
+        >
+          <span className="ei-row-chev">
+            <ChevronRight />
+          </span>
+          <span className="ei-row-n">{label}</span>
+          <span className={"ei-row-sum" + (summary ? "" : " ei-todo")} title={sum}>
+            {sum}
+          </span>
+        </button>
+        {props.onRemove ? (
+          <button
+            type="button"
+            className="ei-icon-btn"
+            aria-label={props.removeLabel ?? copy.rowRemove}
+            onClick={props.onRemove}
+          >
+            <XIcon />
+          </button>
         ) : null}
       </div>
-      {overlay}
+      {md ? (
+        active && md.head && md.body ? (
+          <>
+            {createPortal(
+              <>
+                <div className="ei-md-title">{label}</div>
+                <div className={"ei-md-sum" + (summary ? "" : " ei-todo")}>{sum}</div>
+              </>,
+              md.head,
+            )}
+            {createPortal(<div className="ei-md-fields">{props.children}</div>, md.body)}
+          </>
+        ) : null
+      ) : active ? (
+        <div id={bodyId} className="ei-row-body">
+          {props.children}
+        </div>
+      ) : null}
     </div>
   );
 }
+```
 
-/** Un pannello nel suo approdo: si apre e si chiude cedendo spazio al canvas; in gruppo mostra le schede. */
-function PanelShell(props: {
-  pkey: PanelKey;
-  panels: Panels;
-  workspaceH: number;
-  animator: DockAnimator;
-  tabIn: boolean;
-  onSwitch: (key: PanelKey) => void;
-  children: ReactNode;
-}) {
-  const { pkey, panels, animator, tabIn, onSwitch } = props;
-  const { side, open } = panels[pkey];
-  const grouped = isGrouped(panels);
-  const size = panelSize(panels, pkey);
-  // sui bordi orizzontali l'altezza ha un tetto (45% dello spazio di lavoro); il contenuto scorre dentro
-  const ph =
-    isVertical(side) || props.workspaceH <= 0
-      ? size.h
-      : cappedPanelHeight(size.h, props.workspaceH);
-  const cls = [
-    "ec-panel",
-    `ec-side-${side}`,
-    open ? "ec-open" : "",
-    grouped ? "ec-grouped" : "",
-    isVertical(side) ? "" : "ec-horiz",
-    tabIn ? "ec-tab-in" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-  return (
-    <aside
-      className={cls}
-      data-panel={pkey}
-      data-side={side}
-      aria-label={PANEL_LABEL[pkey]}
-      inert={!open}
-      ref={(el) => animator.register(pkey, el)}
-      style={{ "--pw": `${size.w}px`, "--ph": `${ph}px` } as CSSProperties}
+### `src/etl-canvas/inspector/Menu.tsx`
+
+178 righe
+
+```tsx
+/**
+ * Il menu dell'Inspector: sempre un nostro componente (mai un menu del
+ * sistema), in un portale sul corpo della pagina, posizionato da `placeMenu`
+ * (menu.ts). Si chiude con Esc (a cura di chi lo usa), clic fuori, scorrimento
+ * del pannello e ridimensionamento della finestra.
+ */
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
+import { createPortal } from "react-dom";
+import { placeMenu } from "./menu";
+import type { MenuPlacement } from "./menu";
+
+const PORTAL_ID = "ei-portal";
+
+/** Il contenitore dei menu, creato alla prima richiesta (solo nel browser). */
+function portalRoot(): HTMLElement {
+  let el = document.getElementById(PORTAL_ID);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = PORTAL_ID;
+    el.className = "ei-portal";
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+/** Altezza naturale del menu: il suo riempimento più i figli (l'elenco scorrevole conta per intero, fino al suo tetto). */
+function naturalHeight(menu: HTMLElement): number {
+  const cs = getComputedStyle(menu);
+  let h =
+    parseFloat(cs.paddingTop) +
+    parseFloat(cs.paddingBottom) +
+    parseFloat(cs.borderTopWidth) +
+    parseFloat(cs.borderBottomWidth);
+  for (const kid of Array.from(menu.children) as HTMLElement[]) {
+    if (kid.dataset["scroll"] !== undefined) {
+      const cap = parseFloat(getComputedStyle(kid).maxHeight);
+      h += Number.isFinite(cap) ? Math.min(kid.scrollHeight, cap) : kid.scrollHeight;
+    } else h += kid.offsetHeight;
+  }
+  return Math.ceil(h);
+}
+
+/** Il campo è ancora visibile: dentro la finestra e dentro ogni contenitore che lo ritaglia o lo fa scorrere. */
+function isInView(el: HTMLElement): boolean {
+  const r = el.getBoundingClientRect();
+  if (r.bottom <= 0 || r.top >= window.innerHeight || r.right <= 0 || r.left >= window.innerWidth) return false;
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const o = getComputedStyle(p);
+    if (!/(auto|scroll|hidden|clip)/.test(o.overflowY + o.overflowX)) continue;
+    const b = p.getBoundingClientRect();
+    if (r.bottom <= b.top || r.top >= b.bottom || r.right <= b.left || r.left >= b.right) return false;
+  }
+  return true;
+}
+
+export interface MenuProps {
+  /** L'elemento a cui si ancora (il campo). */
+  readonly anchor: RefObject<HTMLElement | null>;
+  readonly onClose: () => void;
+  readonly children: ReactNode;
+  readonly className?: string;
+  /** Altri elementi che contano come «dentro» per il clic fuori (di solito il campo). */
+  readonly inside?: readonly RefObject<HTMLElement | null>[];
+  readonly id?: string;
+  readonly ariaLabel?: string;
+  readonly role?: "menu" | "dialog" | "presentation";
+  /** Esc con il focus dentro il menu (fuori dal campo di ricerca): chiude e riporta il focus al campo. */
+  readonly onEscape?: () => void;
+  /** Larghezza naturale del contenuto, se maggiore di quella del campo. */
+  readonly naturalWidth?: number;
+}
+
+export function Menu(props: MenuProps) {
+  const { anchor, onClose, children, inside } = props;
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<MenuPlacement | null>(null);
+  // il portale esiste subito (il menu si monta solo nel browser, dopo un'azione dell'utente):
+  // così chi lo usa può dare il focus al campo di ricerca già al primo effetto
+  const [root] = useState<HTMLElement | null>(() =>
+    typeof document === "undefined" ? null : portalRoot(),
+  );
+
+  const place = useCallback(() => {
+    const a = anchor.current;
+    const m = menuRef.current;
+    if (!a || !m) return;
+    const r = a.getBoundingClientRect();
+    setPlacement(
+      placeMenu({
+        field: { x: r.left, y: r.top, w: r.width, h: r.height },
+        win: { w: window.innerWidth, h: window.innerHeight },
+        naturalHeight: naturalHeight(m),
+        ...(props.naturalWidth !== undefined ? { naturalWidth: props.naturalWidth } : {}),
+      }),
+    );
+  }, [anchor, props.naturalWidth]);
+
+  // prima misura, e nuova misura quando il contenuto cambia (ricerca, voci aggiunte)
+  useLayoutEffect(() => {
+    if (!root) return;
+    place();
+    const m = menuRef.current;
+    if (!m) return;
+    const ro = new ResizeObserver(() => place());
+    for (const kid of Array.from(m.children)) ro.observe(kid);
+    return () => ro.disconnect();
+  }, [root, place, children]);
+
+  // chiusura: clic fuori, scorrimento del pannello, ridimensionamento
+  useEffect(() => {
+    const away = (e: Event) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (menuRef.current?.contains(t)) return;
+      if (anchor.current?.contains(t)) return;
+      if (inside?.some((r) => r.current?.contains(t))) return;
+      onClose();
+    };
+    const scrolled = (e: Event) => {
+      const t = e.target as Node | null;
+      if (t && menuRef.current?.contains(t)) return;
+      // il pannello può scorrere da sé (un valore aggiunto, il focus che porta in vista un campo):
+      // il menu segue il campo e si chiude solo quando il campo esce dalla vista
+      const a = anchor.current;
+      if (a && isInView(a)) place();
+      else onClose();
+    };
+    document.addEventListener("pointerdown", away, true);
+    window.addEventListener("scroll", scrolled, true);
+    window.addEventListener("resize", onClose);
+    return () => {
+      document.removeEventListener("pointerdown", away, true);
+      window.removeEventListener("scroll", scrolled, true);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [anchor, inside, onClose, place]);
+
+  if (!root) return null;
+  const style: CSSProperties = placement
+    ? {
+        left: placement.left,
+        top: placement.top,
+        width: placement.width,
+        maxHeight: placement.maxHeight,
+      }
+    : { left: 0, top: 0, opacity: 0, pointerEvents: "none", width: anchor.current?.offsetWidth };
+  return createPortal(
+    <div
+      ref={menuRef}
+      id={props.id}
+      className={"ei-menu" + (props.className ? ` ${props.className}` : "")}
+      data-side={placement?.side}
+      role={props.role ?? "presentation"}
+      aria-label={props.ariaLabel}
+      style={style}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && props.onEscape) {
+          e.preventDefault();
+          e.stopPropagation();
+          props.onEscape();
+        }
+      }}
+      onBlur={(e) => {
+        // il focus esce dal menu verso altro (non dal campo): il menu si chiude
+        const next = e.relatedTarget as Node | null;
+        if (!next) return;
+        if (menuRef.current?.contains(next) || anchor.current?.contains(next)) return;
+        if (inside?.some((r) => r.current?.contains(next))) return;
+        onClose();
+      }}
     >
-      {grouped ? (
-        <nav className="ec-dock-tabs" aria-label="Pannelli">
-          {PANEL_KEYS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={"ec-dock-tab" + (t === pkey ? " ec-on" : "")}
-              aria-pressed={t === pkey}
-              title={PANEL_LABEL[t]}
-              onClick={() => t !== pkey && onSwitch(t)}
-            >
-              {TAB_ICON[t]()}
-              <span>{PANEL_LABEL[t]}</span>
-            </button>
-          ))}
-        </nav>
-      ) : null}
-      <div className="ec-panel-body">{props.children}</div>
-    </aside>
+      {children}
+    </div>,
+    root,
+  );
+}
+```
+
+### `src/etl-canvas/inspector/MultiList.tsx`
+
+335 righe
+
+```tsx
+/**
+ * Le operazioni a voci multiple del catalogo (`MULTI_DEFS`): campi globali e
+ * liste di righe comprimibili (una aperta per volta), con il riassunto di riga
+ * dal vivo (`L.sum`), aggiunta e rimozione di righe e note. Ogni campo di tipo
+ * «columns» usa il ColumnPicker; i campi a colonna singola, le scelte e i
+ * valori d'una sola colonna usano StyledSelect; i valori il ValuePicker.
+ * Il riordino dei criteri di Ordina non è di questa fase.
+ */
+import { useRef, useState } from "react";
+import {
+  MULTI_DEFS,
+  columnsDomain,
+  columnsOutsideSchema,
+  createValuesField,
+  fieldFilled,
+  measureNames,
+} from "../../etl-core";
+import type {
+  ColumnDef,
+  MultiFieldDef,
+  MultiListDef,
+  MultiRow,
+  OperationType,
+  Params,
+  ValuesField,
+} from "../../etl-core";
+import { ColumnPicker } from "./ColumnPicker";
+import { copy } from "./copy";
+import { rowIdOf, useActiveGuard, useMasterDetail } from "./masterDetail";
+import { Field, TextField } from "./Field";
+import { ListRow } from "./ListRow";
+import { indexAfterMove } from "./logic";
+import { useReorder } from "./useReorder";
+import type { RowReorder } from "./useReorder";
+import {
+  NUMERIC_KEYS,
+  REORDERABLE_LISTS,
+  multiOf,
+  rowColumns,
+  rowsOf,
+  withGlobal,
+  withRowAdded,
+  withRowField,
+  withRowMoved,
+  withRowRemoved,
+} from "./params";
+import { StyledSelect } from "./StyledSelect";
+import { ValuePicker } from "./ValuePicker";
+
+export interface MultiListProps {
+  readonly type: OperationType;
+  readonly par: Params;
+  readonly schema: readonly ColumnDef[];
+  readonly onChange: (params: Params) => void;
+}
+
+const asText = (v: unknown): string => (typeof v === "string" ? v : "");
+
+/** I campi globali di un'operazione a voci (per esempio «Modo» di Seleziona colonne): stanno nelle Impostazioni. */
+export function MultiGlobals(props: MultiListProps) {
+  const { type, par, onChange } = props;
+  const def = MULTI_DEFS[type];
+  if (!def) return null;
+  const multi = multiOf(type, par);
+  return (
+    <>
+      {(def.globals ?? []).map((f) => (
+        <Field key={f.k} label={f.label}>
+          {(labelId) => (
+            <StyledSelect
+              labelledBy={labelId}
+              value={asText(multi[f.k]) || f.def}
+              options={(f.opts ?? []).map((o) => ({ value: o, label: o }))}
+              onChange={(v) => onChange(withGlobal(type, par, f.k, v))}
+            />
+          )}
+        </Field>
+      ))}
+    </>
   );
 }
 
-/** Il guscio vuoto che un pannello spostato lascia sul vecchio bordo: si richiude con lo stesso orologio. */
-function GhostShell(props: { ghost: GhostView; workspaceH: number; animator: DockAnimator }) {
-  const { ghost, animator } = props;
-  const ph =
-    isVertical(ghost.side) || props.workspaceH <= 0
-      ? ghost.size.h
-      : cappedPanelHeight(ghost.size.h, props.workspaceH);
+/** Le liste di righe (una aperta per volta; nel layout a tre colonne, una attiva nel dettaglio). */
+export function MultiRows(props: MultiListProps) {
+  const def = MULTI_DEFS[props.type];
+  if (!def) return null;
   return (
-    <aside
-      className={`ec-panel ec-ghost-panel ec-side-${ghost.side}${isVertical(ghost.side) ? "" : " ec-horiz"}`}
-      aria-hidden="true"
-      inert
-      ref={(el) => animator.register(ghost.id, el)}
-      style={{ "--pw": `${ghost.size.w}px`, "--ph": `${ph}px` } as CSSProperties}
+    <>
+      {def.lists.map((list) => (
+        <ListSection key={list.key} {...props} list={list} />
+      ))}
+    </>
+  );
+}
+
+/** Una lista di righe: aggiungi, rimuovi e, dove l'ordine conta, riordina con la maniglia. */
+function ListSection(props: MultiListProps & { readonly list: MultiListDef }) {
+  const { type, par, schema, list, onChange } = props;
+  const multi = multiOf(type, par);
+  const md = useMasterDetail();
+  const rows = rowsOf(multi, list.key);
+  const [current, setCurrent] = useState(0);
+  const sectionRef = useRef<HTMLElement>(null);
+  const names = schema.map((c) => c.name);
+  const reorderable = REORDERABLE_LISTS[type] === list.key && rows.length > 1;
+  const prefix = `${list.key}:`;
+  const activeIndex =
+    md && md.active.startsWith(prefix) ? Number(md.active.slice(prefix.length)) : current;
+  useActiveGuard(list.key, rows.length);
+
+  const { row: reorderOf, announcement } = useReorder({
+    containerRef: sectionRef,
+    count: rows.length,
+    onMove: (from, to) => {
+      onChange(withRowMoved(type, par, list.key, from, to));
+      // la voce aperta o attiva segue la riga spostata
+      setCurrent(indexAfterMove(current, from, to));
+      if (md && md.active.startsWith(prefix)) {
+        md.setActive(rowIdOf(list.key, indexAfterMove(activeIndex, from, to)));
+      }
+    },
+    describe: (i) => list.sum(rows[i] ?? {}) ?? `${list.noun} ${i + 1}`,
+    announce: copy.announceMoved,
+  });
+
+  return (
+    <section ref={sectionRef} className="ei-list" data-list={list.key}>
+      <div className="ei-label">{list.label}</div>
+      {rows.map((row, i) => (
+        <RowView
+          key={i}
+          type={type}
+          list={list}
+          row={row}
+          index={i}
+          count={rows.length}
+          isOpen={i === current}
+          schema={schema}
+          names={names}
+          reorder={reorderable ? reorderOf(i) : undefined}
+          onToggle={() => setCurrent(i === current ? -1 : i)}
+          onField={(k, v) => onChange(withRowField(type, par, list.key, i, k, v))}
+          onRemove={() => {
+            onChange(withRowRemoved(type, par, list.key, i));
+            if (current >= rows.length - 1) setCurrent(rows.length - 2);
+            if (md && md.active === rowIdOf(list.key, i)) {
+              md.setActive(rowIdOf(list.key, Math.max(0, Math.min(i, rows.length - 2))));
+            }
+          }}
+        />
+      ))}
+      <button
+        type="button"
+        className="ei-addrow"
+        onClick={() => {
+          onChange(withRowAdded(type, par, list));
+          setCurrent(rows.length);
+          md?.setActive(rowIdOf(list.key, rows.length));
+        }}
+      >
+        + {list.add}
+      </button>
+      {list.note && rows.length > 1 ? <div className="ei-help">{list.note}</div> : null}
+      {reorderable ? (
+        <div className="ei-visually-hidden" role="status" aria-live="polite">
+          {announcement}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/** Globali e righe insieme: il layout normale (bordi laterali). */
+export function MultiList(props: MultiListProps) {
+  return (
+    <>
+      <MultiGlobals {...props} />
+      <MultiRows {...props} />
+    </>
+  );
+}
+
+function RowView(props: {
+  type: OperationType;
+  list: MultiListDef;
+  row: MultiRow;
+  index: number;
+  count: number;
+  isOpen: boolean;
+  schema: readonly ColumnDef[];
+  names: readonly string[];
+  onToggle: () => void;
+  reorder: RowReorder | undefined;
+  onField: (key: string, value: MultiRow[string]) => void;
+  onRemove: () => void;
+}) {
+  const { list, row, index } = props;
+  return (
+    <ListRow
+      reorder={props.reorder}
+      rowId={rowIdOf(list.key, index)}
+      noun={list.noun}
+      index={index}
+      summary={list.sum(row)}
+      open={props.isOpen}
+      onToggle={props.onToggle}
+      onRemove={props.count > 1 ? props.onRemove : undefined}
+    >
+      {list.fields.map((f) => (
+        <RowField key={f.k} {...props} f={f} />
+      ))}
+    </ListRow>
+  );
+}
+
+function RowField(props: {
+  type: OperationType;
+  list: MultiListDef;
+  row: MultiRow;
+  schema: readonly ColumnDef[];
+  names: readonly string[];
+  onField: (key: string, value: MultiRow[string]) => void;
+  f: MultiFieldDef;
+}) {
+  const { list, row, schema, names, onField, f } = props;
+  const columns = rowColumns(row);
+  const domain = columnsDomain(schema, columns);
+  const inputMode = NUMERIC_KEYS.has(f.k) ? "numeric" : "text";
+  return (
+    <Field label={f.label}>
+      {(labelId) => {
+        switch (f.type) {
+          case "columns": {
+            // colonne che non sono più nei dati in ingresso: si segnalano, non si tolgono da sole
+            const outside = columnsOutsideSchema(columns, schema);
+            return (
+              <>
+                <ColumnPicker
+                  labelledBy={labelId}
+                  value={columns}
+                  schema={schema}
+                  onChange={(next) => onField(f.k, next)}
+                />
+                {outside.length > 0 ? (
+                  <div className="ei-warn" role="status" data-testid="ei-columns-outside">
+                    <span>{copy.columnsOutside(outside.length)}</span>
+                    <button
+                      type="button"
+                      className="ei-link-btn"
+                      onClick={() =>
+                        onField(
+                          f.k,
+                          columns.filter((c) => !outside.includes(c)),
+                        )
+                      }
+                    >
+                      {copy.columnsOutsideRemove}
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            );
+          }
+          case "column":
+            return (
+              <StyledSelect
+                labelledBy={labelId}
+                allowFree
+                value={asText(row[f.k])}
+                options={names.map((n) => ({ value: n, label: n }))}
+                onChange={(v) => onField(f.k, v)}
+              />
+            );
+          case "select":
+            return (
+              <StyledSelect
+                labelledBy={labelId}
+                value={asText(row[f.k]) || (typeof f.def === "string" ? f.def : "")}
+                options={(f.opts ?? []).map((o) => ({ value: o, label: o }))}
+                onChange={(v) => onField(f.k, v)}
+              />
+            );
+          case "values":
+            return (
+              <ValuePicker
+                labelledBy={labelId}
+                value={(row[f.k] as ValuesField | undefined) ?? createValuesField()}
+                domain={domain}
+                onChange={(next) => onField(f.k, next)}
+              />
+            );
+          case "value":
+            // il valore è unico per riga: con una sola colonna si propone l'elenco dei suoi valori, con più colonne si scrive
+            return columns.length === 1 && domain.length > 0 ? (
+              <StyledSelect
+                labelledBy={labelId}
+                allowFree
+                value={asText(row[f.k])}
+                options={domain.map((v) => ({ value: v, label: v }))}
+                onChange={(v) => onField(f.k, v)}
+              />
+            ) : (
+              <TextField
+                labelledBy={labelId}
+                value={asText(row[f.k])}
+                onChange={(v) => onField(f.k, v)}
+              />
+            );
+          default:
+            if (list.key === "measures" && f.k === "alias" && columns.length > 1) {
+              // con più colonne il nome del risultato è automatico: campo disattivato con l'anteprima
+              return (
+                <TextField
+                  labelledBy={labelId}
+                  disabled
+                  value={measureNames(row).join(", ")}
+                  ariaLabel={copy.resultNameAuto(measureNames(row))}
+                  onChange={() => {}}
+                />
+              );
+            }
+            return (
+              <TextField
+                labelledBy={labelId}
+                inputMode={inputMode}
+                value={asText(row[f.k])}
+                onChange={(v) => onField(f.k, v)}
+              />
+            );
+        }
+      }}
+    </Field>
+  );
+}
+```
+
+### `src/etl-canvas/inspector/NameInput.tsx`
+
+43 righe
+
+```tsx
+/**
+ * Il nome di un nodo, modificabile in linea. Ogni carattere scritto è un comando
+ * `renameNode` (un solo passo di annullamento: chiave di raggruppamento esistente);
+ * il campo non perde mai focus né cursore e un nome vuoto non si applica.
+ */
+import { useState } from "react";
+import type { Card } from "../../etl-core";
+import type { EtlStore } from "../../etl-store";
+import { copy } from "./copy";
+
+export function NameInput(props: {
+  readonly store: EtlStore;
+  readonly card: Card;
+  readonly className: string;
+  readonly testId?: string;
+  readonly id?: string;
+}) {
+  const { store, card } = props;
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      type="text"
+      id={props.id}
+      className={props.className}
+      data-testid={props.testId}
+      aria-label={copy.nameLabel}
+      autoComplete="off"
+      spellCheck={false}
+      value={draft ?? card.name}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        if (e.target.value.trim()) {
+          store.dispatch({ type: "renameNode", payload: { node: card.id, name: e.target.value } });
+        }
+      }}
+      onBlur={() => setDraft(null)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
     />
   );
 }
 ```
 
-### `src/etl-canvas/panels/EtlWorkspace.tsx`
+### `src/etl-canvas/inspector/Segmented.tsx`
 
-187 righe
+72 righe
 
 ```tsx
 /**
- * Lo spazio di lavoro: il canvas al centro, i pannelli (cassetta e Inspector)
- * agganciati ai bordi. È ciò che la rotta ETL monta al posto del solo canvas.
- *
- * Come il canvas, si monta solo nel browser: sul server e nel primo rendering
- * di idratazione produce lo stesso segnaposto (i pannelli dipendono dallo
- * stato salvato nel browser).
+ * Scelta tra poche voci affiancate («Colonna | Valore | Lista»): un radiogroup
+ * ARIA, non radio nativi. Una sola voce ha il tabindex 0 (la scelta); le frecce,
+ * Home e Fine spostano la scelta e il focus insieme, con giro; Spazio e Invio
+ * scelgono la voce a fuoco.
  */
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
-import type { EtlStore } from "../../etl-store";
-import { EtlCanvas } from "../EtlCanvas";
-import { Icon } from "../icons";
-import type { CanvasDropPayload } from "../drop";
-import { createInteractionController } from "../interaction";
-import { browserEnv, createLoop } from "../loop";
-import type { Loop } from "../loop";
-import { createPanelActions, followInspector } from "./actions";
-import { DockLayout } from "./Dock";
-import { familyOfType } from "./families";
-import { ExpandedPanel } from "../inspector/ExpandedPanel";
-import { InspectorShell } from "./InspectorShell";
-import { Toolbox } from "./Toolbox";
+import { useRef } from "react";
+import type { KeyboardEvent } from "react";
+import { segmentedKey } from "./logic";
 
-const noopSubscribe = () => () => {};
-
-interface Ghost {
-  readonly x: number;
-  readonly y: number;
-  readonly payload: CanvasDropPayload;
+export interface SegmentedOption<V extends string> {
+  readonly value: V;
+  readonly label: string;
 }
 
-export function EtlWorkspace(props: { store: EtlStore }) {
-  const { store } = props;
-  const isClient = useSyncExternalStore(
-    noopSubscribe,
-    () => true,
-    () => false,
+export interface SegmentedProps<V extends string> {
+  readonly value: V;
+  readonly options: readonly SegmentedOption<V>[];
+  readonly onChange: (value: V) => void;
+  readonly labelledBy?: string | undefined;
+  readonly ariaLabel?: string | undefined;
+}
+
+export function Segmented<V extends string>(props: SegmentedProps<V>) {
+  const { value, options, onChange } = props;
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const current = Math.max(
+    0,
+    options.findIndex((o) => o.value === value),
   );
-  const [controller] = useState(() => createInteractionController(store));
-  const actions = useMemo(() => createPanelActions(store), [store]);
-  const [ghost, setGhost] = useState<Ghost | null>(null);
-  // il box combinato aperto nel pannello espanso
-  const [expanded, setExpanded] = useState<string | null>(null);
-  // un solo ciclo requestAnimationFrame per tutto lo spazio di lavoro (cavi, pannelli, vista): nasce solo nel browser
-  const [loop, setLoop] = useState<Loop | null>(null);
-  useEffect(() => {
-    const l = createLoop(browserEnv());
-    setLoop(l);
-    return () => l.dispose();
-  }, []);
-  const hostRef = useRef<HTMLDivElement>(null);
-  const cleanup = useRef<(() => void) | null>(null);
 
-  // l'Inspector si apre con la selezione e si chiude con la deselezione
-  useEffect(() => followInspector(store, controller, actions), [store, controller, actions]);
-  useEffect(() => () => cleanup.current?.(), []);
-
-  /** Trascinamento di una voce della cassetta (prototipo, righe 4939-5067): un nodo esterno, con la stessa anteprima del trascinamento tra nodi. */
-  const onItemPointerDown = (payload: CanvasDropPayload, e: ReactPointerEvent<HTMLElement>) => {
-    if (e.button !== 0) return;
+  const onKey = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const action = segmentedKey(index, current, options.length, e.key);
+    if (!action) return;
     e.preventDefault();
-    setGhost({ x: e.clientX, y: e.clientY, payload });
-    const stagePoint = (cx: number, cy: number) => {
-      const r = hostRef.current?.querySelector(".ec-stage")?.getBoundingClientRect();
-      if (!r) return null;
-      const inside = cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
-      return inside ? { x: cx - r.left, y: cy - r.top } : null;
-    };
-    const move = (ev: PointerEvent) => {
-      setGhost({ x: ev.clientX, y: ev.clientY, payload });
-      controller.hoverExternal(payload, stagePoint(ev.clientX, ev.clientY));
-    };
-    const stop = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", abort);
-      cleanup.current = null;
-      setGhost(null);
-    };
-    const up = (ev: PointerEvent) => {
-      stop();
-      controller.dropExternal(payload, stagePoint(ev.clientX, ev.clientY));
-    };
-    const abort = () => {
-      stop();
-      controller.dropExternal(payload, null);
-    };
-    cleanup.current = abort;
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", abort);
+    refs.current[action.focus]?.focus();
+    const chosen = action.choose === null ? undefined : options[action.choose];
+    if (chosen) onChange(chosen.value);
   };
 
   return (
-    <div ref={hostRef} className="ec-workspace-host">
-      {isClient && expanded ? (
-        <ExpandedPanel
-          store={store}
-          nodeId={expanded}
-          onClose={() => {
-            const id = expanded;
-            setExpanded(null);
-            // il focus torna al pulsante di espansione del nodo
-            setTimeout(
-              () =>
-                hostRef.current
-                  ?.querySelector<HTMLElement>(`[data-node-id="${id}"] .ec-expand-btn`)
-                  ?.focus(),
-              0,
-            );
+    <div
+      className="ei-seg"
+      role="radiogroup"
+      aria-labelledby={props.labelledBy}
+      aria-label={props.labelledBy ? undefined : props.ariaLabel}
+    >
+      {options.map((o, i) => (
+        <button
+          key={o.value}
+          ref={(el) => {
+            refs.current[i] = el;
           }}
-          onConfigure={(index) => {
-            setExpanded(null);
-            store.dispatch({ type: "select", payload: { ids: [expanded] } });
-            store.dispatch({ type: "inspect", payload: { node: expanded, step: index } });
-            actions.open("insp");
+          type="button"
+          role="radio"
+          aria-checked={i === current}
+          tabIndex={i === current ? 0 : -1}
+          className={"ei-seg-btn" + (i === current ? " ei-on" : "")}
+          data-value={o.value}
+          onClick={() => {
+            if (i !== current) onChange(o.value);
           }}
-          onDetachOutside={(index, x, y) => {
-            // il punto di rilascio vive nel mondo, se cade dentro il canvas
-            const stage = hostRef.current?.querySelector(".ec-stage")?.getBoundingClientRect();
-            const inside =
-              !!stage && x >= stage.left && x <= stage.right && y >= stage.top && y <= stage.bottom;
-            setExpanded(null);
-            store.dispatch({
-              type: "detachStep",
-              payload: {
-                box: expanded,
-                index,
-                ...(inside && stage
-                  ? { dropPoint: controller.toWorld(x - stage.left, y - stage.top) }
-                  : {}),
-              },
-            });
-          }}
-        />
-      ) : null}
-      {isClient && loop ? (
-        <DockLayout
-          store={store}
-          actions={actions}
-          controller={controller}
-          loop={loop}
-          canvas={(overlay, notice) => (
-            <EtlCanvas
-              store={store}
-              controller={controller}
-              minHeight={0}
-              overlay={overlay}
-              notice={notice}
-              loop={loop}
-              onExpand={setExpanded}
-            />
-          )}
-          content={{
-            tools: ({ side }) => (
-              <Toolbox
-                store={store}
-                side={side}
-                onClose={() => actions.close("tools")}
-                onItemPointerDown={onItemPointerDown}
-              />
-            ),
-            insp: ({ side }) => (
-              <InspectorShell store={store} side={side} onClose={() => actions.close("insp")} />
-            ),
-          }}
-          overlay={
-            ghost ? (
-              <div
-                className={"ec-ghost" + (ghost.payload.component === "dataset" ? " ec-source" : "")}
-                data-testid="ec-ghost"
-                data-family={familyOfType(ghost.payload.component)}
-                style={{ left: ghost.x - 44, top: ghost.y - 44 }}
-              >
-                <Icon id={ghost.payload.component} />
-              </div>
-            ) : null
-          }
-        />
-      ) : (
-        <EtlCanvas store={store} />
-      )}
+          onKeyDown={(e) => onKey(e, i)}
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }
 ```
 
-### `src/etl-canvas/panels/InspectorShell.tsx`
+### `src/etl-canvas/inspector/StepList.tsx`
 
-29 righe
+267 righe
 
 ```tsx
 /**
- * Il guscio dell'Inspector: si apre e si chiude come gli altri pannelli e ospita
- * il contenuto di `inspector/` (Fase 6b.1).
+ * L'elenco verticale dei passaggi di un box combinato, riordinabile con il
+ * puntatore e da tastiera (Alt+↑/↓). Nell'Inspector ogni passaggio ha lo sgancio
+ * e l'eliminazione; nel pannello espanso ha un menu («Configura parametri»,
+ * «Sgancia», «Elimina passaggio») e trascinarlo fuori dal pannello lo sgancia.
+ * Comandi di etl-store: `reorderSteps`, `deleteStep`, `detachStep`.
  */
-import type { EtlStore, Side } from "../../etl-store";
-import { copy } from "../inspector/copy";
-import { Inspector } from "../inspector/Inspector";
-import { CloseArrow } from "./ui-icons";
+import { useEffect, useRef, useState } from "react";
+import type { KeyboardEvent, PointerEvent, RefObject } from "react";
+import { META } from "../../etl-core";
+import type { Card } from "../../etl-core";
+import type { EtlStore } from "../../etl-store";
+import { Icon } from "../icons";
+import { ActionMenu } from "./ActionMenu";
+import { copy } from "./copy";
+import { DetachIcon, GripIcon, MoreIcon, XIcon } from "./icons";
+import { moveTarget, reorderIndex } from "./logic";
 
-export function InspectorShell(props: { store: EtlStore; side: Side; onClose: () => void }) {
-  const { store, side } = props;
+export interface StepListProps {
+  readonly store: EtlStore;
+  readonly card: Card;
+  readonly selectedStep: number;
+  readonly variant: "inspector" | "expanded";
+  /** Un passaggio scelto (clic o Invio). */
+  readonly onSelect: (index: number) => void;
+  /** Solo nel pannello espanso: «Configura parametri». */
+  readonly onConfigure?: (index: number) => void;
+  /** Solo nel pannello espanso: il riquadro del pannello, per sapere se si è usciti. */
+  readonly containerRef?: RefObject<HTMLElement | null>;
+  /** Solo nel pannello espanso: rilasciato fuori dal pannello (coordinate della finestra). */
+  readonly onDetachOutside?: (index: number, clientX: number, clientY: number) => void;
+}
+
+interface Drag {
+  readonly index: number;
+  readonly to: number;
+  readonly dy: number;
+  readonly dx: number;
+  readonly rowHeight: number;
+  readonly outside: boolean;
+}
+
+/** Soglia prima che un clic su una riga diventi un trascinamento (prototipo: 4 px). */
+const DRAG_START_PX = 4;
+/** Quanto fuori dal pannello conta come «fuori» (prototipo, riga 2297). */
+const OUTSIDE_MARGIN_PX = 12;
+
+export function StepList(props: StepListProps) {
+  const { store, card, selectedStep, variant } = props;
+  const listRef = useRef<HTMLUListElement>(null);
+  const mainRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const focusIndex = useRef<number | null>(null);
+  const justDragged = useRef(false);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const [announce, setAnnounce] = useState("");
+  const [menuFor, setMenuFor] = useState<number | null>(null);
+  const gearRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const n = card.components.length;
+
+  // dopo un riordino da tastiera il focus segue il passaggio spostato
+  useEffect(() => {
+    if (focusIndex.current !== null) {
+      mainRefs.current[focusIndex.current]?.focus();
+      focusIndex.current = null;
+    }
+  });
+
+  const reorder = (from: number, to: number) =>
+    store.dispatch({ type: "reorderSteps", payload: { box: card.id, from, to } });
+  const remove = (index: number) =>
+    store.dispatch({ type: "deleteStep", payload: { box: card.id, index } });
+  const detach = (index: number) =>
+    store.dispatch({ type: "detachStep", payload: { box: card.id, index } });
+
+  const onKey = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
+    if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      const to = moveTarget(i, n, e.key);
+      if (to === null) return;
+      focusIndex.current = to;
+      reorder(i, to);
+      setAnnounce(
+        copy.announceMoved(META[card.components[i] as keyof typeof META].label, to + 1, n),
+      );
+    }
+  };
+
+  const onPointerDown = (e: PointerEvent<HTMLLIElement>, i: number) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest(".ei-step-btn")) return; // i pulsanti non avviano il trascinamento
+    const rows = Array.from(listRef.current?.children ?? []) as HTMLElement[];
+    const rects = rows.map((r) => r.getBoundingClientRect());
+    const rowHeight =
+      rects.length > 1
+        ? (rects[1] as DOMRect).top - (rects[0] as DOMRect).top
+        : (rects[0]?.height ?? 40);
+    const panel = props.containerRef?.current?.getBoundingClientRect();
+    const sx = e.clientX;
+    const sy = e.clientY;
+    let moved = false;
+    let last: Drag | null = null;
+    const move = (ev: globalThis.PointerEvent) => {
+      const dx = ev.clientX - sx;
+      const dy = ev.clientY - sy;
+      if (!moved && Math.hypot(dx, dy) < DRAG_START_PX) return;
+      moved = true;
+      const outside =
+        variant === "expanded" &&
+        !!panel &&
+        (ev.clientX < panel.left - OUTSIDE_MARGIN_PX ||
+          ev.clientX > panel.right + OUTSIDE_MARGIN_PX ||
+          ev.clientY < panel.top - OUTSIDE_MARGIN_PX ||
+          ev.clientY > panel.bottom + OUTSIDE_MARGIN_PX);
+      last = { index: i, to: reorderIndex(i, dy, rowHeight, n), dy, dx, rowHeight, outside };
+      setDrag(last);
+    };
+    const up = (ev: globalThis.PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      setDrag(null);
+      if (!moved || !last) return;
+      justDragged.current = true;
+      setTimeout(() => (justDragged.current = false), 0);
+      if (last.outside) props.onDetachOutside?.(i, ev.clientX, ev.clientY);
+      else if (last.to !== i) {
+        focusIndex.current = last.to;
+        reorder(i, last.to);
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+
+  /** Spostamento verticale delle altre righe mentre una viene trascinata (come nel prototipo). */
+  const shiftOf = (i: number): number => {
+    if (!drag || drag.outside || i === drag.index) return 0;
+    if (drag.index < drag.to && i > drag.index && i <= drag.to) return -drag.rowHeight;
+    if (drag.index > drag.to && i >= drag.to && i < drag.index) return drag.rowHeight;
+    return 0;
+  };
+
   return (
-    <div className="ec-tb-inner ec-insp" data-testid="ec-inspector">
-      <div className="ec-tb-head">
-        <div className="ec-tb-title">Inspector</div>
-        <button
-          type="button"
-          className="ec-close-btn"
-          aria-label={copy.closeInspector}
-          onClick={props.onClose}
-        >
-          <CloseArrow side={side} />
-        </button>
+    <div className="ei-steps" data-variant={variant}>
+      <ul ref={listRef} className="ei-steplist" aria-label={copy.sequenceTitle}>
+        {card.components.map((type, i) => {
+          const dragging = drag?.index === i;
+          const label = META[type].label;
+          const style = dragging
+            ? {
+                transform: drag?.outside
+                  ? `translate(${drag.dx}px, ${drag.dy}px) scale(0.9)`
+                  : `translateY(${drag?.dy ?? 0}px)`,
+              }
+            : { transform: `translateY(${shiftOf(i)}px)` };
+          return (
+            <li
+              key={`${i}:${type}`}
+              className={
+                "ei-step" +
+                (i === selectedStep ? " ei-on" : "") +
+                (dragging ? " ei-dragging" : "") +
+                (dragging && drag?.outside ? " ei-outside" : "")
+              }
+              style={style}
+              data-step={i}
+              onPointerDown={(e) => onPointerDown(e, i)}
+            >
+              <button
+                ref={(el) => {
+                  mainRefs.current[i] = el;
+                }}
+                type="button"
+                className="ei-step-main"
+                aria-current={i === selectedStep ? "step" : undefined}
+                aria-label={copy.stepLabel(i + 1, label)}
+                title={copy.stepReorderHelp}
+                onKeyDown={(e) => onKey(e, i)}
+                onClick={() => {
+                  if (!justDragged.current) props.onSelect(i);
+                }}
+              >
+                <span className="ei-grip">
+                  <GripIcon />
+                </span>
+                <span className="ei-step-n">{i + 1}</span>
+                <span className="ei-step-icon">
+                  <Icon id={type} />
+                </span>
+                <span className="ei-step-name">{label}</span>
+              </button>
+              {variant === "inspector" ? (
+                <>
+                  <button
+                    type="button"
+                    className="ei-icon-btn ei-step-btn"
+                    aria-label={copy.stepDetach}
+                    title={copy.stepDetach}
+                    onClick={() => detach(i)}
+                  >
+                    <DetachIcon />
+                  </button>
+                  <button
+                    type="button"
+                    className="ei-icon-btn ei-step-btn"
+                    aria-label={copy.stepDelete}
+                    title={copy.stepDelete}
+                    onClick={() => remove(i)}
+                  >
+                    <XIcon />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    ref={(el) => {
+                      gearRefs.current[i] = el;
+                    }}
+                    type="button"
+                    className="ei-icon-btn ei-step-btn"
+                    aria-label={copy.stepMenu}
+                    aria-haspopup="menu"
+                    aria-expanded={menuFor === i}
+                    onClick={() => setMenuFor(menuFor === i ? null : i)}
+                  >
+                    <MoreIcon />
+                  </button>
+                  {menuFor === i ? (
+                    <ActionMenu
+                      anchor={{ current: gearRefs.current[i] ?? null }}
+                      onClose={(back) => {
+                        setMenuFor(null);
+                        if (back) gearRefs.current[i]?.focus();
+                      }}
+                      items={[
+                        {
+                          id: "configure",
+                          label: copy.stepConfigure,
+                          onSelect: () => props.onConfigure?.(i),
+                        },
+                        { id: "detach", label: copy.stepDetach, onSelect: () => detach(i) },
+                        {
+                          id: "delete",
+                          label: copy.stepDelete,
+                          danger: true,
+                          onSelect: () => remove(i),
+                        },
+                      ]}
+                    />
+                  ) : null}
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {drag?.outside ? (
+        <div className="ei-help ei-outside-note">{copy.expandedNoteOutside}</div>
+      ) : null}
+      <div className="ei-visually-hidden" role="status" aria-live="polite">
+        {announce}
       </div>
-      <Inspector store={store} />
     </div>
   );
+}
+```
+
+### `src/etl-canvas/inspector/StyledSelect.tsx`
+
+224 righe
+
+```tsx
+/**
+ * Scelta singola con ricerca (sostituisce `<select>` e `<datalist>`): un campo
+ * che apre il nostro menu in un portale. Il menu ha un campo di ricerca che è
+ * il combobox ARIA (frecce, Home, Fine, Invio, Esc, digitazione) e un elenco
+ * listbox; con `allowFree` si può anche scrivere un valore non presente
+ * («oppure scrivi», in corsivo). Il focus torna al campo alla chiusura.
+ */
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
+import { copy } from "./copy";
+import { ChevronDown } from "./icons";
+import { clampActive, comboAction, filterByQuery, fold } from "./logic";
+import { Menu } from "./Menu";
+
+export interface SelectOption {
+  readonly value: string;
+  readonly label: string;
+  /** Testo discreto a destra (per esempio il tipo di una colonna). */
+  readonly hint?: string;
+  /** Testo breve nel campo chiuso, al posto dell'etichetta (per esempio «AND» per «AND · entrambe vere»). */
+  readonly short?: string;
+}
+
+export interface StyledSelectProps {
+  readonly value: string;
+  readonly options: readonly SelectOption[];
+  readonly onChange: (value: string) => void;
+  readonly labelledBy?: string | undefined;
+  readonly ariaLabel?: string | undefined;
+  /** Si può scrivere un valore non presente nell'elenco. */
+  readonly allowFree?: boolean;
+  readonly placeholder?: string;
+  readonly disabled?: boolean;
+  /** `pill`: pastiglia compatta (i connettori); `field`: campo a tutta larghezza. */
+  readonly variant?: "field" | "pill";
+  /** Larghezza del menu, se maggiore di quella del campo (px). */
+  readonly menuWidth?: number;
+}
+
+interface Row {
+  readonly value: string;
+  readonly label: string;
+  readonly hint?: string | undefined;
+  readonly free?: boolean;
+}
+
+export function StyledSelect(props: StyledSelectProps) {
+  const { value, options, onChange, allowFree, disabled } = props;
+  const id = useId();
+  const listId = `${id}-list`;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(-1);
+
+  const rows = useMemo<Row[]>(() => {
+    const found: Row[] = filterByQuery(options, query).map((o) => ({
+      value: o.value,
+      label: o.label,
+      hint: o.hint,
+    }));
+    const typed = query.trim();
+    const exact = options.some((o) => fold(o.label) === fold(typed) || o.value === typed);
+    if (allowFree && typed && !exact) {
+      found.push({ value: typed, label: copy.useTyped(typed), free: true });
+    }
+    return found;
+  }, [options, query, allowFree]);
+  const act = clampActive(active, rows.length);
+
+  const close = useCallback((returnFocus: boolean) => {
+    setOpen(false);
+    setQuery("");
+    if (returnFocus) triggerRef.current?.focus();
+  }, []);
+  const openWith = (seed: string) => {
+    if (disabled) return;
+    setQuery(seed);
+    const i = options.findIndex((o) => o.value === value);
+    setActive(seed ? 0 : i);
+    setOpen(true);
+  };
+  const choose = (v: string) => {
+    onChange(v);
+    close(true);
+  };
+
+  // il focus passa al campo di ricerca; la voce attiva resta in vista
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+  useEffect(() => {
+    if (!open || act < 0) return;
+    listRef.current?.querySelector(`[data-index="${act}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [open, act, rows.length]);
+
+  const onTriggerKey = (e: KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      openWith("");
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== " ") {
+      e.preventDefault();
+      openWith(e.key);
+    }
+  };
+  const onInputKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    const a = comboAction(e.key, act, rows.length);
+    if (a.kind === "move") {
+      e.preventDefault();
+      setActive(a.to);
+    } else if (a.kind === "commit") {
+      e.preventDefault();
+      const row = rows[act];
+      if (row) choose(row.value);
+      else if (allowFree && query.trim()) choose(query.trim());
+    } else if (a.kind === "close") {
+      e.preventDefault();
+      e.stopPropagation();
+      close(true);
+    } else if (e.key === "Tab") {
+      close(false);
+    }
+  };
+
+  const current = options.find((o) => o.value === value);
+  const shown = current?.short ?? current?.label ?? value;
+  const pill = props.variant === "pill";
+  const isFree = value !== "" && !current;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={pill ? "ei-pill ei-select" : "ei-field ei-select"}
+        data-picker="select"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-labelledby={props.labelledBy}
+        aria-label={props.labelledBy ? undefined : props.ariaLabel}
+        disabled={disabled}
+        data-open={open || undefined}
+        onClick={() => (open ? close(false) : openWith(""))}
+        onKeyDown={onTriggerKey}
+      >
+        <span className={"ei-select-value" + (isFree ? " ei-free" : "")}>
+          {shown || <span className="ei-placeholder">{props.placeholder ?? copy.pickOrType}</span>}
+        </span>
+        <span className="ei-select-chevron">
+          <ChevronDown />
+        </span>
+      </button>
+      {open ? (
+        <Menu
+          anchor={triggerRef}
+          onClose={() => close(false)}
+          onEscape={() => close(true)}
+          {...(props.menuWidth !== undefined ? { naturalWidth: props.menuWidth } : {})}
+        >
+          <div className="ei-menu-head">
+            <input
+              ref={inputRef}
+              type="text"
+              className="ei-search"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls={listId}
+              aria-autocomplete="list"
+              aria-activedescendant={act >= 0 ? `${id}-opt-${act}` : undefined}
+              aria-label={copy.searchPlaceholder}
+              placeholder={copy.searchPlaceholder}
+              autoComplete="off"
+              spellCheck={false}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
+              onKeyDown={onInputKey}
+            />
+          </div>
+          <div
+            ref={listRef}
+            id={listId}
+            className="ei-menu-scroll"
+            role="listbox"
+            aria-label={copy.menuLabel}
+            data-scroll=""
+          >
+            {rows.length === 0 ? <div className="ei-menu-empty">{copy.noResults}</div> : null}
+            {rows.map((r, i) => (
+              <div
+                key={`${r.free ? "free:" : ""}${r.value}`}
+                id={`${id}-opt-${i}`}
+                data-index={i}
+                role="option"
+                aria-selected={!r.free && r.value === value}
+                className={
+                  "ei-option" +
+                  (i === act ? " ei-active" : "") +
+                  (!r.free && r.value === value ? " ei-selected" : "") +
+                  (r.free ? " ei-free" : "")
+                }
+                onPointerDown={(e) => e.preventDefault()}
+                onPointerMove={() => setActive(i)}
+                onClick={() => choose(r.value)}
+              >
+                <span className="ei-option-label">{r.label}</span>
+                {r.hint ? <span className="ei-option-hint">{r.hint}</span> : null}
+              </div>
+            ))}
+          </div>
+          {allowFree && !query.trim() ? (
+            <div className="ei-menu-foot ei-help">{copy.typeOr}</div>
+          ) : null}
+        </Menu>
+      ) : null}
+    </>
+  );
+}
+```
+
+### `src/etl-canvas/inspector/ValuePicker.tsx`
+
+293 righe
+
+```tsx
+/**
+ * Selettore di valori (versione finale del prototipo, `pickerHtml`): i valori
+ * scelti sono etichette rimovibili (in corsivo quelli assenti dai dati); il
+ * menu (in un portale) ha ricerca che filtra, «+ Aggiungi “x”» per ciò che non
+ * esiste (Invio), incolla di più valori (virgola, punto e virgola, barra
+ * verticale, a capo), elenco a spunta con scorrimento (max 170 px), «Tutti» e
+ * «Nessuno» sui soli valori visibili e il conteggio annunciato.
+ *
+ * L'elenco proposto è `columnsDomain` delle colonne della riga (lo calcola chi
+ * lo usa). Cambiando le colonne i valori NON si azzerano: quelli fuori dominio
+ * restano in corsivo, con l'avviso e l'azione «Rimuovi». I valori stanno solo
+ * in `values`.
+ */
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { ClipboardEvent, KeyboardEvent } from "react";
+import { valuesOutsideDomain } from "../../etl-core";
+import type { ValuesField } from "../../etl-core";
+import { copy } from "./copy";
+import { CheckIcon, PlusIcon, XIcon } from "./icons";
+import {
+  addTokens,
+  addVisibleValues,
+  clampActive,
+  comboAction,
+  filterByQuery,
+  pendingTokens,
+  removeVisibleValues,
+  toggleValue,
+  withValues,
+} from "./logic";
+import { Menu } from "./Menu";
+
+export interface ValuePickerProps {
+  readonly value: ValuesField | undefined;
+  readonly domain: readonly string[];
+  readonly onChange: (field: ValuesField) => void;
+  readonly labelledBy?: string | undefined;
+  readonly ariaLabel?: string | undefined;
+}
+
+type Row =
+  | { readonly kind: "add"; readonly tokens: readonly string[]; readonly label: string }
+  | {
+      readonly kind: "value";
+      readonly value: string;
+      readonly label: string;
+      readonly free: boolean;
+    };
+
+const NO_VALUES: readonly string[] = [];
+const SEPARATORS = /[,;|\n]/;
+
+export function ValuePicker(props: ValuePickerProps) {
+  const { value: field, domain, onChange } = props;
+  const values = useMemo(() => field?.values ?? NO_VALUES, [field]);
+  const id = useId();
+  const listId = `${id}-list`;
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const addRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+
+  const outside = useMemo(
+    () => (domain.length > 0 ? valuesOutsideDomain(values, domain) : []),
+    [values, domain],
+  );
+  const set = (next: string[]) => onChange(withValues(field, next));
+
+  // elenco: i valori dei dati, poi quelli scelti ma assenti dai dati (si possono togliere)
+  const rows = useMemo<Row[]>(() => {
+    const extra = values.filter((v) => !domain.includes(v));
+    const all = [...domain, ...extra].map((v) => ({ label: v, free: !domain.includes(v) }));
+    const list: Row[] = filterByQuery(all, query).map((r) => ({
+      kind: "value",
+      value: r.label,
+      label: r.label,
+      free: r.free,
+    }));
+    const tokens = pendingTokens(values, domain, query);
+    if (tokens.length) list.unshift({ kind: "add", tokens, label: copy.valuesAddTyped(tokens) });
+    return list;
+  }, [domain, values, query]);
+  const act = clampActive(active, rows.length);
+  const visible = rows.flatMap((r) => (r.kind === "value" ? [r.value] : []));
+
+  const close = (returnFocus: boolean) => {
+    setOpen(false);
+    setQuery("");
+    if (returnFocus) addRef.current?.focus();
+  };
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+  useEffect(() => {
+    if (!open || act < 0) return;
+    listRef.current?.querySelector(`[data-index="${act}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [open, act, rows.length]);
+
+  const activate = (r: Row) => {
+    if (r.kind === "add") {
+      set(addTokens(values, domain, query));
+      setQuery("");
+      setActive(0);
+    } else set(toggleValue(values, r.value));
+  };
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    const a = comboAction(e.key, act, rows.length);
+    if (a.kind === "move") {
+      e.preventDefault();
+      setActive(a.to);
+    } else if (a.kind === "commit") {
+      e.preventDefault();
+      const r = rows[act];
+      if (r) activate(r);
+    } else if (a.kind === "close") {
+      e.preventDefault();
+      e.stopPropagation();
+      close(true);
+    }
+  };
+  // incollando più valori insieme si aggiungono subito, con la grafia dei dati
+  const onPaste = (e: ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData("text");
+    if (!SEPARATORS.test(text)) return;
+    e.preventDefault();
+    set(addTokens(values, domain, text));
+    setQuery("");
+  };
+
+  return (
+    <>
+      <div
+        ref={fieldRef}
+        className="ei-field ei-chipsfield"
+        data-picker="values"
+        data-selected={values.length}
+        data-total={domain.length}
+        role="group"
+        aria-labelledby={props.labelledBy}
+        aria-label={props.labelledBy ? undefined : props.ariaLabel}
+        data-open={open || undefined}
+      >
+        {values.length === 0 ? (
+          <span className="ei-placeholder">{copy.valuesPlaceholder}</span>
+        ) : null}
+        <ul className="ei-chips">
+          {values.map((v) => {
+            const free = domain.length > 0 ? !domain.includes(v) : false;
+            return (
+              <li
+                key={v}
+                className={"ei-chip" + (free ? " ei-free" : "")}
+                title={free ? copy.valuesFree : undefined}
+              >
+                <span className="ei-chip-text">{v}</span>
+                <button
+                  type="button"
+                  className="ei-chip-x"
+                  aria-label={copy.valuesRemove(v)}
+                  onClick={() => set(values.filter((x) => x !== v))}
+                >
+                  <XIcon />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <button
+          ref={addRef}
+          type="button"
+          className="ei-add"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={open ? listId : undefined}
+          onClick={() => (open ? close(false) : setOpen(true))}
+        >
+          <PlusIcon />
+          <span>{copy.valuesAdd}</span>
+        </button>
+      </div>
+      {outside.length > 0 ? (
+        <div className="ei-warn" role="status">
+          <span>{copy.valuesOutside(outside.length)}</span>
+          <button
+            type="button"
+            className="ei-link-btn"
+            onClick={() => set(values.filter((v) => !outside.includes(v)))}
+          >
+            {copy.valuesOutsideRemove}
+          </button>
+        </div>
+      ) : null}
+      {open ? (
+        <Menu
+          anchor={fieldRef}
+          onClose={() => close(false)}
+          onEscape={() => close(true)}
+          ariaLabel={copy.valuesMenu}
+        >
+          <div className="ei-menu-head">
+            <input
+              ref={inputRef}
+              type="text"
+              className="ei-search"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls={listId}
+              aria-autocomplete="list"
+              aria-activedescendant={act >= 0 ? `${id}-opt-${act}` : undefined}
+              aria-label={domain.length ? copy.valuesSearch : copy.valuesSearchFree}
+              placeholder={domain.length ? copy.valuesSearch : copy.valuesSearchFree}
+              autoComplete="off"
+              spellCheck={false}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
+              onKeyDown={onKey}
+              onPaste={onPaste}
+            />
+          </div>
+          <div
+            ref={listRef}
+            id={listId}
+            className="ei-menu-scroll ei-values-list"
+            role="listbox"
+            aria-multiselectable="true"
+            aria-label={copy.valuesMenu}
+            data-scroll=""
+          >
+            {rows.length === 0 ? <div className="ei-menu-empty">{copy.noResults}</div> : null}
+            {rows.map((r, i) => {
+              const on = r.kind === "value" && values.includes(r.value);
+              return (
+                <div
+                  key={r.kind === "add" ? "add" : r.value}
+                  id={`${id}-opt-${i}`}
+                  data-index={i}
+                  role="option"
+                  aria-selected={on}
+                  className={
+                    "ei-option" +
+                    (i === act ? " ei-active" : "") +
+                    (on ? " ei-selected" : "") +
+                    (r.kind === "add" || r.free ? " ei-free" : "")
+                  }
+                  onPointerDown={(e) => e.preventDefault()}
+                  onPointerMove={() => setActive(i)}
+                  onClick={() => activate(r)}
+                >
+                  {r.kind === "add" ? null : (
+                    <span className="ei-checkbox" data-on={on || undefined} aria-hidden="true">
+                      {on ? <CheckIcon /> : null}
+                    </span>
+                  )}
+                  <span className="ei-option-label">{r.label}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="ei-menu-foot">
+            <span className="ei-count" role="status" aria-live="polite">
+              {copy.valuesCount(values.length, domain.length)}
+            </span>
+            {domain.length > 0 ? (
+              <span className="ei-menu-actions">
+                <button
+                  type="button"
+                  className="ei-link-btn"
+                  onClick={() => set(addVisibleValues(values, visible))}
+                >
+                  {copy.valuesAll}
+                </button>
+                <button
+                  type="button"
+                  className="ei-link-btn"
+                  onClick={() => set(removeVisibleValues(values, visible))}
+                >
+                  {copy.valuesNone}
+                </button>
+              </span>
+            ) : null}
+          </div>
+        </Menu>
+      ) : null}
+    </>
+  );
+}
+```
+
+### `src/etl-canvas/inspector/conditions.ts`
+
+103 righe
+
+```ts
+/**
+ * Transizioni di stato delle liste di condizioni (filtro e join): funzioni pure
+ * che restituiscono una lista NUOVA, mai modificata sul posto. Non c'è logica di
+ * dominio qui: raggruppare, dividere, sciogliere e aggiungere nel gruppo sono le
+ * funzioni di `etl-core` (`groupPair`, `splitAt`, `ungroup`, `addToGroup`,
+ * `normalizeGroups`); qui si aggiungono solo l'identificativo di un gruppo nuovo
+ * e l'ordine delle operazioni (dopo ogni azione un gruppo di una sola voce si
+ * scioglie). Tutto passa poi da `setParams`.
+ */
+import {
+  addToGroup,
+  groupPair,
+  groupRuns,
+  normalizeGroups,
+  splitAt,
+  ungroup,
+} from "../../etl-core";
+import type { Groupable, LogicOp } from "../../etl-core";
+
+/** Una voce senza connettore né gruppo: la lista li assegna. */
+export type Blank<T> = Omit<T, "conn" | "g">;
+/** Costruisce una voce vuota. */
+export type MakeItem<T> = () => Blank<T>;
+
+/**
+ * Identificativo per un gruppo nuovo: «g» e il numero successivo al più alto già
+ * in uso nella lista. Deterministico (niente orologio né casualità), unico nella lista.
+ */
+export function nextGroupId(items: readonly Groupable[]): string {
+  let max = 0;
+  for (const item of items) {
+    const m = item.g ? /^g(\d+)/.exec(item.g) : null;
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return `g${max + 1}`;
+}
+
+/** Aggiunge una voce in fondo, con il connettore «AND» (la prima non ne ha bisogno ma lo ignora). */
+export function addItem<T extends Groupable>(
+  items: readonly T[],
+  make: MakeItem<T>,
+): { list: T[]; index: number } {
+  const item = { ...make(), conn: "AND" as const } as T;
+  return { list: [...items, item], index: items.length };
+}
+
+/** Toglie la voce `index`; un gruppo che resta con una sola voce si scioglie. */
+export function removeItem<T extends Groupable>(items: readonly T[], index: number): T[] {
+  return normalizeGroups(items.filter((_, i) => i !== index));
+}
+
+/** Cambia il connettore della voce `index` (quello con la voce che la precede). */
+export function setConnector<T extends Groupable>(
+  items: readonly T[],
+  index: number,
+  conn: LogicOp,
+): T[] {
+  return items.map((item, i) => (i === index ? { ...item, conn } : item));
+}
+
+/** Raggruppa la voce `index - 1` con la `index`; due gruppi adiacenti si fondono. */
+export function groupAt<T extends Groupable>(items: readonly T[], index: number): T[] {
+  return normalizeGroups(groupPair(items, index, () => nextGroupId(items)));
+}
+
+/** Divide il gruppo della voce `index` in quel punto; i gruppi di una sola voce si sciolgono. */
+export function splitGroupAt<T extends Groupable>(items: readonly T[], index: number): T[] {
+  return normalizeGroups(splitAt(items, index, () => nextGroupId(items)));
+}
+
+/** Scioglie il gruppo: le sue voci restano, senza gruppo. */
+export function ungroupById<T extends Groupable>(items: readonly T[], groupId: string): T[] {
+  return normalizeGroups(ungroup(items, groupId));
+}
+
+/** Aggiunge una voce nuova in fondo al gruppo (con il connettore «AND»). */
+export function addInGroup<T extends Groupable>(
+  items: readonly T[],
+  groupId: string,
+  make: MakeItem<T>,
+): { list: T[]; index: number } {
+  const r = addToGroup(items, groupId, make);
+  return { list: normalizeGroups(r.list), index: r.index };
+}
+
+/** L'indice aperto dopo aver tolto la voce `removed` da una lista che ora ha `count` voci. */
+export function openAfterRemove(open: number, removed: number, count: number): number {
+  if (count <= 0) return -1;
+  if (open > removed) return open - 1;
+  return Math.min(open, count - 1);
+}
+
+/** Struttura per il disegno: ogni tratto della lista è una voce libera o un gruppo (indici di inizio e fine). */
+export interface Run {
+  readonly start: number;
+  readonly end: number;
+  readonly group: string | null;
+}
+
+export function runsOf(items: readonly Groupable[]): Run[] {
+  return groupRuns(items).map((r) => ({ start: r.s, end: r.e, group: r.g }));
 }
 ```
 

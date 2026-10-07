@@ -2,1453 +2,1977 @@
 
 File in questo blocco:
 
-- `src/etl-canvas/panels/Toolbox.tsx`
-- `src/etl-canvas/panels/actions.ts`
-- `src/etl-canvas/panels/animator.ts`
-- `src/etl-canvas/panels/autoFit.ts`
-- `src/etl-canvas/panels/csv.ts`
-- `src/etl-canvas/panels/dockArea.ts`
-- `src/etl-canvas/panels/families.ts`
-- `src/etl-canvas/panels/layout.ts`
-- `src/etl-canvas/panels/overlayLayout.ts`
+- `src/etl-canvas/inspector/copy.ts`
+- `src/etl-canvas/inspector/family.ts`
+- `src/etl-canvas/inspector/icons.tsx`
+- `src/etl-canvas/inspector/inspector.css`
+- `src/etl-canvas/inspector/joinKeys.ts`
+- `src/etl-canvas/inspector/joinSides.ts`
+- `src/etl-canvas/inspector/logic.ts`
+- `src/etl-canvas/inspector/masterDetail.ts`
+- `src/etl-canvas/inspector/menu.ts`
+- `src/etl-canvas/inspector/params.ts`
+- `src/etl-canvas/inspector/useActiveSchema.ts`
 
 ---
 
-### `src/etl-canvas/panels/Toolbox.tsx`
+### `src/etl-canvas/inspector/copy.ts`
 
-166 righe
+168 righe
+
+```ts
+/**
+ * Tutti i testi dell'Inspector, in italiano e con la sola maiuscola iniziale.
+ * Nessuna stringa italiana sparsa nei componenti: un test lo verifica. Le
+ * etichette dei campi e delle operazioni vengono dal catalogo di etl-core.
+ */
+export const copy = {
+  // intestazione
+  kindSource: "Sorgente",
+  kindResult: "Risultato",
+  kindBox: "Box combinato",
+  kindOperation: "Lavorazione",
+  nameLabel: "Nome del nodo",
+
+  // stati
+  emptyInspector: "Nessun nodo selezionato",
+  lockedText:
+    "Collega una tabella a questo nodo per configurarne i parametri: colonne, chiavi e valori dipendono dai dati in ingresso.",
+  lockedJoin: (n: number) => `Serve un Join completo: ${n} tabelle in ingresso.`,
+  resultNote: (producer: string) =>
+    `Risultato generato da ${producer}. I suoi parametri si configurano nei passaggi che lo producono.`,
+  producerFallback: "una lavorazione",
+  resultIncomplete: "Incompleto: al join manca una tabella.",
+  inputsCount: (got: number, cap: number) => `Tabelle in ingresso: ${got} su ${cap}.`,
+  columnsTitle: "Colonne",
+  columnsNone: "Nessuna colonna nota: carica un dataset con colonne.",
+  closeInspector: "Nascondi l’inspector",
+
+  // box combinato
+  sequenceTitle: "Sequenza di esecuzione",
+  sequenceCount: (n: number) => `${n} passaggi`,
+  stepLabel: (n: number, name: string) => `Passaggio ${n}: ${name}`,
+  stepReorderHelp: "Trascina il passaggio o usa Alt con le frecce su e giù per cambiarne l’ordine.",
+  stepDetach: "Sgancia sul canvas",
+  stepDelete: "Elimina passaggio",
+  stepConfigure: "Configura parametri",
+  stepMenu: "Impostazioni del passaggio",
+  stepsMenuLabel: "Azioni del passaggio",
+  tableReference: "Tabella di riferimento",
+  tableLeft: "Tabella sinistra",
+  tableRight: "Tabella destra",
+  tableLinkFirst: "Collega le tabelle per scegliere su quale agisce questo passaggio.",
+  tableLeftResult: (j: number) =>
+    `Tabella sinistra: risultato del join ${j}, già unito nei passaggi precedenti.`,
+  tableSingle: (j: number) => `Opera sul risultato del join ${j}: da qui la tabella è una sola.`,
+  tableFallback: "tabella",
+
+  // campi e menu
+  pickOrType: "Scegli o scrivi",
+  typeOr: "Oppure scrivi",
+  typePlaceholder: "Scrivi un valore",
+  searchPlaceholder: "Cerca",
+  noResults: "Nessun risultato",
+  useTyped: (text: string) => `Usa “${text}”`,
+  menuLabel: "Scelte disponibili",
+
+  // colonne
+  columnsPlaceholder: "Nessuna colonna scelta",
+  columnsAdd: "Aggiungi colonne",
+  columnsSearch: "Cerca una colonna",
+  columnsAll: "Tutte",
+  columnsNone2: "Nessuna",
+  columnsCount: (n: number, m: number) => `${n} ${n === 1 ? "colonna" : "colonne"} su ${m}`,
+  columnsRemove: (name: string) => `Rimuovi ${name}`,
+  columnsMoveHelp: "Alt con le frecce sinistra e destra cambia l’ordine; si può anche trascinare.",
+  columnsAddTyped: (name: string) => `+ Aggiungi “${name}”`,
+  columnsFree: "Non presente nei dati",
+  columnsMenu: "Colonne",
+  columnsOutside: (n: number) =>
+    `${n} ${n === 1 ? "colonna non presente" : "colonne non presenti"} nei dati in ingresso`,
+  columnsOutsideRemove: "Rimuovi",
+  columnsPosition: (name: string, i: number, n: number) => `${name}, posizione ${i} di ${n}`,
+
+  // valori
+  valuesPlaceholder: "Nessun valore scelto",
+  valuesAdd: "Scegli i valori",
+  valuesSearch: "Cerca tra i valori o scrivine di nuovi",
+  valuesSearchFree: "Scrivi i valori, anche più insieme",
+  valuesAll: "Tutti",
+  valuesNone: "Nessuno",
+  valuesCount: (n: number, m: number) =>
+    m > 0
+      ? `${n} ${n === 1 ? "selezionato" : "selezionati"} su ${m}`
+      : `${n} ${n === 1 ? "selezionato" : "selezionati"}`,
+  valuesAddTyped: (tokens: readonly string[]) =>
+    `+ Aggiungi ${tokens.map((t) => `“${t}”`).join(", ")}`,
+  valuesRemove: (v: string) => `Rimuovi ${v}`,
+  valuesOutside: (n: number) =>
+    `${n} ${n === 1 ? "valore non presente" : "valori non presenti"} nelle colonne scelte`,
+  valuesOutsideRemove: "Rimuovi",
+  valuesMenu: "Valori",
+  valuesFree: "Non presente nei dati",
+
+  // voci multiple
+  rowToggle: "Mostra o nascondi i campi",
+  rowTodo: "Da configurare",
+  rowRemove: "Rimuovi voce",
+  rowNote: "",
+  resultNameAuto: (names: readonly string[]) => `Nome automatico: ${names.join(", ")}`,
+  resultNameNone: "Il nome compare quando scegli le colonne",
+
+  // condizioni di filtro
+  filterColumn: "Colonna",
+  filterColumnType: (type: string) => `tipo: ${type}`,
+  filterOperator: "Operatore",
+  filterValue: "Valore",
+  filterValues: "Valori",
+  filterSingleValue: "Valore singolo",
+
+  // join: impostazioni e condizioni
+  joinConditions: "Condizioni di unione",
+  joinLeftSide: "Lato sinistro",
+  joinRightSide: "Lato destro",
+  joinCompare: "Confronto",
+  joinModeColumn: "Colonna",
+  joinModeValue: "Valore",
+  joinModeList: "Lista",
+  joinValuePlaceholder: "Valore",
+  joinPerformance:
+    "Nessuna condizione di uguaglianza: il Join confronterà ogni riga con tutte le altre. Su tabelle grandi l’esecuzione può essere molto lenta.",
+
+  // layout a tre colonne
+  colSettings: "Impostazioni",
+  colConditions: "Condizioni e gruppi",
+  colList: "Elenco",
+  colDetail: "Dettaglio",
+
+  // riordino delle voci
+  rowGripKeys: "Alt+ArrowUp Alt+ArrowDown",
+  rowGrip: (name: string) => `Sposta ${name}`,
+  rowReorderHelp: "Trascina la maniglia o usa Alt con le frecce su e giù per cambiare l’ordine.",
+
+  // condizioni, connettori e gruppi
+  conditionNoun: "Condizione",
+  conditionTodo: "da configurare",
+  conditionAdd: "Aggiungi condizione",
+  conditionRemove: "Rimuovi condizione",
+  conditionToggle: "Mostra o nascondi la condizione",
+  connectorLabel: (a: number, b: number) => `Connettore tra la condizione ${a} e la ${b}`,
+  connectorOption: (op: string, help: string) => `${op} · ${help}`,
+  groupTitle: "Gruppo",
+  groupDo: "Raggruppa le due condizioni",
+  groupSplit: "Dividi il gruppo in questo punto",
+  groupUngroup: "Sciogli",
+  groupUngroupLabel: "Sciogli il gruppo",
+  groupAddIn: "Condizione nel gruppo",
+  previewTitle: "Anteprima",
+  previewHint:
+    "Tra parentesi i gruppi; per il resto le condizioni si combinano nell’ordine in cui compaiono.",
+  previewEmpty: "…",
+  groupMarkDo: "( )",
+  groupMarkSplit: ")(",
+
+  // pulsanti sul nodo
+  nodeDelete: "Elimina nodo",
+  nodeExpand: "Espandi sequenza",
+
+  // pannello espanso
+  expandedSub: (n: number) => `${n} passaggi in sequenza`,
+  expandedNote: "Trascina le righe per cambiare l’ordine di esecuzione.",
+  expandedNoteOutside: "Rilascia qui fuori per sganciare il passaggio sul canvas",
+  expandedClose: "Chiudi",
+  expandedTitle: "Sequenza del box",
+
+  // conferme e annunci
+  announceMoved: (name: string, pos: number, n: number) =>
+    `${name} spostato in posizione ${pos} di ${n}`,
+} as const;
+```
+
+### `src/etl-canvas/inspector/family.ts`
+
+13 righe
+
+```ts
+/** La famiglia di un nodo, per l'intestazione dell'Inspector. */
+import { sectionOf } from "../../etl-core";
+import type { Card } from "../../etl-core";
+import { copy } from "./copy";
+
+/** La famiglia da mostrare: il tipo di nodo, o la sezione della cassetta per una lavorazione semplice. */
+export function familyLabel(card: Card): string {
+  if (card.kind === "dataset") return card.isOutput ? copy.kindResult : copy.kindSource;
+  if (card.components.length > 1) return copy.kindBox;
+  const first = card.components[0];
+  return (first ? sectionOf(first)?.name : undefined) ?? copy.kindOperation;
+}
+```
+
+### `src/etl-canvas/inspector/icons.tsx`
+
+87 righe
 
 ```tsx
-/**
- * La cassetta degli strumenti (prototipo, `buildPalette` righe 4727-4752, e i
- * gestori 4912-4937). Le sezioni e le voci NON sono scritte qui: derivano dal
- * catalogo di etl-core (`SECTIONS`, `META`), così un'operazione aggiunta al
- * dominio compare da sola. La sezione Dataset mostra la libreria di etl-store
- * e il caricamento di un CSV.
- */
-import { useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
-import { META, SECTIONS } from "../../etl-core";
-import type { ComponentId } from "../../etl-core";
-import type { EtlStore, Side } from "../../etl-store";
-import { useEtlState } from "../../etl-store/react";
-import { Icon } from "../icons";
-import { FAMILY_OF_SECTION } from "./families";
-import type { CanvasDropPayload } from "../drop";
-import { loadCsvFile } from "./csv";
-import { ChevronIcon, CloseArrow, UploadIcon } from "./ui-icons";
+/** Icone dell'Inspector: tracciati statici, ereditano il colore del testo. */
+import type { ReactNode } from "react";
 
-export interface ToolboxProps {
-  readonly store: EtlStore;
-  readonly side: Side;
-  readonly onClose: () => void;
-  /** Inizio del trascinamento di una voce (il canvas ne mostra l'anteprima): vedi EtlWorkspace. */
-  readonly onItemPointerDown: (
-    payload: CanvasDropPayload,
-    e: ReactPointerEvent<HTMLElement>,
-  ) => void;
-}
-
-function Item(props: {
-  type: ComponentId;
-  label: string;
-  meta?: string | undefined;
-  lib?: string | undefined;
-  family?: string | undefined;
-  onPointerDown: ToolboxProps["onItemPointerDown"];
-}) {
-  const { type, lib } = props;
-  const payload: CanvasDropPayload = lib
-    ? { component: type, libraryId: lib }
-    : { component: type };
+function Svg(props: { children: ReactNode; strokeWidth?: number }) {
   return (
-    <div
-      className={"ec-pal-item" + (type === "dataset" ? " ec-source" : "")}
-      data-type={type}
-      data-lib={lib}
-      data-family={props.family}
-      onPointerDown={(e) => props.onPointerDown(payload, e)}
+    <svg
+      className="ei-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={props.strokeWidth ?? 2.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
     >
-      <div className="ec-pal-chip">
-        <Icon id={type} />
-      </div>
-      <div className="ec-pal-label">{props.label}</div>
-      {props.meta ? <div className="ec-lib-meta">{props.meta}</div> : null}
-    </div>
+      {props.children}
+    </svg>
   );
 }
 
-export function Toolbox(props: ToolboxProps) {
-  const { store, side } = props;
-  const library = useEtlState((s) => s.library, store);
-  const horiz = side === "top" || side === "bottom";
-  const [open, setOpen] = useState<Readonly<Record<string, boolean>>>(() =>
-    Object.fromEntries(SECTIONS.map((s) => [s.id, true])),
-  );
-  const [status, setStatus] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const onFile = async (file: File | undefined) => {
-    if (!file) return;
-    const outcome = await loadCsvFile(store, file);
-    setStatus(outcome.message);
-    if (outcome.ok) setOpen((o) => ({ ...o, data: true }));
-  };
-
-  return (
-    <div className="ec-tb-inner" data-testid="ec-toolbox">
-      <div className="ec-tb-head">
-        <div className="ec-tb-title">Strumenti</div>
-        <button
-          type="button"
-          className="ec-close-btn"
-          aria-label="Nascondi la cassetta degli strumenti"
-          onClick={props.onClose}
-        >
-          <CloseArrow side={side} />
-        </button>
-      </div>
-      {SECTIONS.map((sec) => {
-        const isOpen = horiz || open[sec.id] !== false;
-        return (
-          <div key={sec.id} className={"ec-tb-sec" + (isOpen ? " ec-open" : "")} data-sec={sec.id}>
-            <button
-              type="button"
-              className="ec-tb-sec-head"
-              aria-expanded={isOpen}
-              onClick={() => setOpen((o) => ({ ...o, [sec.id]: !(o[sec.id] !== false) }))}
-            >
-              <span className="ec-chev">
-                <ChevronIcon />
-              </span>
-              <span className="ec-tb-sec-name">{sec.name}</span>
-            </button>
-            <div className="ec-tb-sec-body">
-              {sec.items ? (
-                sec.items.map((t) => (
-                  <Item
-                    key={t}
-                    type={t}
-                    label={META[t].label}
-                    family={FAMILY_OF_SECTION[sec.id]}
-                    onPointerDown={props.onItemPointerDown}
-                  />
-                ))
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="ec-tb-upload"
-                    onClick={() => fileRef.current?.click()}
-                  >
-                    <UploadIcon />
-                    Carica dataset
-                  </button>
-                  {library.length ? (
-                    library.map((lb) => (
-                      <Item
-                        key={lb.id}
-                        type="dataset"
-                        lib={lb.id}
-                        label={lb.name}
-                        meta={`${lb.columns.length} col · ${lb.rows} righe`}
-                        onPointerDown={props.onItemPointerDown}
-                      />
-                    ))
-                  ) : (
-                    <div className="ec-tb-empty">Nessun dataset caricato</div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        );
-      })}
-      {status ? (
-        <div className="ec-tb-status" role="status">
-          {status}
-        </div>
-      ) : null}
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".csv,.tsv,.txt"
-        hidden
-        data-testid="ec-file-input"
-        onChange={(e) => {
-          const input = e.currentTarget;
-          void onFile(input.files?.[0]);
-          input.value = "";
-        }}
-      />
-    </div>
-  );
-}
+export const ChevronDown = () => (
+  <Svg strokeWidth={2.6}>
+    <polyline points="6 9 12 15 18 9" />
+  </Svg>
+);
+export const ChevronRight = () => (
+  <Svg strokeWidth={2.6}>
+    <polyline points="9 18 15 12 9 6" />
+  </Svg>
+);
+export const XIcon = () => (
+  <Svg>
+    <line x1="17" y1="7" x2="7" y2="17" />
+    <line x1="7" y1="7" x2="17" y2="17" />
+  </Svg>
+);
+export const LockIcon = () => (
+  <Svg strokeWidth={2}>
+    <rect x="4" y="11" width="16" height="9" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </Svg>
+);
+export const GripIcon = () => (
+  <Svg strokeWidth={2.6}>
+    <circle cx="9" cy="6" r="0.6" />
+    <circle cx="15" cy="6" r="0.6" />
+    <circle cx="9" cy="12" r="0.6" />
+    <circle cx="15" cy="12" r="0.6" />
+    <circle cx="9" cy="18" r="0.6" />
+    <circle cx="15" cy="18" r="0.6" />
+  </Svg>
+);
+export const PlusIcon = () => (
+  <Svg>
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </Svg>
+);
+export const CheckIcon = () => (
+  <Svg strokeWidth={3}>
+    <polyline points="5 12.5 10 17.5 19 7" />
+  </Svg>
+);
+export const DetachIcon = () => (
+  <Svg strokeWidth={2.2}>
+    <path d="M14 3h7v7" />
+    <path d="M21 3l-9 9" />
+    <path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5" />
+  </Svg>
+);
+export const MoreIcon = () => (
+  <Svg strokeWidth={2.6}>
+    <circle cx="5" cy="12" r="1" />
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="19" cy="12" r="1" />
+  </Svg>
+);
+export const ExpandIcon = () => (
+  <Svg strokeWidth={2.2}>
+    <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+    <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+    <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+    <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+  </Svg>
+);
 ```
 
-### `src/etl-canvas/panels/actions.ts`
+### `src/etl-canvas/inspector/inspector.css`
 
-88 righe
+984 righe
 
-```ts
-/**
- * Azioni sui pannelli: comandi di etl-store (`setPanel`) più la regola
- * dell'Inspector che segue la selezione. Nessuna logica di dominio e nessun
- * DOM. La vista non si compensa qui: dopo ogni cambio la adatta l'animatore
- * (animator.ts, con la regola di autoFit.ts).
+```css
+/*
+ * Inspector (Fase 6b.1). Solo token: [REDATTO], raggi e ombre dai token semantici
+ * (--isa-*, Fase T); font-size, margin, padding e gap dalla scala di
+ * src/theme/layout-tokens.css (scripts/check-tokens.mjs lo controlla).
+ * I menu vivono in un portale sul corpo della pagina (`#ei-portal`), quindi non
+ * dipendono dai token del canvas (--ec-*).
  */
-import type { CommandResult, EtlStore, PanelKey, Side } from "../../etl-store";
-import type { InteractionController } from "../interaction";
 
-export interface PanelActions {
-  open(key: PanelKey): CommandResult;
-  close(key: PanelKey): CommandResult;
-  /** Sposta il pannello su un altro bordo: si chiude, si sposta e si riapre (prototipo, `setSide`). */
-  moveTo(key: PanelKey, side: Side): CommandResult;
-  /**
-   * Apertura automatica dell'Inspector (clic su un nodo). Se sostituisce la
-   * cassetta aperta, lo ricorda: alla chiusura automatica la cassetta si
-   * riapre.
-   */
-  autoOpenInspector(): void;
-  /** Chiusura automatica dell'Inspector (deselezione): riapre la cassetta se era stata sostituita. */
-  autoCloseInspector(): void;
+/* il pannello dell'Inspector: margine interno e scorrimento a token */
+.ec-tb-inner.ec-insp {
+  padding: var(--isa-space-5);
+  gap: var(--isa-space-4);
+  scrollbar-width: thin;
+  scrollbar-color: var(--isa-scroll-thumb) transparent;
+}
+.ec-insp .ec-close-btn {
+  width: var(--isa-icon-btn);
+  height: var(--isa-icon-btn);
 }
 
-export function createPanelActions(store: EtlStore): PanelActions {
-  // la cassetta aperta che l'apertura automatica dell'Inspector ha sostituito
-  let replacedTools = false;
-  const apply = (payload: { panel: PanelKey; open?: boolean; side?: Side }): CommandResult =>
-    store.dispatch({ type: "setPanel", payload });
-  // qualunque azione esplicita dell'utente su un pannello azzera la memoria
-  const explicit = (payload: { panel: PanelKey; open?: boolean; side?: Side }): CommandResult => {
-    replacedTools = false;
-    return apply(payload);
-  };
-  return {
-    open: (key) => explicit({ panel: key, open: true }),
-    close: (key) => explicit({ panel: key, open: false }),
-    moveTo: (key, side) => explicit({ panel: key, side }),
-    autoOpenInspector() {
-      const { panels } = store.getState();
-      if (panels.insp.open) return;
-      replacedTools = panels.tools.open;
-      apply({ panel: "insp", open: true });
-    },
-    autoCloseInspector() {
-      const { panels } = store.getState();
-      const restore = replacedTools;
-      replacedTools = false;
-      if (!panels.insp.open) return;
-      apply({ panel: "insp", open: false });
-      if (restore) apply({ panel: "tools", open: true });
-    },
-  };
+.ei-root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--isa-space-4);
+  min-width: 0;
+  color: var(--isa-text);
+  font-family: inherit;
+  line-height: var(--isa-lh-text);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  hyphens: none;
+}
+.ei-root *,
+.ei-menu *,
+.ei-expanded * {
+  box-sizing: border-box;
 }
 
-/**
- * L'Inspector segue la selezione (prototipo: `selectCard` apre, `deselect`
- * chiude — righe 2694-2727), con due differenze volute (Fase 6a.2):
- *
- * - si apre solo al CLIC su un nodo (rilascio senza trascinamento, con un solo
- *   nodo selezionato): mai alla pressione, durante un trascinamento, un
- *   riquadro di selezione, una selezione multipla o dopo un rilascio dalla
- *   cassetta;
- * - si chiude quando non c'è più un nodo nell'inspector (deselezione) e, se
- *   aveva sostituito la cassetta, la riapre.
- *
- * Se l'utente lo chiude con un nodo ancora selezionato, resta chiuso fino al
- * prossimo clic. Restituisce la funzione per smettere di ascoltare.
- */
-export function followInspector(
-  store: EtlStore,
-  controller: Pick<InteractionController, "subscribeClick">,
-  actions: PanelActions,
-): () => void {
-  let had = store.getState().inspector.nodeId !== null;
-  const offClick = controller.subscribeClick(() => actions.autoOpenInspector());
-  const offStore = store.subscribe(() => {
-    const has = store.getState().inspector.nodeId !== null;
-    if (has === had) return;
-    had = has;
-    if (!has) actions.autoCloseInspector();
-  });
-  return () => {
-    offClick();
-    offStore();
-  };
+/* intestazione */
+.ei-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--isa-space-1);
 }
-```
-
-### `src/etl-canvas/panels/animator.ts`
-
-321 righe
-
-```ts
-/**
- * L'animatore dei pannelli e della vista (Fase 6b.1.1): UN solo orologio.
- * A ogni frame del ciclo condiviso (loop.ts) imposta, con lo stesso
- * progresso s(t), sia l'apertura di ciascun pannello (la variabile CSS
- * `--a`, 0 – 1, al posto della transizione CSS di larghezza e altezza) sia
- * la vista (x, y, zoom, interpolati linearmente) nello store. Stessa durata,
- * stessa curva, stesso frame di partenza.
- *
- * Tiene anche lo stato dello zoom automatico: lo zoom di intento (l'ultimo
- * scelto dall'utente: ogni cambio di vista che non viene da qui), il punto di
- * ripristino e l'avviso «nodi fuori dall'area». Nessun accesso diretto al
- * DOM: gli elementi dei pannelli si registrano (`register`) e le misure
- * arrivano da `metrics`.
- */
-import type { Card } from "../../etl-core";
-import type { EtlStore, PanelKey, Panels, Side, View } from "../../etl-store";
-import type { Loop } from "../loop";
-import {
-  AUTOFIT_MS,
-  OUT_OF_VIEW_NOTICE,
-  easing,
-  interpolateArea,
-  interpolateView,
-  planChange,
-  sameArea,
-} from "./autoFit";
-import type { Area, Restore } from "./autoFit";
-import { restArea } from "./dockArea";
-import type { WorkspaceMetrics } from "./dockArea";
-import { PANEL_KEYS, panelSize } from "./layout";
-
-/** Un elemento di pannello: basta poter scrivere una variabile CSS. */
-export interface PanelEl {
-  readonly style: { setProperty(name: string, value: string): void };
+.ei-overline {
+  font-size: var(--isa-fs-overline);
+  font-weight: 800;
+  letter-spacing: var(--isa-ls-overline);
+  text-transform: uppercase;
+  color: var(--isa-text-secondary);
+}
+.ei-name {
+  width: 100%;
+  min-height: var(--isa-icon-btn);
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dashed var(--isa-field-border);
+  background: transparent;
+  color: var(--isa-text);
+  font: inherit;
+  font-size: var(--isa-fs-title);
+  font-weight: 800;
+  line-height: var(--isa-lh-title);
+  overflow-wrap: anywhere;
+}
+.ei-name:focus-visible {
+  outline: 2px solid var(--isa-focus-ring);
+  outline-offset: 2px;
 }
 
-/** Un pannello spostato su un altro bordo lascia sul vecchio un guscio vuoto che si richiude con lo stesso s. */
-export interface GhostView {
-  readonly id: string;
-  readonly side: Side;
-  readonly size: { readonly w: number; readonly h: number };
+/* campo: etichetta e controllo */
+.ei-fieldgroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--isa-space-1);
+  min-width: 0;
+}
+.ei-label {
+  font-size: var(--isa-fs-label);
+  font-weight: 700;
+  color: var(--isa-text-secondary);
+}
+.ei-help {
+  font-size: var(--isa-fs-help);
+  font-weight: 500;
+  line-height: var(--isa-lh-text);
+  color: var(--isa-text-secondary);
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+.ei-empty {
+  padding: var(--isa-space-2) 0;
 }
 
-export interface DockSnapshot {
-  /** Avviso non bloccante, o `null`. */
-  readonly notice: string | null;
-  readonly ghosts: readonly GhostView[];
+.ei-field {
+  display: flex;
+  align-items: center;
+  gap: var(--isa-space-2);
+  width: 100%;
+  min-height: var(--isa-control-h);
+  padding: 0 var(--isa-space-3);
+  background: var(--isa-field-bg);
+  border: 1px solid var(--isa-field-border);
+  border-radius: var(--isa-radius-control);
+  color: var(--isa-text);
+  font: inherit;
+  font-size: var(--isa-fs-value);
+  font-weight: 600;
+  text-align: left;
+}
+.ei-field:focus-visible,
+.ei-field:focus-within {
+  outline: 2px solid var(--isa-focus-ring);
+  outline-offset: 1px;
+}
+.ei-field:disabled {
+  color: var(--isa-text-secondary);
+  background: transparent;
+  border-style: dashed;
+}
+.ei-input::placeholder,
+.ei-search::placeholder {
+  color: var(--isa-field-placeholder);
+  font-weight: 500;
+}
+.ei-select {
+  cursor: pointer;
+  justify-content: space-between;
+}
+.ei-select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ei-select-chevron {
+  display: flex;
+  flex: none;
+  color: var(--isa-text-secondary);
+  transition: transform var(--isa-duration-fast);
+}
+.ei-select[data-open] .ei-select-chevron {
+  transform: rotate(180deg);
+}
+.ei-free {
+  font-style: italic;
+}
+.ei-placeholder {
+  color: var(--isa-field-placeholder);
+  font-size: var(--isa-fs-value);
+  font-weight: 500;
+}
+.ei-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
 }
 
-export interface AnimatorDeps {
-  readonly store: EtlStore;
-  /** Il ciclo condiviso del canvas: l'animatore non ne crea un altro. */
-  readonly loop: Loop;
-  /** Misure dello spazio di lavoro, o `null` se non ancora disponibili. */
-  readonly metrics: () => WorkspaceMetrics | null;
+/* etichette rimovibili (colonne e valori) */
+.ei-chipsfield {
+  flex-wrap: wrap;
+  align-items: center;
+  padding: var(--isa-space-2);
+  gap: var(--isa-space-2);
+  cursor: default;
+}
+.ei-chips {
+  display: contents;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ei-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: var(--isa-icon-btn);
+  background: var(--isa-chip-bg);
+  color: var(--isa-chip-ink);
+  border: 1px solid transparent;
+  border-radius: var(--isa-radius-pill);
+  font-size: var(--isa-fs-label);
+  font-weight: 700;
+}
+.ei-chip.ei-free {
+  background: transparent;
+  border: 1px dashed var(--isa-chip-free-border);
+}
+.ei-chip.ei-dragging {
+  position: relative;
+  z-index: 5;
+  box-shadow: var(--isa-shadow-raised);
+  pointer-events: none;
+}
+.ei-chip-label,
+.ei-chip-text {
+  all: unset;
+  padding: 0 var(--isa-space-1) 0 var(--isa-space-3);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--isa-fs-label);
+  font-weight: 700;
+}
+.ei-chip-label {
+  cursor: grab;
+  touch-action: none;
+}
+.ei-chip-label:focus-visible,
+.ei-chip-x:focus-visible,
+.ei-add:focus-visible,
+.ei-icon-btn:focus-visible,
+.ei-link-btn:focus-visible,
+.ei-addrow:focus-visible,
+.ei-row-toggle:focus-visible,
+.ei-step-main:focus-visible {
+  outline: 2px solid var(--isa-focus-ring);
+  outline-offset: 1px;
+}
+.ei-chip-x,
+.ei-icon-btn {
+  all: unset;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--isa-icon-btn);
+  height: var(--isa-icon-btn);
+  border-radius: var(--isa-radius-pill);
+  color: var(--isa-text-secondary);
+  cursor: pointer;
+}
+.ei-chip-x:hover,
+.ei-icon-btn:hover {
+  color: var(--isa-text);
+  background: var(--isa-option-hover);
+}
+.ei-add {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--isa-space-1);
+  min-height: var(--isa-icon-btn);
+  padding: 0 var(--isa-space-3);
+  border: 1px dashed var(--isa-field-border);
+  border-radius: var(--isa-radius-pill);
+  color: var(--isa-text);
+  font-size: var(--isa-fs-label);
+  font-weight: 700;
+  cursor: pointer;
+}
+.ei-add:hover {
+  background: var(--isa-option-hover);
+}
+.ei-link-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--isa-icon-btn);
+  padding: 0 var(--isa-space-2);
+  color: var(--isa-text);
+  font-size: var(--isa-fs-label);
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ei-warn {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--isa-space-2);
+  padding: var(--isa-space-1) var(--isa-space-3);
+  border-left: 3px solid var(--isa-warning);
+  font-size: var(--isa-fs-help);
+  font-weight: 500;
+  color: var(--isa-text);
 }
 
-export interface DockAnimator {
-  /** Comincia ad ascoltare lo store e si aggiunge al ciclo; restituisce la funzione per smettere. */
-  start(): () => void;
-  /** Registra (o, con `null`, toglie) l'elemento di un pannello (`tools`, `insp`) o di un guscio. */
-  register(id: string, el: PanelEl | null): void;
-  /** Il prossimo cambio dei pannelli è immediato (cambio di scheda: lo spazio non cambia). */
-  snapNext(): void;
-  /** L'area misurata a riposo (finestra ridimensionata, tetto d'altezza): ricalcola la vista senza animazione. */
-  onMeasure(area: Area): void;
-  subscribe(cb: () => void): () => void;
-  getSnapshot(): DockSnapshot;
-  /** Stato interno per le verifiche. */
-  debug(): {
-    intent: number;
-    restore: Restore | null;
-    animating: boolean;
-    amounts: Record<PanelKey, number>;
-  };
+/* stato bloccato */
+.ei-lock {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--isa-space-3);
+  padding: var(--isa-space-4);
+  border: 1px dashed var(--isa-field-border);
+  border-radius: var(--isa-radius-control);
+  color: var(--isa-lock-ink);
+  font-size: var(--isa-fs-help);
+  font-weight: 500;
+  line-height: var(--isa-lh-text);
+  text-wrap: pretty;
+}
+.ei-lock .ei-icon {
+  width: 16px;
+  height: 16px;
+  align-self: flex-start;
 }
 
-interface Ghost extends GhostView {
-  amount: number;
+/* liste a voci multiple */
+.ei-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--isa-space-2);
+  min-width: 0;
+}
+.ei-row {
+  border: 1px solid var(--isa-field-border);
+  border-radius: var(--isa-radius-control);
+  background: var(--isa-field-bg);
+  min-width: 0;
+}
+.ei-row-head {
+  display: flex;
+  align-items: center;
+  gap: var(--isa-space-1);
+  padding-right: var(--isa-space-1);
+}
+.ei-row-toggle {
+  all: unset;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--isa-space-2);
+  min-width: 0;
+  min-height: var(--isa-control-h);
+  padding: 0 var(--isa-space-3);
+  cursor: pointer;
+}
+.ei-row-chev {
+  display: flex;
+  flex: none;
+  color: var(--isa-text-secondary);
+  transition: transform var(--isa-duration-fast);
+}
+.ei-open > .ei-row-head .ei-row-chev {
+  transform: rotate(90deg);
+}
+.ei-row-n {
+  flex: none;
+  font-size: var(--isa-fs-label);
+  font-weight: 700;
+  color: var(--isa-text-secondary);
+}
+.ei-row-sum {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--isa-fs-summary);
+  font-weight: 700;
+}
+.ei-row-sum.ei-todo {
+  font-weight: 500;
+  color: var(--isa-text-secondary);
+}
+.ei-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--isa-space-4);
+  padding: var(--isa-space-3) var(--isa-space-3) var(--isa-space-4);
+  border-top: 1px solid var(--isa-border-strong);
+}
+.ei-addrow {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--isa-control-h);
+  border: 1px dashed var(--isa-field-border);
+  border-radius: var(--isa-radius-control);
+  color: var(--isa-text);
+  font-size: var(--isa-fs-label);
+  font-weight: 700;
+  cursor: pointer;
+}
+.ei-addrow:hover {
+  background: var(--isa-option-hover);
 }
 
-interface Anim {
-  t0: number | null;
-  readonly from: Record<PanelKey, number>;
-  readonly to: Record<PanelKey, number>;
-  readonly gFrom: readonly number[];
-  readonly v0: View;
-  readonly v1: View;
-  readonly a0: Area;
-  readonly a1: Area;
-  viewActive: boolean;
+/* elenco dei passaggi di un box combinato */
+.ei-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--isa-space-2);
+}
+.ei-steplist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--isa-space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ei-step {
+  display: flex;
+  align-items: center;
+  gap: var(--isa-space-1);
+  border-radius: var(--isa-radius-control);
+  touch-action: none;
+  transition: transform var(--isa-duration-base);
+}
+.ei-step.ei-on {
+  background: var(--isa-option-selected);
+}
+.ei-step.ei-dragging {
+  position: relative;
+  z-index: 5;
+  transition: none;
+  background: var(--isa-option-selected);
+  box-shadow: var(--isa-shadow-raised);
+}
+.ei-step.ei-outside {
+  opacity: 0.6;
+}
+.ei-step-main {
+  all: unset;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--isa-space-2);
+  min-width: 0;
+  min-height: var(--isa-control-h);
+  padding: 0 var(--isa-space-2);
+  font-size: var(--isa-fs-summary);
+  font-weight: 700;
+  cursor: grab;
+}
+.ei-grip {
+  display: flex;
+  color: var(--isa-text-secondary);
+}
+.ei-step-n {
+  font-size: var(--isa-fs-label);
+  font-weight: 700;
+  color: var(--isa-text-secondary);
+}
+.ei-step-icon {
+  display: flex;
+  color: var(--isa-text);
+}
+.ei-step-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.ei-step-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ei-outside-note {
+  text-align: center;
 }
 
-const lerp = (a: number, b: number, s: number): number => (s >= 1 ? b : a + (b - a) * s);
-
-export function createDockAnimator(deps: AnimatorDeps): DockAnimator {
-  const { store, loop } = deps;
-  const els = new Map<string, PanelEl>();
-  const listeners = new Set<() => void>();
-  const init = store.getState();
-  let panels: Panels = init.panels;
-  let amounts: Record<PanelKey, number> = {
-    tools: panels.tools.open ? 1 : 0,
-    insp: panels.insp.open ? 1 : 0,
-  };
-  let ghosts: Ghost[] = [];
-  let ghostSeq = 0;
-  let anim: Anim | null = null;
-  let curArea: Area | null = null;
-  let intent = init.view.zoom;
-  let restore: Restore | null = null;
-  let lastView = init.view;
-  let lastGraph = init.graph;
-  let self = false;
-  let snap = false;
-  let snapshot: DockSnapshot = { notice: null, ghosts: [] };
-
-  const publish = (): void => {
-    snapshot = {
-      notice: snapshot.notice,
-      ghosts: ghosts.map(({ id, side, size }) => ({ id, side, size })),
-    };
-    listeners.forEach((l) => l());
-  };
-  const setNotice = (notice: string | null): void => {
-    if (snapshot.notice === notice) return;
-    snapshot = { ...snapshot, notice };
-    listeners.forEach((l) => l());
-  };
-
-  const amountOf = (id: string): number =>
-    id === "tools" || id === "insp" ? amounts[id] : (ghosts.find((g) => g.id === id)?.amount ?? 0);
-  const write = (): void => {
-    for (const [id, el] of els) el.style.setProperty("--a", String(amountOf(id)));
-  };
-
-  /** Cambia la vista nello store come azione dell'animatore (non è un'azione dell'utente: non cambia l'intento). */
-  const setView = (v: View): void => {
-    const cur = store.getState().view;
-    if (cur.x === v.x && cur.y === v.y && cur.zoom === v.zoom) return;
-    self = true;
-    try {
-      store.dispatch({ type: "setView", payload: { x: v.x, y: v.y, zoom: v.zoom } });
-    } finally {
-      self = false;
-    }
-    lastView = store.getState().view;
-  };
-
-  const apply = (a: Anim, s: number): void => {
-    amounts = {
-      tools: lerp(a.from.tools, a.to.tools, s),
-      insp: lerp(a.from.insp, a.to.insp, s),
-    };
-    ghosts.forEach((g, i) => (g.amount = lerp(a.gFrom[i] ?? 0, 0, s)));
-    write();
-    curArea = interpolateArea(a.a0, a.a1, s);
-    if (a.viewActive) setView(interpolateView(a.v0, a.v1, s));
-  };
-
-  const finish = (): void => {
-    const a = anim;
-    if (!a) return;
-    apply(a, 1);
-    anim = null;
-    if (ghosts.length > 0) {
-      ghosts = [];
-      publish();
-    }
-  };
-
-  const retarget = (next: Panels): void => {
-    const prev = panels;
-    panels = next;
-    const instant = snap;
-    snap = false;
-    // un pannello spostato su un altro bordo si apre sul nuovo e lascia un guscio che si richiude sul vecchio
-    for (const k of PANEL_KEYS) {
-      if (prev[k].side !== next[k].side && amounts[k] > 0) {
-        ghosts.push({
-          id: `ghost-${k}-${++ghostSeq}`,
-          side: prev[k].side,
-          size: panelSize(prev, k),
-          amount: amounts[k],
-        });
-        amounts = { ...amounts, [k]: 0 };
-      }
-    }
-    const to: Record<PanelKey, number> = {
-      tools: next.tools.open ? 1 : 0,
-      insp: next.insp.open ? 1 : 0,
-    };
-    const ws = deps.metrics();
-    if (!ws) {
-      amounts = to;
-      ghosts = [];
-      anim = null;
-      write();
-      publish();
-      return;
-    }
-    const st = store.getState();
-    const a1 = restArea(next, ws);
-    const a0 = curArea ?? restArea(prev, ws);
-    const plan = planChange({
-      cards: Object.values(st.graph.cards) as Card[],
-      view: st.view,
-      intent,
-      prev: a0,
-      next: a1,
-      restore,
-    });
-    restore = plan.restore;
-    setNotice(plan.fit?.outcome === 3 ? OUT_OF_VIEW_NOTICE : null);
-    anim = {
-      t0: null,
-      from: { ...amounts },
-      to,
-      gFrom: ghosts.map((g) => g.amount),
-      v0: st.view,
-      v1: plan.view,
-      a0,
-      a1,
-      viewActive: true,
-    };
-    publish();
-    write();
-    if (instant) {
-      finish();
-      return;
-    }
-    loop.wake();
-  };
-
-  const onStore = (): void => {
-    if (self) return;
-    const st = store.getState();
-    if (st.view !== lastView) {
-      // un cambio di vista che non viene da qui è un'azione dell'utente: nuovo intento, niente ripristino, l'animazione si ferma dov'è
-      lastView = st.view;
-      intent = st.view.zoom;
-      restore = null;
-      setNotice(null);
-      if (anim) anim.viewActive = false;
-    }
-    if (st.graph !== lastGraph) {
-      // nodi spostati, aggiunti o eliminati: la vista di prima non vale più
-      lastGraph = st.graph;
-      restore = null;
-    }
-    if (st.panels !== panels) retarget(st.panels);
-  };
-
-  const task = {
-    frame(now: number): boolean {
-      const a = anim;
-      if (!a) return false;
-      if (a.t0 === null) a.t0 = now;
-      const p = Math.min(1, Math.max(0, (now - a.t0) / AUTOFIT_MS));
-      if (p >= 1) {
-        finish();
-        return false;
-      }
-      apply(a, easing(p));
-      return true;
-    },
-    settle(): void {
-      finish();
-    },
-  };
-
-  return {
-    start() {
-      const off = loop.add(task);
-      const unsub = store.subscribe(onStore);
-      return () => {
-        unsub();
-        off();
-      };
-    },
-    register(id, el) {
-      if (!el) {
-        els.delete(id);
-        return;
-      }
-      els.set(id, el);
-      el.style.setProperty("--a", String(amountOf(id)));
-    },
-    snapNext() {
-      snap = true;
-    },
-    onMeasure(area) {
-      if (anim) return;
-      if (!curArea) {
-        curArea = area;
-        return;
-      }
-      if (sameArea(curArea, area)) return;
-      const st = store.getState();
-      const plan = planChange({
-        cards: Object.values(st.graph.cards) as Card[],
-        view: st.view,
-        intent,
-        prev: curArea,
-        next: area,
-        restore,
-      });
-      restore = plan.restore;
-      curArea = area;
-      setNotice(plan.fit?.outcome === 3 ? OUT_OF_VIEW_NOTICE : null);
-      setView(plan.view);
-    },
-    subscribe(cb) {
-      listeners.add(cb);
-      return () => listeners.delete(cb);
-    },
-    getSnapshot: () => snapshot,
-    debug: () => ({ intent, restore, animating: anim !== null, amounts }),
-  };
+/* colonne in sola lettura (dataset e output) */
+.ei-colist {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
-```
-
-### `src/etl-canvas/panels/autoFit.ts`
-
-281 righe
-
-```ts
-/**
- * Zoom automatico (Fase 6b.1.1): dopo ogni cambio dell'area del canvas
- * nessun nodo che era interamente visibile resta coperto o tagliato. Funzioni
- * pure, niente DOM. Sostituisce `keepVisible` della 6a.2 (mai modificare lo
- * zoom): se lo spazio non basta, scende lo zoom.
- *
- * Le posizioni dei nodi nel mondo non cambiano mai; cambia solo la vista
- * (x, y, zoom). Lo zoom di intento (l'ultimo scelto dall'utente) non lo
- * cambia nessuna modifica automatica: lo tiene chi chiama.
- */
-import type { Card } from "../../etl-core";
-import { CARD, LABEL_H } from "../../etl-layout";
-import type { Size } from "../../etl-layout";
-import type { View } from "../../etl-store";
-import { MIN_ZOOM, bounds, fitView } from "../view";
-import type { Insets } from "../view";
-
-/** Margine dell'area sicura verso i bordi del canvas (token). */
-export const SAFE_MARGIN = 24;
-/** Durata della transizione di pannello e vista: un solo token per entrambi (era la transizione CSS dei pannelli, 0,3 s). */
-export const AUTOFIT_MS = 300;
-/** Tolleranza dei confronti geometrici (px) e dello zoom. */
-const EPS = 1e-6;
-/** Due aree sono «uguali» se differiscono meno di così (px). */
-export const AREA_TOLERANCE = 0.5;
-
-/** L'area del canvas e lo spazio occupato dai widget in sovrimpressione (minimappa, zoom). */
-export interface Area {
-  readonly size: Size;
-  readonly insets: Insets;
+.ei-colrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--isa-space-3);
+  padding: var(--isa-space-1) 0;
+  border-bottom: 1px solid var(--isa-border-strong);
+  font-size: var(--isa-fs-value);
+  font-weight: 600;
+}
+.ei-coltype {
+  flex: none;
+  font-size: var(--isa-fs-help);
+  font-weight: 500;
+  color: var(--isa-text-secondary);
 }
 
-interface Box {
-  readonly x1: number;
-  readonly y1: number;
-  readonly x2: number;
-  readonly y2: number;
+/* menu e tendine (in un portale sul corpo della pagina) */
+.ei-portal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
 }
-
-/** Distanza dell'area sicura da ciascun bordo: il margine o l'ingombro del widget, il maggiore. */
-export function safeInsets(area: Area): Insets {
-  const m = (n: number) => Math.max(SAFE_MARGIN, n);
-  return {
-    top: m(area.insets.top),
-    right: m(area.insets.right),
-    bottom: m(area.insets.bottom),
-    left: m(area.insets.left),
-  };
+.ei-menu {
+  position: fixed;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  padding: var(--isa-menu-pad);
+  background: var(--isa-surface-overlay);
+  color: var(--isa-text);
+  border: 1px solid var(--isa-border-strong);
+  border-radius: var(--isa-radius-panel);
+  box-shadow: var(--isa-shadow-raised);
+  overflow: hidden;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+  animation: ei-enter var(--isa-menu-enter) ease-out;
 }
-
-export function safeBox(area: Area): Box {
-  const i = safeInsets(area);
-  return { x1: i.left, y1: i.top, x2: area.size.w - i.right, y2: area.size.h - i.bottom };
-}
-
-/** Rettangolo di un nodo (quadrato più etichetta) sullo schermo, con la vista data. */
-function screenBox(c: Pick<Card, "x" | "y">, v: View): Box {
-  const x1 = v.x + c.x * v.zoom;
-  const y1 = v.y + c.y * v.zoom;
-  return { x1, y1, x2: x1 + CARD * v.zoom, y2: y1 + (CARD + LABEL_H) * v.zoom };
-}
-
-const within = (b: Box, safe: Box, tol: number): boolean =>
-  b.x1 >= safe.x1 - tol && b.y1 >= safe.y1 - tol && b.x2 <= safe.x2 + tol && b.y2 <= safe.y2 + tol;
-
-/** Nodi interamente dentro l'area sicura con la vista data: quelli che il cambio non deve toccare. Un nodo già tagliato non è richiesto. */
-export function requiredNodes(cards: readonly Card[], view: View, area: Area): readonly Card[] {
-  const safe = safeBox(area);
-  return cards.filter((c) => within(screenBox(c, view), safe, EPS));
-}
-
-/** `true` se il nodo sta interamente nell'area sicura (con tolleranza `tol`, in px). */
-export function nodeInside(c: Pick<Card, "x" | "y">, view: View, area: Area, tol = EPS): boolean {
-  return within(screenBox(c, view), safeBox(area), tol);
-}
-
-/** Spostamento minimo di un intervallo [lo, hi] perché stia in [a, b]; se non entra, si allinea ad `a`. */
-function shiftInto(lo: number, hi: number, a: number, b: number): number {
-  if (hi - lo > b - a) return a - lo;
-  if (lo < a) return a - lo;
-  if (hi > b) return b - hi;
-  return 0;
-}
-
-/** Esito di `fitTarget`: 1 solo spinta e scorrimento, 2 cambia lo zoom, 3 nemmeno lo zoom minimo basta. */
-export type FitOutcome = 1 | 2 | 3;
-export type FitReason =
-  /** nessun nodo richiesto: la vista non cambia */
-  | "nessun-nodo"
-  /** i nodi richiesti entrano allo zoom attuale */
-  | "entrano"
-  /** lo zoom scende perché i nodi richiesti non entrano */
-  | "zoom-ridotto"
-  /** lo zoom risale verso quello di intento perché ora c'è spazio */
-  | "zoom-ripreso"
-  /** non entrano nemmeno allo zoom minimo */
-  | "zoom-minimo";
-
-export interface FitResult {
-  readonly view: View;
-  readonly outcome: FitOutcome;
-  readonly reason: FitReason;
-  /** Quanti nodi erano richiesti. */
-  readonly required: number;
-}
-
-export interface FitInput {
-  readonly cards: readonly Card[];
-  /** La vista corrente (in coordinate dell'area corrente). */
-  readonly view: View;
-  /** Lo zoom scelto dall'utente. */
-  readonly intent: number;
-  /** L'area prima del cambio: da qui i nodi richiesti. */
-  readonly prev: Area;
-  /** L'area dopo il cambio. */
-  readonly next: Area;
-}
-
-/**
- * La vista di arrivo dopo un cambio d'area (vedi la regola in
- * docs/prompt 6b.1.1):
- * 1. i nodi richiesti entrano allo zoom che serve → solo scorrimento minimo
- *    (la spinta del bordo è già nella vista, che è relativa al canvas);
- * 2. altrimenti zoom = min(intento, zoom a cui entrano), riquadro centrato
- *    nell'area sicura (`fitView` sul riquadro dei nodi richiesti);
- * 3. se non entrano nemmeno allo zoom minimo: zoom minimo, riquadro allineato
- *    in alto a sinistra con lo spostamento minimo.
- *
- * «Lo zoom che serve» è min(intento, zoom a cui entrano): se lo zoom attuale
- * è già quello, è il caso 1; se è più basso (una discesa precedente) e ora c'è
- * spazio, risale (caso 2); se è più alto, scende.
- */
-export function fitTarget(input: FitInput): FitResult {
-  const { cards, view, intent, next } = input;
-  const req = requiredNodes(cards, view, input.prev);
-  const b = bounds(req);
-  if (!b) return { view, outcome: 1, reason: "nessun-nodo", required: 0 };
-  const safe = safeBox(next);
-  const bw = b.x2 - b.x1;
-  const bh = b.y2 - b.y1;
-  const zFit = Math.min((safe.x2 - safe.x1) / bw, (safe.y2 - safe.y1) / bh);
-  const zt = Math.min(intent, zFit);
-
-  if (zt < MIN_ZOOM - EPS) {
-    // caso 3: zoom minimo attorno al centro del riquadro, poi lo spostamento minimo per asse
-    const cx = view.x + ((b.x1 + b.x2) / 2) * view.zoom;
-    const cy = view.y + ((b.y1 + b.y2) / 2) * view.zoom;
-    const z = MIN_ZOOM;
-    const x0 = cx - ((b.x1 + b.x2) / 2) * z;
-    const y0 = cy - ((b.y1 + b.y2) / 2) * z;
-    const dx = shiftInto(x0 + b.x1 * z, x0 + b.x2 * z, safe.x1, safe.x2);
-    const dy = shiftInto(y0 + b.y1 * z, y0 + b.y2 * z, safe.y1, safe.y2);
-    return {
-      view: { x: x0 + dx, y: y0 + dy, zoom: z },
-      outcome: 3,
-      reason: "zoom-minimo",
-      required: req.length,
-    };
+@keyframes ei-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
   }
-
-  if (Math.abs(zt - view.zoom) <= EPS) {
-    const lo = { x: view.x + b.x1 * view.zoom, y: view.y + b.y1 * view.zoom };
-    const hi = { x: view.x + b.x2 * view.zoom, y: view.y + b.y2 * view.zoom };
-    const dx = shiftInto(lo.x, hi.x, safe.x1, safe.x2);
-    const dy = shiftInto(lo.y, hi.y, safe.y1, safe.y2);
-    return {
-      view: dx === 0 && dy === 0 ? view : { ...view, x: view.x + dx, y: view.y + dy },
-      outcome: 1,
-      reason: "entrano",
-      required: req.length,
-    };
+  to {
+    opacity: 1;
+    transform: none;
   }
-
-  const fitted = fitView(req, next.size, safeInsets(next), { pad: 0, maxZoom: zt });
-  return {
-    view: fitted,
-    outcome: 2,
-    reason: zt < view.zoom ? "zoom-ridotto" : "zoom-ripreso",
-    required: req.length,
-  };
 }
-
-/** Due aree uguali (dimensioni e ingombri dei widget), entro la tolleranza. */
-export function sameArea(a: Area, b: Area, tol = AREA_TOLERANCE): boolean {
-  const close = (p: number, q: number) => Math.abs(p - q) <= tol;
-  return (
-    close(a.size.w, b.size.w) &&
-    close(a.size.h, b.size.h) &&
-    close(a.insets.top, b.insets.top) &&
-    close(a.insets.right, b.insets.right) &&
-    close(a.insets.bottom, b.insets.bottom) &&
-    close(a.insets.left, b.insets.left)
-  );
+.ei-menu[data-side="above"] {
+  animation-name: ei-enter-above;
 }
-
-/** Il punto di ripristino: la vista di prima del primo adattamento automatico e la sua area. */
-export interface Restore {
-  readonly view: View;
-  readonly area: Area;
-}
-
-export interface PlanInput extends FitInput {
-  readonly restore: Restore | null;
-}
-
-export interface Plan {
-  readonly view: View;
-  /** `null` se la vista ripristinata è quella di prima. */
-  readonly fit: FitResult | null;
-  /** La vista è tornata esattamente a quella salvata. */
-  readonly restored: boolean;
-  /** Il punto di ripristino da tenere dopo questo cambio. */
-  readonly restore: Restore | null;
-}
-
-/**
- * Come `fitTarget`, più il ripristino: se l'area è tornata uguale a quella del
- * punto di ripristino (e l'utente non ha toccato nulla, cosa che chi chiama
- * garantisce azzerando `restore`), si torna ESATTAMENTE a quella vista. Il
- * primo adattamento che cambia la vista dopo un'azione dell'utente salva la
- * vista di prima.
- */
-export function planChange(input: PlanInput): Plan {
-  const { restore, next, view } = input;
-  if (restore && sameArea(restore.area, next)) {
-    return { view: restore.view, fit: null, restored: true, restore: null };
+@keyframes ei-enter-above {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
   }
-  const fit = fitTarget(input);
-  const changed = fit.view.x !== view.x || fit.view.y !== view.y || fit.view.zoom !== view.zoom;
-  return {
-    view: fit.view,
-    fit,
-    restored: false,
-    restore: restore ?? (changed ? { view, area: input.prev } : null),
-  };
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ei-menu {
+    animation: none;
+  }
+  .ei-select-chevron,
+  .ei-row-chev,
+  .ei-step {
+    transition: none;
+  }
+}
+.ei-menu-head {
+  flex: none;
+  padding-bottom: var(--isa-space-2);
+}
+.ei-search {
+  width: 100%;
+  min-height: var(--isa-control-h);
+  padding: 0 var(--isa-space-3);
+  background: var(--isa-field-bg);
+  border: 1px solid var(--isa-field-border);
+  border-radius: var(--isa-radius-control);
+  color: var(--isa-text);
+  font: inherit;
+  font-size: var(--isa-fs-value);
+  font-weight: 600;
+}
+.ei-search:focus-visible {
+  outline: 2px solid var(--isa-focus-ring);
+  outline-offset: 1px;
+}
+.ei-menu-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--isa-scroll-thumb) transparent;
+}
+.ei-values-list {
+  max-height: 170px;
+}
+.ei-option {
+  all: unset;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--isa-space-3);
+  min-height: var(--isa-menu-item-h);
+  padding: 0 var(--isa-menu-item-px);
+  border-radius: var(--isa-radius-control);
+  font-size: var(--isa-fs-value);
+  font-weight: 600;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.ei-option.ei-active {
+  background: var(--isa-option-hover);
+}
+.ei-option.ei-selected {
+  background: var(--isa-option-selected);
+  font-weight: 800;
+}
+.ei-option.ei-danger {
+  color: var(--isa-error);
+}
+.ei-option:focus-visible {
+  outline: 2px solid var(--isa-focus-ring);
+  outline-offset: -2px;
+}
+.ei-option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ei-option-hint {
+  flex: none;
+  font-size: var(--isa-fs-help);
+  font-weight: 500;
+  color: var(--isa-text-secondary);
+}
+.ei-checkbox {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--isa-check-border);
+  border-radius: var(--isa-radius-sm);
+  color: var(--isa-check-mark);
+}
+.ei-checkbox[data-on] {
+  background: var(--isa-check-fill);
+  border-color: var(--isa-check-fill);
+}
+.ei-checkbox .ei-icon {
+  width: 14px;
+  height: 14px;
+}
+.ei-menu-foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--isa-space-2);
+  padding: var(--isa-space-2) var(--isa-space-3) 0;
+}
+.ei-menu-actions {
+  display: flex;
+  flex: none;
+  gap: var(--isa-space-1);
+}
+.ei-count {
+  white-space: nowrap;
+  font-size: var(--isa-fs-help);
+  font-weight: 500;
+  color: var(--isa-text-secondary);
+}
+.ei-menu-empty {
+  padding: var(--isa-space-3);
+  font-size: var(--isa-fs-help);
+  color: var(--isa-text-secondary);
+}
+.ei-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-/** Interpolazione LINEARE di x, y e zoom (non logaritmica: per convessità, ciò che sta dentro agli estremi sta dentro a ogni s). Estremi esatti. */
-export function interpolateView(a: View, b: View, s: number): View {
-  if (s <= 0) return a;
-  if (s >= 1) return b;
-  return {
-    x: a.x + (b.x - a.x) * s,
-    y: a.y + (b.y - a.y) * s,
-    zoom: a.zoom + (b.zoom - a.zoom) * s,
-  };
+/* bordi alto e basso: gli stessi contenuti in colonne (prima del master-detail della 6b.2) */
+.ec-panel.ec-horiz .ec-tb-inner.ec-insp {
+  overflow-y: hidden;
+  overflow-x: auto;
+}
+.ec-panel.ec-horiz .ei-root {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  column-width: 280px;
+  column-gap: var(--isa-space-6);
+  column-fill: auto;
+}
+.ec-panel.ec-horiz .ei-root > * {
+  break-inside: avoid;
+  margin-bottom: var(--isa-space-4);
 }
 
-/** L'area a metà strada: dimensioni e ingombri interpolati linearmente con lo stesso s. */
-export function interpolateArea(a: Area, b: Area, s: number): Area {
-  if (s <= 0) return a;
-  if (s >= 1) return b;
-  const l = (p: number, q: number) => p + (q - p) * s;
-  return {
-    size: { w: l(a.size.w, b.size.w), h: l(a.size.h, b.size.h) },
-    insets: {
-      top: l(a.insets.top, b.insets.top),
-      right: l(a.insets.right, b.insets.right),
-      bottom: l(a.insets.bottom, b.insets.bottom),
-      left: l(a.insets.left, b.insets.left),
-    },
-  };
+/* pannello espanso di un box combinato */
+.ei-expanded-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--isa-space-6);
+  background: var(--isa-scrim);
+  pointer-events: auto;
+}
+.ei-expanded {
+  width: 100%;
+  max-width: 420px;
+  max-height: 100%;
+  overflow: auto;
+  padding: var(--isa-space-6);
+  background: var(--isa-surface-overlay);
+  border: 1px solid var(--isa-border-strong);
+  border-radius: var(--isa-radius-panel);
+  box-shadow: var(--isa-shadow-overlay);
+  scrollbar-width: thin;
+  scrollbar-color: var(--isa-scroll-thumb) transparent;
+}
+.ei-expanded-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--isa-space-3);
+}
+.ei-expanded-head > div:first-child {
+  flex: 1;
+  min-width: 0;
 }
 
+/* scelta tra poche voci (Colonna | Valore | Lista) */
+.ei-seg {
+  display: inline-flex;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: var(--isa-space-1);
+  border-radius: var(--isa-radius-pill);
+  background: var(--isa-option-hover);
+}
+.ei-seg-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--isa-icon-btn);
+  padding: 0 var(--isa-space-3);
+  border-radius: var(--isa-radius-pill);
+  color: var(--isa-text-secondary);
+  font-size: var(--isa-fs-label);
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ei-seg-btn.ei-on {
+  background: var(--isa-surface-raised);
+  color: var(--isa-accent);
+  box-shadow: var(--isa-shadow-raised);
+}
+.ei-seg-btn:focus-visible {
+  outline: 2px solid var(--isa-focus-ring);
+  outline-offset: 1px;
+}
+
+/* pastiglia del connettore (variante di StyledSelect) */
+.ei-pill {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--isa-space-1);
+  min-height: var(--isa-icon-btn);
+  padding: 0 var(--isa-space-3);
+  border-radius: var(--isa-radius-pill);
+  background: var(--isa-accent-soft);
+  color: var(--isa-accent);
+  font-size: var(--isa-fs-label);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ei-pill:focus-visible {
+  outline: 2px solid var(--isa-focus-ring);
+  outline-offset: 1px;
+}
+.ei-pill .ei-select-value {
+  flex: none;
+  overflow: visible;
+}
+
+/* condizioni, connettori e gruppi (Fase 6b.2) */
+.ei-conditions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--isa-space-3);
+  min-width: 0;
+}
+.ei-conn {
+  display: flex;
+  align-items: center;
+  gap: var(--isa-space-2);
+}
+.ei-conn-line {
+  flex: 1;
+  height: 1px;
+  background: var(--isa-border-strong);
+}
+.ei-conn-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: var(--isa-icon-btn);
+  min-height: var(--isa-icon-btn);
+  padding: 0 var(--isa-space-2);
+  border-radius: var(--isa-radius-pill);
+  background: var(--isa-option-hover);
+  color: var(--isa-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--isa-fs-label);
+  font-weight: 800;
+  cursor: pointer;
+}
+.ei-conn-btn:hover {
+  background: var(--isa-accent-soft);
+  color: var(--isa-accent);
+}
+.ei-conn-btn:focus-visible {
+  outline: 2px solid var(--isa-focus-ring);
+  outline-offset: 1px;
+}
+.ei-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--isa-space-3);
+  padding: var(--isa-space-3);
+  border: 1px dashed var(--isa-accent);
+  border-radius: var(--isa-radius-panel);
+  background: var(--isa-accent-soft);
+}
+.ei-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--isa-space-2);
+}
+.ei-group-title {
+  font-size: var(--isa-fs-overline);
+  font-weight: 800;
+  letter-spacing: var(--isa-ls-overline);
+  text-transform: uppercase;
+  color: var(--isa-accent);
+}
+.ei-addin {
+  background: var(--isa-field-bg);
+}
+.ei-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--isa-space-1);
+  padding: var(--isa-space-3);
+  border-radius: var(--isa-radius-control);
+  background: var(--isa-option-hover);
+}
+.ei-preview-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--isa-fs-help);
+  line-height: 1.55;
+  color: var(--isa-text);
+  overflow-wrap: anywhere;
+}
+
+/* tre colonne dei bordi alto e basso: Impostazioni | Condizioni o Elenco | Dettaglio */
+.ec-panel.ec-horiz .ei-root:has(> .ei-cols3) {
+  display: flex;
+  column-width: auto;
+  overflow: hidden;
+}
+.ec-panel.ec-horiz .ec-tb-inner.ec-insp:has(.ei-cols3) {
+  overflow: hidden;
+}
+.ei-cols3 {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+}
+.ei-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.ei-col-general {
+  flex: 0 0 var(--isa-md-general-w);
+  padding-right: var(--isa-space-4);
+}
+.ei-col-master {
+  flex: 0 0 var(--isa-md-master-w);
+  padding: 0 var(--isa-space-4);
+  border-left: 1px solid var(--isa-border-strong);
+}
+.ei-col-detail {
+  flex: 1 1 0;
+  padding-left: var(--isa-space-4);
+  border-left: 1px solid var(--isa-border-strong);
+}
+.ei-col-head {
+  flex: none;
+  min-height: var(--isa-icon-btn);
+  padding-bottom: var(--isa-space-2);
+  border-bottom: 1px solid var(--isa-border-strong);
+  font-size: var(--isa-fs-overline);
+  font-weight: 800;
+  letter-spacing: var(--isa-ls-overline);
+  text-transform: uppercase;
+  color: var(--isa-text-secondary);
+}
+.ei-col-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--isa-space-3);
+  min-height: 0;
+  padding-top: var(--isa-space-3);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--isa-scroll-thumb) transparent;
+}
+.ei-col-body > * {
+  flex: none;
+}
+.ei-md-head {
+  text-transform: none;
+  letter-spacing: normal;
+}
+.ei-md-title {
+  font-size: var(--isa-fs-overline);
+  font-weight: 800;
+  letter-spacing: var(--isa-ls-overline);
+  text-transform: uppercase;
+  color: var(--isa-accent);
+}
+.ei-md-sum {
+  font-size: var(--isa-fs-value);
+  font-weight: 800;
+  color: var(--isa-text);
+  overflow-wrap: anywhere;
+}
+.ei-md-sum.ei-todo {
+  font-style: italic;
+  font-weight: 700;
+  color: var(--isa-text-secondary);
+}
+.ei-md-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: var(--isa-space-4) var(--isa-space-5);
+  align-items: start;
+}
+.ei-row[data-active] {
+  border-color: var(--isa-accent);
+  background: var(--isa-accent-soft);
+}
+.ei-row[data-active] > .ei-row-head .ei-row-chev {
+  transform: none;
+  color: var(--isa-accent);
+}
+
+/* maniglia di riordino delle righe (criteri di Ordina) */
+.ei-row-grip {
+  cursor: grab;
+  touch-action: none;
+}
+.ei-row-grip:focus-visible {
+  outline: 2px solid var(--isa-focus-ring);
+  outline-offset: 1px;
+}
+.ei-row.ei-dragging {
+  position: relative;
+  z-index: 5;
+  background: var(--isa-option-selected);
+  box-shadow: var(--isa-shadow-raised);
+}
+.ei-list > .ei-row {
+  transition: transform var(--isa-duration-base);
+}
+.ei-list > .ei-row.ei-dragging {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ei-list > .ei-row {
+    transition: none;
+  }
+}
+```
+
+### `src/etl-canvas/inspector/joinKeys.ts`
+
+26 righe
+
+```ts
 /**
- * Easing puro e monotono, la stessa funzione per pannello e vista: da
- * s ∈ [0, 1] (tempo trascorso / durata) al progresso ∈ [0, 1]. È un
- * seno in entrata e in uscita (pendenza massima π/2 ≈ 1,57): partenza e arrivo
- * dolci e nessun frame che si sposta molto più della media (R4). La curva del
- * prototipo (cubic-bezier 0,32 0,72 0 1) partiva con una pendenza oltre 4 volte
- * la media e non rispettava il limite di 2,5.
+ * Cambi di modalità di una condizione di join, a funzioni pure (prototipo, `bindJoin`, righe
+ * 3243-3253): il confronto segue il tipo del lato destro. Con una lista a destra il confronto
+ * diventa di appartenenza («è uno di»); uscendo dalla lista torna «=». Il lato sinistro cambia
+ * modalità senza toccare il confronto.
  */
-export function easing(s: number): number {
-  if (s <= 0) return 0;
-  if (s >= 1) return 1;
-  return (1 - Math.cos(Math.PI * s)) / 2;
+import { LIST_OPS } from "../../etl-core";
+import type { JoinKey, JoinOp, JoinRightMode, JoinSideMode } from "../../etl-core";
+
+export function withLeftMode(k: JoinKey, mode: JoinSideMode): JoinKey {
+  return { ...k, lmode: mode };
 }
 
-/** Avviso non bloccante quando il caso 3 lascia nodi fuori dall'area. */
-export const OUT_OF_VIEW_NOTICE = "Alcuni nodi sono fuori dall'area visibile: usa Adatta";
+export function withRightMode(k: JoinKey, mode: JoinRightMode): JoinKey {
+  const wasList = k.rmode === "list";
+  let op: JoinOp = k.op ?? "=";
+  if (mode === "list" && !LIST_OPS.includes(op)) op = LIST_OPS[0] as JoinOp;
+  if (mode !== "list" && wasList) op = "=";
+  return { ...k, rmode: mode, op };
+}
+
+/** Una condizione di join vuota (colonna = colonna): la lista le dà il connettore. */
+export function blankJoinKey(): Omit<JoinKey, "conn" | "g"> {
+  return { left: "", right: "", op: "=", lmode: "col", rmode: "col", lval: "", rval: "" };
+}
 ```
 
-### `src/etl-canvas/panels/csv.ts`
+### `src/etl-canvas/inspector/joinSides.ts`
 
-37 righe
+87 righe
 
 ```ts
 /**
- * Caricamento di un dataset dalla cassetta (prototipo, righe 4921-4937): la
- * lettura e la deduzione dei tipi sono `parseCSV` di etl-core, la libreria è
- * quella di etl-store (`loadCsv` → comando `loadDataset`, che conserva solo i
- * metadati: nome, percorso, colonne, righe — mai il contenuto del file).
- */
-import type { EtlStore } from "../../etl-store";
-
-export interface CsvLoadOutcome {
-  readonly ok: boolean;
-  /** Messaggio per l'utente (prototipo, riga 4934 e 4927). */
-  readonly message: string;
-}
-
-/** Carica il testo di un CSV già letto. */
-export function loadCsvText(store: EtlStore, fileName: string, text: string): CsvLoadOutcome {
-  const result = store.loadCsv(text, fileName);
-  if (!result.ok) return { ok: false, message: result.reason };
-  const item = store.getState().library.at(-1);
-  return {
-    ok: true,
-    message: item
-      ? `${fileName} caricato: ${item.columns.length} colonne, ${item.rows} righe. Trascinalo sul canvas.`
-      : `${fileName} caricato.`,
-  };
-}
-
-/** Legge un file scelto dall'utente (solo nel browser: `FileReader`) e lo carica. */
-export function loadCsvFile(store: EtlStore, file: File): Promise<CsvLoadOutcome> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(loadCsvText(store, file.name, String(reader.result ?? "")));
-    reader.onerror = () => resolve({ ok: false, message: "Il file non si può leggere" });
-    reader.readAsText(file);
-  });
-}
-```
-
-### `src/etl-canvas/panels/dockArea.ts`
-
-94 righe
-
-```ts
-/**
- * L'area del canvas calcolata dalle misure dello spazio di lavoro e dalla
- * misura dei pannelli (anche a metà apertura): funzioni pure, nessun DOM. È
- * la stessa geometria del CSS (griglia di `panels.css`), così l'animatore
- * conosce l'area di ogni frame senza leggere il DOM.
- */
-import type { Size } from "../../etl-layout";
-import type { PanelKey, Panels, Side } from "../../etl-store";
-import type { Area } from "./autoFit";
-import {
-  EXTENT_PAD,
-  MIN_CANVAS_HEIGHT,
-  PANEL_KEYS,
-  cappedPanelHeight,
-  isVertical,
-  notchHidden,
-  notchOffset,
-  panelSize,
-} from "./layout";
-import { overlayLayout } from "./overlayLayout";
-import type { OverlayLayout } from "./overlayLayout";
-
-/** Lo spazio di lavoro: la sua misura e l'altezza della barra dei controlli, che sta sopra a tutto. */
-export interface WorkspaceMetrics {
-  readonly w: number;
-  readonly h: number;
-  readonly barH: number;
-}
-
-/** Un approdo occupato (anche solo in parte) da un pannello: bordo, misura propria, quanto è aperto (0 – 1). */
-export interface Slot {
-  readonly side: Side;
-  readonly size: { readonly w: number; readonly h: number };
-  readonly amount: number;
-}
-
-/** Quanto spazio toglie al canvas uno slot, nella misura attuale dello spazio di lavoro. */
-export function slotExtent(slot: Slot, ws: WorkspaceMetrics): number {
-  const own = isVertical(slot.side)
-    ? slot.size.w
-    : ws.h > 0
-      ? cappedPanelHeight(slot.size.h, ws.h)
-      : slot.size.h;
-  return slot.amount * (own + EXTENT_PAD);
-}
-
-/** Dimensioni del canvas (la riga centrale della griglia) con questi slot. */
-export function canvasSize(ws: WorkspaceMetrics, slots: readonly Slot[]): Size {
-  const sum = (sides: readonly Side[]) =>
-    slots.filter((s) => sides.includes(s.side)).reduce((n, s) => n + slotExtent(s, ws), 0);
-  return {
-    w: Math.max(0, ws.w - sum(["left", "right"])),
-    h: Math.max(MIN_CANVAS_HEIGHT, ws.h - ws.barH - sum(["top", "bottom"])),
-  };
-}
-
-/** Gli slot dei pannelli nel loro stato, con la parte aperta di ciascuno. */
-export function slotsOf(panels: Panels, amounts: Readonly<Record<PanelKey, number>>): Slot[] {
-  return PANEL_KEYS.map((k) => ({
-    side: panels[k].side,
-    size: panelSize(panels, k),
-    amount: amounts[k],
-  }));
-}
-
-/** Gli slot a riposo: aperti del tutto o chiusi. */
-export function restSlots(panels: Panels): Slot[] {
-  return slotsOf(panels, {
-    tools: panels.tools.open ? 1 : 0,
-    insp: panels.insp.open ? 1 : 0,
-  });
-}
-
-/** Disposizione dei widget in sovrimpressione per un'area e uno stato dei pannelli. */
-export function overlayFor(panels: Panels, area: Size): OverlayLayout {
-  const openSide = PANEL_KEYS.map((k) => (panels[k].open ? panels[k].side : null)).find(Boolean);
-  return overlayLayout({
-    area,
-    openSide: openSide ?? null,
-    notches: PANEL_KEYS.map((k) => ({
-      key: k,
-      side: panels[k].side,
-      offset: notchOffset(panels, k),
-      visible: !notchHidden(panels, k),
-    })),
-  });
-}
-
-/** L'area a riposo (pannelli aperti o chiusi del tutto) con gli ingombri dei widget. */
-export function restArea(panels: Panels, ws: WorkspaceMetrics): Area {
-  const size = canvasSize(ws, restSlots(panels));
-  return { size, insets: overlayFor(panels, size).insets };
-}
-```
-
-### `src/etl-canvas/panels/families.ts`
-
-17 righe
-
-```ts
-import { sectionOf } from "../../etl-core";
-import type { ComponentId } from "../../etl-core";
-
-/** Famiglia di colore di una sezione della cassetta (la stessa dei nodi sul canvas: `data-family`). */
-export const FAMILY_OF_SECTION: Readonly<Record<string, string>> = {
-  rows: "filter",
-  xform: "transform",
-  merge: "merge",
-  out: "output",
-};
-
-/** Famiglia di un componente, o `undefined` per il dataset. */
-export function familyOfType(type: ComponentId): string | undefined {
-  const section = sectionOf(type);
-  return section ? FAMILY_OF_SECTION[section.id] : undefined;
-}
-```
-
-### `src/etl-canvas/panels/layout.ts`
-
-131 righe
-
-```ts
-/**
- * Geometria dei pannelli agganciabili: funzioni pure sullo stato dei pannelli
- * di etl-store (`Panels`: lato e aperto/chiuso di ciascuno). Misure del
- * prototipo (docs/prototype/isa-fusion-prototype.html, righe 4756-4900), salvo
- * la regola della vista (vedi `keepVisible`).
+ * Le tabelle di un passaggio di join e le colonne di ciascun lato. Funzioni pure.
  *
- * Nessuna logica di dominio: misure e posizione della vista sono
- * geometria dell'interfaccia.
+ * Tabelle assenti nei parametri (regola di etl-core, README «Tabelle di riferimento
+ * del join»): la sinistra è la prima tabella in ingresso, la destra la seconda (se ce
+ * n'è una sola, la prima); un valore salvato che non è più tra le tabelle si tratta come
+ * assente. Nulla si scrive finché l'utente non sceglie.
+ *
+ * Colonne dei lati: il lato sinistro vede le colonne della tabella sinistra e il destro
+ * quelle della tabella destra (`schemaOf` sul singolo ingresso). Dal secondo join in poi la
+ * sinistra è il risultato del join precedente: tutte le colonne in ingresso. Se lo schema di
+ * una tabella non è noto si ripiega sull'unione, come il prototipo.
  */
-import type { PanelKey, Panels, Side } from "../../etl-store";
+import { MERGE_OPS, inputsOf, schemaOf } from "../../etl-core";
+import type { Card, ColumnDef, Graph, Params } from "../../etl-core";
+import { textParam } from "./params";
 
-/** I due pannelli, nell'ordine delle schede (prototipo, riga 4797). */
-export const PANEL_KEYS: readonly PanelKey[] = ["tools", "insp"];
+export type TableKey = "leftTable" | "rightTable" | "table";
 
-export const PANEL_LABEL: Readonly<Record<PanelKey, string>> = {
-  tools: "Strumenti",
-  insp: "Inspector",
-};
-
-/** Nome del pannello nei suggerimenti (riga 4759-4760). */
-export const PANEL_NAME: Readonly<Record<PanelKey, string>> = {
-  tools: "gli strumenti",
-  insp: "l’inspector",
-};
-
-export const SIDE_NAME: Readonly<Record<Side, string>> = {
-  left: "sinistro",
-  right: "destro",
-  top: "superiore",
-  bottom: "inferiore",
-};
-
-export const SIDES: readonly Side[] = ["left", "right", "top", "bottom"];
-
-/** Misure proprie di ciascun pannello: larghezza (bordi verticali) e altezza (orizzontali). Righe 4759-4760. */
-export const PANEL_SIZE: Readonly<Record<PanelKey, { readonly w: number; readonly h: number }>> = {
-  tools: { w: 264, h: 206 },
-  insp: { w: 308, h: 300 },
-};
-
-/**
- * Tetto all'altezza dei pannelli sui bordi alto e basso (Fase 6b.1): la loro
- * altezza propria, ma non oltre il 45% dell'altezza disponibile (lo spazio di
- * lavoro); il contenuto scorre dentro il pannello.
- */
-export const PANEL_HEIGHT_CAP = 0.45;
-
-export function cappedPanelHeight(own: number, available: number): number {
-  return Math.max(0, Math.min(own, Math.floor(available * PANEL_HEIGHT_CAP)));
+/** I nomi delle tabelle in ingresso, nell'ordine dei collegamenti. */
+export function inputNames(graph: Graph, card: Card, fallback: string): string[] {
+  return inputsOf(graph, card.id).map((l) => graph.cards[l.from]?.name ?? fallback);
 }
 
-/** Margine verso il canvas, parte della misura del pannello (CSS `.panel`, riga 227). */
-export const EXTENT_PAD = 16;
-
-/** Distanza tra due tacche sullo stesso bordo (riga 4850). */
-export const NOTCH_SPREAD = 40;
-
-export const isVertical = (side: Side): boolean => side === "left" || side === "right";
-
-/** I due pannelli stanno sullo stesso bordo: diventano schede di un unico pannello. */
-export function isGrouped(panels: Panels): boolean {
-  return panels.tools.side === panels.insp.side;
+/** La tabella mostrata per un campo: quella salvata se c'è ancora, altrimenti la predefinita. */
+export function resolveTable(stored: string, key: TableKey, names: readonly string[]): string {
+  if (stored && names.includes(stored)) return stored;
+  return (key === "rightTable" && names[1] ? names[1] : names[0]) ?? "";
 }
 
-/** Misura effettiva: in gruppo entrambi prendono la maggiore, così cambiare scheda non sposta il canvas (riga 4772). */
-export function panelSize(panels: Panels, key: PanelKey): { w: number; h: number } {
-  if (!isGrouped(panels)) return { ...PANEL_SIZE[key] };
+/** Posizione del passaggio tra i join del box (0 = il primo join), o -1 se non è un join. */
+export function joinIndex(card: Card, step: number): number {
+  const positions: number[] = [];
+  card.components.forEach((c, i) => {
+    if ((MERGE_OPS as readonly string[]).includes(c)) positions.push(i);
+  });
+  return positions.indexOf(step);
+}
+
+export interface JoinSideSchemas {
+  readonly left: readonly ColumnDef[];
+  readonly right: readonly ColumnDef[];
+  /** `true` se entrambi i lati vengono dalla propria tabella; `false` se si è ripiegato sull'unione. */
+  readonly perTable: boolean;
+}
+
+export function joinSideSchemas(
+  graph: Graph,
+  card: Card,
+  step: number,
+  par: Params,
+  union: readonly ColumnDef[],
+  fallbackName: string,
+): JoinSideSchemas {
+  const links = inputsOf(graph, card.id);
+  const names = inputNames(graph, card, fallbackName);
+  const of = (name: string): readonly ColumnDef[] | null => {
+    const i = names.indexOf(name);
+    const link = i >= 0 ? links[i] : undefined;
+    return link ? schemaOf(graph, link.from) : null;
+  };
+  const first = joinIndex(card, step) <= 0;
+  const left = first ? of(resolveTable(textParam(par, "leftTable"), "leftTable", names)) : null;
+  const right = of(resolveTable(textParam(par, "rightTable"), "rightTable", names));
   return {
-    w: Math.max(PANEL_SIZE.tools.w, PANEL_SIZE.insp.w),
-    h: Math.max(PANEL_SIZE.tools.h, PANEL_SIZE.insp.h),
+    left: left ?? union,
+    right: right ?? union,
+    perTable: left !== null && right !== null,
   };
 }
 
-/** Quanto spazio sottrae al canvas un pannello aperto (riga 4763). */
-export function panelExtent(panels: Panels, key: PanelKey): number {
-  const s = panelSize(panels, key);
-  return (isVertical(panels[key].side) ? s.w : s.h) + EXTENT_PAD;
+/** Il dominio (valori distinti) della colonna `name` in uno schema, se si conosce. */
+export function domainOfColumn(schema: readonly ColumnDef[], name: string): string[] {
+  const def = name ? schema.find((c) => c.name === name) : undefined;
+  return def ? [...def.values] : [];
 }
 
-/** Spazio sottratto al canvas dai pannelli aperti sul bordo `side`. */
-export function openExtent(panels: Panels, side: Side): number {
-  return PANEL_KEYS.filter((k) => panels[k].open && panels[k].side === side).reduce(
-    (sum, k) => sum + panelExtent(panels, k),
-    0,
-  );
+/** Il tipo di una colonna, se la si conosce. */
+export function typeOfColumn(schema: readonly ColumnDef[], name: string): ColumnDef["type"] | null {
+  return schema.find((c) => c.name === name)?.type ?? null;
+}
+
+/** Colonna numerica: tastiera numerica nel campo di testo (mai input number). */
+export function isNumericType(type: ColumnDef["type"] | null): boolean {
+  return type === "integer" || type === "numerico";
+}
+```
+
+### `src/etl-canvas/inspector/logic.ts`
+
+286 righe
+
+```ts
+/**
+ * Logica pura dei selettori dell'Inspector (nessun DOM, nessun React): ricerca,
+ * navigazione da tastiera, colonne scelte e loro ordine, valori scelti,
+ * riordino dei passaggi. I componenti la usano e i test la provano da soli.
+ */
+import { splitTokens } from "../../etl-core";
+import type { ValuesField } from "../../etl-core";
+
+// --- ricerca e navigazione ----------------------------------------------------
+
+/** Minuscole e senza accenti: la ricerca non distingue. */
+export function fold(text: string): string {
+  return text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+/** Le voci la cui etichetta contiene la ricerca (vuota = tutte), nell'ordine dato. */
+export function filterByQuery<T extends { readonly label: string }>(
+  items: readonly T[],
+  query: string,
+): T[] {
+  const q = fold(query.trim());
+  return q ? items.filter((i) => fold(i.label).includes(q)) : items.slice();
+}
+
+export type NavKey = "ArrowDown" | "ArrowUp" | "Home" | "End";
+
+/** Voce attiva dopo un tasto di navigazione (nessun giro: si ferma alle estremità). `-1` = nessuna. */
+export function nextActive(current: number, count: number, key: NavKey): number {
+  if (count <= 0) return -1;
+  switch (key) {
+    case "Home":
+      return 0;
+    case "End":
+      return count - 1;
+    case "ArrowDown":
+      return current < 0 ? 0 : Math.min(count - 1, current + 1);
+    case "ArrowUp":
+      return current < 0 ? count - 1 : Math.max(0, current - 1);
+  }
+}
+
+export type ComboAction =
+  | { readonly kind: "move"; readonly to: number }
+  | { readonly kind: "commit" }
+  | { readonly kind: "close" }
+  | { readonly kind: "none" };
+
+/**
+ * Cosa fa un tasto nel campo di ricerca di una tendina (combobox ARIA): frecce, Home e
+ * Fine spostano la voce attiva, Invio conferma, Esc chiude; il resto è digitazione.
+ */
+export function comboAction(key: string, active: number, count: number): ComboAction {
+  if (key === "ArrowDown" || key === "ArrowUp" || key === "Home" || key === "End") {
+    return { kind: "move", to: nextActive(active, count, key) };
+  }
+  if (key === "Enter") return { kind: "commit" };
+  if (key === "Escape") return { kind: "close" };
+  return { kind: "none" };
+}
+
+/** Mantiene valida la voce attiva quando l'elenco cambia (ricerca). */
+export function clampActive(current: number, count: number): number {
+  if (count <= 0) return -1;
+  return current < 0 ? 0 : Math.min(current, count - 1);
 }
 
 /**
- * Altezza minima del canvas, la riga centrale dello spazio di lavoro. Se i
- * pannelli in alto e in basso lasciano meno spazio, scorre il contenitore
- * dello spazio di lavoro, non la pagina.
+ * Segmento di arrivo per un tasto di un radiogroup (frecce, Home, Fine); oltre l'ultimo si torna
+ * al primo e viceversa. `null` se il tasto non sposta la scelta.
  */
-export const MIN_CANVAS_HEIGHT = 160;
+export function segmentedTarget(index: number, count: number, key: string): number | null {
+  if (count <= 0) return null;
+  switch (key) {
+    case "ArrowRight":
+    case "ArrowDown":
+      return (index + 1) % count;
+    case "ArrowLeft":
+    case "ArrowUp":
+      return (index - 1 + count) % count;
+    case "Home":
+      return 0;
+    case "End":
+      return count - 1;
+    default:
+      return null;
+  }
+}
 
-/** Il bordo del canvas più vicino a un punto (riga 4851-4856). */
-export function nearestSide(
+/** Cosa fa un tasto su una voce di un radiogroup: dove va il focus e quale voce si sceglie (`null` = nessuna nuova). */
+export function segmentedKey(
+  index: number,
+  current: number,
+  count: number,
+  key: string,
+): { focus: number; choose: number | null } | null {
+  if (key === " " || key === "Enter")
+    return { focus: index, choose: index === current ? null : index };
+  const to = segmentedTarget(index, count, key);
+  return to === null ? null : { focus: to, choose: to === current ? null : to };
+}
+
+// --- colonne scelte -----------------------------------------------------------
+
+/** Spunta o toglie una colonna: la nuova va in fondo, l'ordine delle altre resta. */
+export function toggleColumn(selected: readonly string[], name: string): string[] {
+  return selected.includes(name) ? selected.filter((c) => c !== name) : [...selected, name];
+}
+
+/** «Tutte»: aggiunge le colonne visibili non ancora scelte, nell'ordine in cui sono mostrate. */
+export function addVisible(selected: readonly string[], visible: readonly string[]): string[] {
+  return [...selected, ...visible.filter((c) => !selected.includes(c))];
+}
+
+/** «Nessuna»: toglie le colonne visibili, le altre restano nel loro ordine. */
+export function removeVisible(selected: readonly string[], visible: readonly string[]): string[] {
+  return selected.filter((c) => !visible.includes(c));
+}
+
+/** Sposta l'elemento `from` nella posizione `to` (indici già validi); lista nuova. */
+export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) {
+    return list.slice();
+  }
+  const next = list.slice();
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item as T);
+  return next;
+}
+
+/** Nuova posizione per Alt+freccia (sinistra/su = −1, destra/giù = +1); `null` se non si muove. */
+export function moveTarget(index: number, count: number, key: string): number | null {
+  const delta =
+    key === "ArrowLeft" || key === "ArrowUp"
+      ? -1
+      : key === "ArrowRight" || key === "ArrowDown"
+        ? 1
+        : 0;
+  const to = index + delta;
+  return delta === 0 || to < 0 || to >= count ? null : to;
+}
+
+/** Posizione di rilascio di un trascinamento orizzontale o verticale: indice del segnaposto più vicino. */
+export function dropIndex(positions: readonly number[], pointer: number): number {
+  let best = 0;
+  let bestDistance = Infinity;
+  positions.forEach((p, i) => {
+    const d = Math.abs(p - pointer);
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = i;
+    }
+  });
+  return best;
+}
+
+/** Il nome scritto, con la grafia dei dati se esiste (senza distinguere le maiuscole). */
+export function canonicalName(known: readonly string[], typed: string): string {
+  const t = typed.trim();
+  return known.find((k) => k.toLowerCase() === t.toLowerCase()) ?? t;
+}
+
+// --- valori scelti ------------------------------------------------------------
+
+/** Un valore scritto prende la grafia dei dati se esiste, senza distinguere le maiuscole. */
+export function canonicalValue(domain: readonly string[], token: [REDATTO] string {
+  return domain.find((d) => d.toLowerCase() === token.toLowerCase()) ?? token;
+}
+
+/**
+ * I valori che «+ Aggiungi» aggiungerebbe: i pezzi del testo (virgola, punto e
+ * virgola, barra verticale, a capo) non già scelti. Se resta un solo pezzo e
+ * coincide con un valore dei dati, non serve aggiungere: lo mostra la ricerca.
+ */
+export function pendingTokens(
+  values: readonly string[],
+  domain: readonly string[],
+  text: string,
+): string[] {
+  const tokens = splitTokens(text).filter(
+    (t) => !values.some((v) => v.toLowerCase() === t.toLowerCase()),
+  );
+  const onlyExisting =
+    tokens.length === 1 &&
+    domain.some((d) => d.toLowerCase() === (tokens[0] as string).toLowerCase());
+  return tokens.length && !onlyExisting ? tokens : [];
+}
+
+/** Aggiunge i pezzi del testo ai valori (con la grafia dei dati, senza duplicati). */
+export function addTokens(
+  values: readonly string[],
+  domain: readonly string[],
+  text: string,
+): string[] {
+  const next = values.slice();
+  for (const token of splitTokens(text)) {
+    const value = canonicalValue(domain, token);
+    if (!next.includes(value)) next.push(value);
+  }
+  return next;
+}
+
+export function toggleValue(values: readonly string[], value: string): string[] {
+  return values.includes(value) ? values.filter((v) => v !== value) : [...values, value];
+}
+
+/** «Tutti»: i valori visibili non ancora scelti si aggiungono in fondo. */
+export function addVisibleValues(values: readonly string[], visible: readonly string[]): string[] {
+  return [...values, ...visible.filter((v) => !values.includes(v))];
+}
+
+/** «Nessuno»: toglie i valori visibili. */
+export function removeVisibleValues(
+  values: readonly string[],
+  visible: readonly string[],
+): string[] {
+  return values.filter((v) => !visible.includes(v));
+}
+
+/** I valori stanno solo in `values`: il campo si riscrive in modalità elenco, senza testo. */
+export function withValues(field: ValuesField | undefined, values: readonly string[]): ValuesField {
+  return { mode: "list", values: values.slice(), text: "", sep: field?.sep ?? "," };
+}
+
+// --- riordino dei passaggi (puntatore) ----------------------------------------
+
+/** Indice di arrivo di una riga trascinata di `dy` pixel (righe alte `rowHeight`). */
+export function reorderIndex(
+  startIndex: number,
+  dy: number,
+  rowHeight: number,
+  count: number,
+): number {
+  const idx = Math.round(startIndex + dy / rowHeight);
+  return Math.max(0, Math.min(count - 1, idx));
+}
+
+/**
+ * Dove finisce una riga trascinata di `dy` pixel: l'indice della riga il cui centro (a riposo)
+ * è più vicino al centro della riga trascinata. Le righe possono avere altezze diverse
+ * (una aperta è più alta delle altre).
+ */
+export function dropTarget(
+  rects: readonly { readonly top: number; readonly height: number }[],
+  from: number,
+  dy: number,
+): number {
+  const start = rects[from];
+  if (!start) return from;
+  const center = start.top + start.height / 2 + dy;
+  let best = from;
+  let bestDistance = Infinity;
+  rects.forEach((r, i) => {
+    const d = Math.abs(r.top + r.height / 2 - center);
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = i;
+    }
+  });
+  return best;
+}
+
+/** Dove sta ora la voce che stava in `index` dopo aver spostato `from` in `to`. */
+export function indexAfterMove(index: number, from: number, to: number): number {
+  if (index === from) return to;
+  if (from < index && index <= to) return index - 1;
+  if (to <= index && index < from) return index + 1;
+  return index;
+}
+
+/** Indice del centro più vicino al punto (per riordinare etichette che vanno a capo). */
+export function nearestIndex(
+  centers: readonly { readonly x: number; readonly y: number }[],
   point: { readonly x: number; readonly y: number },
-  rect: {
-    readonly left: number;
-    readonly right: number;
-    readonly top: number;
-    readonly bottom: number;
-  },
-): Side {
-  const d: Record<Side, number> = {
-    left: Math.abs(point.x - rect.left),
-    right: Math.abs(rect.right - point.x),
-    top: Math.abs(point.y - rect.top),
-    bottom: Math.abs(rect.bottom - point.y),
-  };
-  return SIDES.slice().sort((a, b) => d[a] - d[b])[0] as Side;
-}
-
-/** Scostamento della tacca lungo il bordo: due tacche sullo stesso bordo si affiancano (riga 4850). */
-export function notchOffset(panels: Panels, key: PanelKey): number {
-  const mates = PANEL_KEYS.filter((k) => panels[k].side === panels[key].side);
-  if (mates.length < 2) return 0;
-  return mates.indexOf(key) === 0 ? -NOTCH_SPREAD : NOTCH_SPREAD;
-}
-
-/** La tacca si nasconde se il pannello è aperto o se si raggiunge dalla scheda dell'altro, aperto sullo stesso bordo (righe 4856-4858). */
-export function notchHidden(panels: Panels, key: PanelKey): boolean {
-  const other = PANEL_KEYS.find((k) => k !== key) as PanelKey;
-  return panels[key].open || (panels[other].side === panels[key].side && panels[other].open);
-}
-
-/** Il pannello aperto sul bordo `side` (la scheda attiva), se c'è. */
-export function activeTab(panels: Panels, side: Side): PanelKey | null {
-  return PANEL_KEYS.find((k) => panels[k].side === side && panels[k].open) ?? null;
+): number {
+  let best = 0;
+  let bestDistance = Infinity;
+  centers.forEach((c, i) => {
+    const d = Math.hypot(c.x - point.x, c.y - point.y);
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = i;
+    }
+  });
+  return best;
 }
 ```
 
-### `src/etl-canvas/panels/overlayLayout.ts`
+### `src/etl-canvas/inspector/masterDetail.ts`
 
-249 righe
+43 righe
 
 ```ts
 /**
- * Disposizione dei widget in sovrimpressione al canvas (minimappa, controlli
- * di zoom, suggerimento di rilascio, tacche dei pannelli chiusi): funzione
- * pura, nessun DOM. Decide le posizioni a partire dalla misura dell'area e dal
- * bordo del pannello aperto, così nessun componente scrive una posizione a
- * mano e due widget non si sovrappongono mai.
+ * Lo stato condiviso del layout a tre colonne (`Columns3`): quale voce è attiva e dove
+ * vanno il titolo e il corpo del dettaglio. Le righe (`ListRow`) e le liste lo leggono; senza
+ * `Columns3` il contesto è `null` e le righe si aprono sul posto.
+ */
+import { createContext, useContext, useEffect } from "react";
+
+export interface MasterDetail {
+  /** Dove va il titolo del dettaglio, e dove il suo corpo (`null` finché non sono montati). */
+  readonly head: HTMLElement | null;
+  readonly body: HTMLElement | null;
+  /** La voce attiva: `lista:indice`. */
+  readonly active: string;
+  readonly setActive: (rowId: string) => void;
+}
+
+/** `null` = layout normale: le righe si comprimono e si aprono sul posto. */
+export const MasterDetailContext = createContext<MasterDetail | null>(null);
+
+export function useMasterDetail(): MasterDetail | null {
+  return useContext(MasterDetailContext);
+}
+
+/** Identificativo di una voce: la lista e la posizione. */
+export const rowIdOf = (listId: string, index: number): string => `${listId}:${index}`;
+
+/**
+ * Tiene valida la voce attiva quando una lista si accorcia (rimozione, annullamento):
+ * se punta oltre l'ultima voce, passa all'ultima. Senza il layout a tre colonne non fa nulla.
+ */
+export function useActiveGuard(listId: string, count: number): void {
+  const md = useMasterDetail();
+  const active = md?.active;
+  const setActive = md?.setActive;
+  useEffect(() => {
+    if (!active || !setActive || count <= 0) return;
+    const prefix = `${listId}:`;
+    if (!active.startsWith(prefix)) return;
+    const index = Number(active.slice(prefix.length));
+    if (Number.isInteger(index) && index >= count) setActive(rowIdOf(listId, count - 1));
+  }, [active, setActive, listId, count]);
+}
+```
+
+### `src/etl-canvas/inspector/menu.ts`
+
+82 righe
+
+```ts
+/**
+ * Posizionamento delle tendine e dei menu dell'Inspector: funzione pura, senza
+ * DOM. Le misure sono quelle dei token di forma (src/theme/layout-tokens.css:
+ * --isa-menu-gap, --isa-menu-edge, --isa-menu-max-w); un test le tiene allineate.
  *
  * Regole:
- * - minimappa in basso a sinistra; con il pannello in basso va in alto a
- *   sinistra (lontano dal pannello); con il pannello in alto resta in basso a
- *   sinistra;
- * - controlli di zoom in basso a destra;
- * - se un widget ne tocca un altro (area piccola) la minimappa, nell'ordine,
- *   passa all'angolo opposto, poi si riduce a un pulsante compatto (che si
- *   espande al clic), poi prova gli altri angoli; se nemmeno così c'è posto
- *   non si mostra (`rect: null`);
- * - il suggerimento prova in basso e in alto, al centro, e ovunque si evita
- *   il resto; senza posto non si mostra.
- *
- * Le misure dei widget sono quelle del CSS del canvas (`canvas.css`,
- * `panels.css`), che le prende da qui.
+ * - distanza dal campo `MENU_GAP`; margine minimo dai bordi della FINESTRA
+ *   `MENU_EDGE` in ogni direzione;
+ * - larghezza minima = quella del campo, massima min(MENU_MAX_W, finestra − 2 × MENU_EDGE);
+ * - si apre dal lato con più spazio; se lì non entra l'altezza naturale, l'altezza
+ *   massima è lo spazio disponibile (già senza il margine) e il menu scorre dentro;
+ * - orizzontalmente parte dal bordo sinistro del campo e si sposta a sinistra quanto
+ *   basta per tenere il margine a destra (e mai oltre il margine a sinistra).
  */
-import type { Size } from "../../etl-layout";
-import type { PanelKey, Side } from "../../etl-store";
-import type { Insets } from "../view";
 
-export interface Rect {
+export const MENU_GAP = 8;
+export const MENU_EDGE = 16;
+export const MENU_MAX_W = 420;
+
+export interface Box {
   readonly x: number;
   readonly y: number;
   readonly w: number;
   readonly h: number;
 }
 
-export type Corner = "bl" | "br" | "tl" | "tr";
-
-/** Distanza dei widget dal bordo dell'area (prototipo: 12 px, riga 152). */
-export const OVERLAY_MARGIN = 12;
-/** Spazio minimo tra due widget. */
-export const OVERLAY_GAP = 4;
-/** Respiro tra un widget e i nodi (margine di sicurezza dell'area visibile). */
-export const SAFE_GAP = 8;
-export const MINIMAP_SIZE = { w: 168, h: 104 } as const;
-export const MINIMAP_COMPACT = 40;
-export const ZOOM_SIZE = { w: 176, h: 38 } as const;
-/** Tacca: lato lungo e lato corto (prototipo, CSS `.notch`, righe 290-293). */
-export const NOTCH_LONG = 66;
-export const NOTCH_SHORT = 24;
-export const HINT_HEIGHT = 30;
-export const HINT_WIDTHS = [360, 240] as const;
-
-export interface NotchInput {
-  readonly key: PanelKey;
-  readonly side: Side;
-  /** Scostamento lungo il bordo (due tacche sullo stesso bordo si affiancano). */
-  readonly offset: number;
-  /** Visibile (pannello chiuso) o nascosta: una tacca nascosta non occupa posto. */
-  readonly visible: boolean;
+export interface MenuInput {
+  /** Rettangolo del campo, in coordinate della finestra. */
+  readonly field: Box;
+  /** Dimensioni della finestra. */
+  readonly win: { readonly w: number; readonly h: number };
+  /** Altezza naturale del menu (tutte le voci, padding compreso). */
+  readonly naturalHeight: number;
+  /** Larghezza naturale del contenuto, se maggiore di quella del campo. */
+  readonly naturalWidth?: number;
 }
 
-export interface OverlayInput {
-  /** Area del canvas (senza i pannelli). */
-  readonly area: Size;
-  /** Bordo del pannello aperto, se ce n'è uno. */
-  readonly openSide: Side | null;
-  readonly notches: readonly NotchInput[];
+export interface MenuPlacement {
+  readonly side: "below" | "above";
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  /** Altezza effettiva: quella naturale, o lo spazio disponibile se non entra. */
+  readonly height: number;
+  /** Altezza massima da applicare al menu (scorre dentro oltre questa). */
+  readonly maxHeight: number;
+  /** Il contenuto non entra: serve lo scorrimento interno. */
+  readonly scrolls: boolean;
 }
 
-export interface OverlayLayout {
-  readonly minimap: {
-    /** Posizione occupata (piena o compatta); `null` se non c'è posto. */
-    readonly rect: Rect | null;
-    readonly corner: Corner | null;
-    readonly compact: boolean;
-    /** Posizione da piena, ancorata allo stesso angolo: la usa il pulsante compatto quando si espande. */
-    readonly expanded: Rect | null;
-  };
-  readonly zoom: Rect;
-  readonly hint: Rect | null;
-  readonly notches: Readonly<Record<PanelKey, Rect>>;
-  /** Spazio che i nodi devono evitare per restare visibili (anche per «Adatta»). */
-  readonly insets: Insets;
+/** Il rettangolo che occupa il menu. */
+export function menuBox(p: MenuPlacement): Box {
+  return { x: p.left, y: p.top, w: p.width, h: p.height };
 }
 
-const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
+export function placeMenu(input: MenuInput): MenuPlacement {
+  const { field, win } = input;
+  const maxWidth = Math.max(0, Math.min(MENU_MAX_W, win.w - 2 * MENU_EDGE));
+  const wanted = Math.max(field.w, input.naturalWidth ?? 0);
+  const width = Math.min(wanted, maxWidth);
 
-export function intersects(a: Rect, b: Rect): boolean {
-  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-}
+  // spazio per il menu: dal campo (più la distanza) al margine della finestra
+  const below = win.h - (field.y + field.h) - MENU_GAP - MENU_EDGE;
+  const above = field.y - MENU_GAP - MENU_EDGE;
+  const side: MenuPlacement["side"] = below >= above ? "below" : "above";
+  const space = Math.max(0, side === "below" ? below : above);
+  const height = Math.min(input.naturalHeight, space);
 
-const inflate = (r: Rect, by: number): Rect => ({
-  x: r.x - by,
-  y: r.y - by,
-  w: r.w + by * 2,
-  h: r.h + by * 2,
-});
+  const top = side === "below" ? field.y + field.h + MENU_GAP : field.y - MENU_GAP - height;
+  const left = Math.max(MENU_EDGE, Math.min(field.x, win.w - MENU_EDGE - width));
 
-function inside(r: Rect, area: Size): boolean {
-  return r.x >= 0 && r.y >= 0 && r.x + r.w <= area.w && r.y + r.h <= area.h;
-}
-
-/** Angolo dell'area; `inward` allontana il widget dal bordo orizzontale (per scavalcare una tacca). */
-function cornerRect(corner: Corner, size: { w: number; h: number }, area: Size, inward = 0): Rect {
-  const m = OVERLAY_MARGIN;
-  const top = corner === "tl" || corner === "tr";
   return {
-    x: corner === "bl" || corner === "tl" ? m : area.w - m - size.w,
-    y: top ? m + inward : area.h - m - size.h - inward,
-    w: size.w,
-    h: size.h,
+    side,
+    left,
+    top,
+    width,
+    height,
+    maxHeight: space,
+    scrolls: input.naturalHeight > space,
   };
 }
+```
 
-/** Quanto spostare un widget verso l'interno per scavalcare una tacca (24 px) più il respiro. */
-const CLEAR_NOTCH = NOTCH_SHORT + OVERLAY_GAP * 2;
+### `src/etl-canvas/inspector/params.ts`
 
-const OPPOSITE: Record<Corner, Corner> = { bl: "tr", br: "tl", tl: "br", tr: "bl" };
-const ALL_CORNERS: readonly Corner[] = ["bl", "tl", "br", "tr"];
+104 righe
 
-/** Rettangolo di una tacca sul suo bordo, al centro più lo scostamento. */
-export function notchRect(side: Side, offset: number, area: Size): Rect {
-  switch (side) {
-    case "left":
-      return { x: 0, y: area.h / 2 - NOTCH_LONG / 2 + offset, w: NOTCH_SHORT, h: NOTCH_LONG };
-    case "right":
-      return {
-        x: area.w - NOTCH_SHORT,
-        y: area.h / 2 - NOTCH_LONG / 2 + offset,
-        w: NOTCH_SHORT,
-        h: NOTCH_LONG,
-      };
-    case "top":
-      return { x: area.w / 2 - NOTCH_LONG / 2 + offset, y: 0, w: NOTCH_LONG, h: NOTCH_SHORT };
-    case "bottom":
-      return {
-        x: area.w / 2 - NOTCH_LONG / 2 + offset,
-        y: area.h - NOTCH_SHORT,
-        w: NOTCH_LONG,
-        h: NOTCH_SHORT,
-      };
-  }
+```ts
+/**
+ * Lettura e scrittura dei parametri di un passaggio, a funzioni pure: restituiscono
+ * parametri NUOVI, mai modificati sul posto. L'Inspector legge e scrive SOLO
+ * `columns` (mai le righe espanse di `flattenRows`); le righe a colonna singola
+ * del vecchio formato si migrano con `ensureMulti`.
+ */
+import { MULTI_DEFS, columnsOf, defaultParams, ensureMulti } from "../../etl-core";
+import { moveItem } from "./logic";
+import type { MultiListDef, MultiParams, MultiRow, OperationType, Params } from "../../etl-core";
+
+/** Il campo `key` (testo) di parametri semplici. */
+export function textParam(par: Params, key: string): string {
+  const v = par[key];
+  return typeof v === "string" ? v : "";
 }
 
-/** Spazio da riservare ai nodi per un widget: la fascia meno costosa tra quella verticale e quella orizzontale. */
-function insetsFor(rects: readonly Rect[], area: Size): Insets {
-  let top = 0;
-  let right = 0;
-  let bottom = 0;
-  let left = 0;
-  for (const r of rects) {
-    const upper = r.y + r.h / 2 < area.h / 2;
-    const leftSide = r.x + r.w / 2 < area.w / 2;
-    const vertical = (upper ? r.y + r.h : area.h - r.y) + SAFE_GAP;
-    const horizontal = (leftSide ? r.x + r.w : area.w - r.x) + SAFE_GAP;
-    if (vertical / Math.max(1, area.h) <= horizontal / Math.max(1, area.w)) {
-      if (upper) top = Math.max(top, vertical);
-      else bottom = Math.max(bottom, vertical);
-    } else if (leftSide) left = Math.max(left, horizontal);
-    else right = Math.max(right, horizontal);
-  }
-  return { top, right, bottom, left };
+export function withParam(par: Params, key: string, value: string): Params {
+  return { ...par, [key]: value };
 }
 
-export function overlayLayout(input: OverlayInput): OverlayLayout {
-  const { area, openSide } = input;
+/** I parametri di un'operazione a voci multiple, già nel formato attuale (colonne multiple). */
+export function multiOf(type: OperationType, par: Params): MultiParams {
+  return ensureMulti(type, par);
+}
 
-  const notches = {} as Record<PanelKey, Rect>;
-  const obstacles: Rect[] = [];
-  for (const n of input.notches) {
-    const r = notchRect(n.side, n.offset, area);
-    notches[n.key] = r;
-    if (n.visible) obstacles.push(r);
-  }
-  const free = (r: Rect, others: readonly Rect[]): boolean =>
-    inside(r, area) &&
-    others.every((o) => !intersects(inflate(r, OVERLAY_GAP / 2), inflate(o, OVERLAY_GAP / 2)));
+export function rowsOf(multi: MultiParams, key: string): MultiRow[] {
+  const rows = multi[key];
+  return Array.isArray(rows) ? rows : [];
+}
 
-  // controlli di zoom: in basso a destra; solo in aree minuscole provano gli altri angoli
-  let zoom = cornerRect("br", ZOOM_SIZE, area);
-  zoomSearch: for (const inward of [0, CLEAR_NOTCH]) {
-    for (const c of ["br", "bl", "tr", "tl"] as const) {
-      const r = cornerRect(c, ZOOM_SIZE, area, inward);
-      if (free(r, obstacles)) {
-        zoom = r;
-        break zoomSearch;
-      }
-    }
-  }
-  const placed: Rect[] = [...obstacles, zoom];
+/** Una riga nuova di una lista, con i valori predefiniti del catalogo. */
+export function blankRowOf(type: OperationType, list: MultiListDef): MultiRow {
+  const base = defaultParams(type) as MultiParams;
+  const row = rowsOf(base, list.key)[0];
+  return row ? { ...row } : {};
+}
 
-  // minimappa
-  const preferred: Corner = openSide === "bottom" ? "tl" : "bl";
-  const full = (c: Corner, inward = 0): Rect => cornerRect(c, MINIMAP_SIZE, area, inward);
-  const compact = (c: Corner, inward = 0): Rect =>
-    cornerRect(c, { w: MINIMAP_COMPACT, h: MINIMAP_COMPACT }, area, inward);
-  const others = ALL_CORNERS.filter((c) => c !== preferred && c !== OPPOSITE[preferred]);
-  const sequence: { corner: Corner; compact: boolean }[] = [
-    { corner: preferred, compact: false },
-    { corner: OPPOSITE[preferred], compact: false },
-    { corner: preferred, compact: true },
-    { corner: OPPOSITE[preferred], compact: true },
-    ...others.map((corner) => ({ corner, compact: true })),
-  ];
-  // se nemmeno così c'è posto, si riprova scavalcando le tacche
-  const candidates = [0, CLEAR_NOTCH].flatMap((inward) => sequence.map((c) => ({ ...c, inward })));
-  let minimap: OverlayLayout["minimap"] = {
-    rect: null,
-    corner: null,
-    compact: false,
-    expanded: null,
-  };
-  for (const cand of candidates) {
-    const rect = cand.compact ? compact(cand.corner, cand.inward) : full(cand.corner, cand.inward);
-    if (free(rect, placed)) {
-      minimap = {
-        rect,
-        corner: cand.corner,
-        compact: cand.compact,
-        expanded: cand.compact ? full(cand.corner, cand.inward) : rect,
-      };
-      placed.push(rect);
-      break;
-    }
-  }
-
-  // suggerimento di rilascio: al centro, in basso o in alto
-  let hint: Rect | null = null;
-  search: for (const width of HINT_WIDTHS) {
-    const w = Math.min(width, Math.floor(area.w * 0.7));
-    for (const y of [
-      area.h - OVERLAY_MARGIN - HINT_HEIGHT,
-      OVERLAY_MARGIN,
-      area.h - OVERLAY_MARGIN - HINT_HEIGHT - CLEAR_NOTCH,
-      OVERLAY_MARGIN + CLEAR_NOTCH,
-    ]) {
-      const r = { x: Math.round((area.w - w) / 2), y, w, h: HINT_HEIGHT };
-      if (free(r, placed)) {
-        hint = r;
-        break search;
-      }
-    }
-  }
-
-  const insets = insetsFor(
-    [...(minimap.rect ? [minimap.rect] : []), zoom].filter((r) => inside(r, area)),
-    area,
+/** Cambia un campo di una riga; gli altri campi (e i valori già scelti) restano. */
+export function withRowField(
+  type: OperationType,
+  par: Params,
+  listKey: string,
+  index: number,
+  fieldKey: string,
+  value: MultiRow[string],
+): Params {
+  const multi = multiOf(type, par);
+  const rows = rowsOf(multi, listKey).map((r, i) =>
+    i === index ? { ...r, [fieldKey]: value } : r,
   );
-  return { minimap, zoom, hint, notches, insets: area.w > 0 && area.h > 0 ? insets : NO_INSETS };
+  return { ...multi, [listKey]: rows };
+}
+
+export function withRowAdded(type: OperationType, par: Params, list: MultiListDef): Params {
+  const multi = multiOf(type, par);
+  return { ...multi, [list.key]: [...rowsOf(multi, list.key), blankRowOf(type, list)] };
+}
+
+export function withRowRemoved(
+  type: OperationType,
+  par: Params,
+  listKey: string,
+  index: number,
+): Params {
+  const multi = multiOf(type, par);
+  return { ...multi, [listKey]: rowsOf(multi, listKey).filter((_, i) => i !== index) };
+}
+
+/** Campo globale di un'operazione a voci multiple (per esempio «tieni/escludi»). */
+export function withGlobal(type: OperationType, par: Params, key: string, value: string): Params {
+  return { ...multiOf(type, par), [key]: value };
+}
+
+/** Le colonne di una riga. */
+export function rowColumns(row: MultiRow): string[] {
+  return columnsOf(row);
+}
+
+/** Le operazioni a voci multiple: dal catalogo, non da un elenco scritto qui. */
+export function isMulti(type: string): type is OperationType {
+  return Object.prototype.hasOwnProperty.call(MULTI_DEFS, type);
+}
+
+/** Campi di testo che contengono numeri: tastiera numerica, senza frecce native. */
+export const NUMERIC_KEYS: ReadonlySet<string> = new Set(["n", "pct", "decimals", "seed"]);
+
+/**
+ * Le liste in cui l'ordine delle voci conta e si può cambiare (tipo di operazione → chiave della
+ * lista): i criteri di Ordina, dove il primo è il principale (la nota è già in `MULTI_DEFS`).
+ */
+export const REORDERABLE_LISTS: Readonly<Record<string, string>> = { sort: "items" };
+
+/** Sposta una voce di una lista da `from` a `to` (con `moveItem`); gli altri campi restano. */
+export function withRowMoved(
+  type: OperationType,
+  par: Params,
+  listKey: string,
+  from: number,
+  to: number,
+): Params {
+  const multi = multiOf(type, par);
+  return { ...multi, [listKey]: moveItem(rowsOf(multi, listKey), from, to) };
+}
+```
+
+### `src/etl-canvas/inspector/useActiveSchema.ts`
+
+14 righe
+
+```ts
+/** Lo schema dei dati in ingresso a un nodo (`schemaOf`): segue i collegamenti del grafo. */
+import { useMemo } from "react";
+import { schemaOf } from "../../etl-core";
+import type { ColumnDef } from "../../etl-core";
+import type { EtlStore } from "../../etl-store";
+import { useEtlState } from "../../etl-store/react";
+
+const NONE: readonly ColumnDef[] = [];
+
+export function useActiveSchema(store: EtlStore, nodeId: string | null): readonly ColumnDef[] {
+  const graph = useEtlState((s) => s.graph, store);
+  return useMemo(() => (nodeId ? (schemaOf(graph, nodeId) ?? NONE) : NONE), [graph, nodeId]);
 }
 ```
 

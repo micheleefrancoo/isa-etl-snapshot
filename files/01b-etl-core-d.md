@@ -658,7 +658,7 @@ export function compatiblePair(graph: Graph, aId: string, bId: string): boolean 
 
 ### `src/etl-core/rules/state.ts`
 
-106 righe
+121 righe
 
 ```ts
 /**
@@ -670,6 +670,7 @@ import {
   PARAM_DEFS,
   ensureKeys,
   ensureMulti,
+  columnsOf,
   fieldFilled,
   keyComplete,
   MULTI_DEFS,
@@ -678,7 +679,9 @@ import {
 } from "../catalog/params";
 import { boxCapacity } from "./relations";
 import { inputsOf, cardById } from "../model/graph";
+import { columnsOutsideSchema, schemaOf } from "../schema/schema";
 import type {
+  ColumnDef,
   ComponentId,
   FilterCondition,
   Graph,
@@ -697,8 +700,16 @@ import type {
  * vuoto (non basta più un `text` residuo); un operatore in `NO_VALUE_OPS`
  * è sempre completo (a colonna impostata); ogni altro operatore richiede
  * `text` non vuoto.
+ *
+ * Con `schema` (le colonne in ingresso, se note) una riga di un'operazione a voci multiple che
+ * elenca una colonna assente dallo schema è incompleta (Fase 6b.2, Passo 0): la colonna non c'è
+ * più nei dati. Con lo schema vuoto o sconosciuto non cambia nulla.
  */
-export function stepMissing(type: ComponentId, par: Params | undefined): boolean {
+export function stepMissing(
+  type: ComponentId,
+  par: Params | undefined,
+  schema?: readonly ColumnDef[] | null,
+): boolean {
   if (!par) return true;
   if (type === "filter") {
     const conditions = par["conditions"];
@@ -722,11 +733,14 @@ export function stepMissing(type: ComponentId, par: Params | undefined): boolean
     return md.lists.some((list) => {
       const rows = migrated[list.key];
       if (!Array.isArray(rows) || rows.length === 0) return true;
-      return (rows as MultiRow[]).some((row) =>
-        list.fields.some(
-          (f) =>
-            (f.req || f.type === "column" || f.type === "columns") && !fieldFilled(f, row[f.k]),
-        ),
+      return (rows as MultiRow[]).some(
+        (row) =>
+          list.fields.some(
+            (f) =>
+              (f.req || f.type === "column" || f.type === "columns") && !fieldFilled(f, row[f.k]),
+          ) ||
+          (list.fields.some((f) => f.type === "columns") &&
+            columnsOutsideSchema(columnsOf(row), schema).length > 0),
       );
     });
   }
@@ -761,7 +775,8 @@ export function nodeState(graph: Graph, id: string): string | null {
     return typeof path === "string" && path.trim().length > 0 ? null : "Origine da configurare";
   }
   if (inputsOf(graph, id).length < boxCapacity(d)) return "Mancano tabelle in ingresso";
-  const badIndex = d.components.findIndex((c, i) => stepMissing(c, d.params[i]));
+  const schema = schemaOf(graph, id);
+  const badIndex = d.components.findIndex((c, i) => stepMissing(c, d.params[i], schema));
   if (badIndex < 0) return null;
   const badType = d.components[badIndex] as ComponentId;
   return `Da configurare: ${META[badType].label}`;
@@ -770,7 +785,7 @@ export function nodeState(graph: Graph, id: string): string | null {
 
 ### `src/etl-core/schema/schema.ts`
 
-37 righe
+54 righe
 
 ```ts
 /**
@@ -808,6 +823,23 @@ export function schemaOf(graph: Graph, id: string, depth = 0): ColumnDef[] | nul
     }
   }
   return out.length ? out : null;
+}
+
+/**
+ * Le colonne di una riga che non sono nello schema in ingresso (nell'ordine in cui sono elencate,
+ * senza ripetizioni). Con lo schema vuoto o sconosciuto non si sa cosa manchi: nessuna.
+ */
+export function columnsOutsideSchema(
+  columns: readonly string[],
+  schema: readonly ColumnDef[] | null | undefined,
+): string[] {
+  if (!schema || schema.length === 0) return [];
+  const known = new Set(schema.map((c) => c.name));
+  const out: string[] = [];
+  for (const name of columns) {
+    if (!known.has(name) && !out.includes(name)) out.push(name);
+  }
+  return out;
 }
 ```
 

@@ -1240,7 +1240,7 @@ export {
 export type { Groupable, GroupRun } from "./logic/expressions";
 
 // --- Schema e CSV -----------------------------------------------------
-export { schemaOf } from "./schema/schema";
+export { schemaOf, columnsOutsideSchema } from "./schema/schema";
 export { parseCSV } from "./data/csv";
 export type { ParsedCsv } from "./data/csv";
 ```

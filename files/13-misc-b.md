@@ -580,7 +580,7 @@ export type { Preference, ThemeName } from "./runtime";
 
 ### `src/theme/layout-tokens.css`
 
-45 righe
+50 righe
 
 ```css
 /*
@@ -617,6 +617,11 @@ export type { Preference, ThemeName } from "./runtime";
   /* controlli: altezza minima, pulsanti con sola icona (area cliccabile ≥ 32px) */
   --isa-control-h: 40px;
   --isa-icon-btn: 32px;
+
+  /* tre colonne dei bordi alto e basso (Impostazioni | Condizioni o Elenco | Dettaglio) */
+  --isa-md-min-w: 900px; /* sotto questa larghezza tornano le colonne CSS della 6b.1 */
+  --isa-md-general-w: 240px;
+  --isa-md-master-w: 310px;
 
   /* tendine e menu */
   --isa-menu-gap: 8px; /* distanza dal campo */

@@ -15,7 +15,7 @@ File in questo blocco:
 
 ### `scripts/generate-snapshot.mjs`
 
-519 righe
+530 righe
 
 ```js
 #!/usr/bin/env node
@@ -36,10 +36,10 @@ File in questo blocco:
 // This script never touches git or the network. It only reads the source
 // repo's working tree and writes plain files to --out.
 
-import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSync } from "node:fs";
 import { join, relative, extname, basename } from "node:path";
 import { execFileSync } from "node:child_process";
-import { BINARY_EXT, blockNames, isBinaryContent } from "./snapshot-lib.mjs";
+import { BINARY_EXT, blockNames, isBinaryContent, parseGitFileList } from "./snapshot-lib.mjs";
 
 const REPO_ROOT = process.cwd();
 const args = process.argv.slice(2);
@@ -97,9 +97,20 @@ function walk(dir, out) {
   }
 }
 
-const allFiles = [];
-walk(REPO_ROOT, allFiles);
-allFiles.sort();
+// Dai file di git (tracciati e non ignorati): il working tree contiene file locali ignorati (script .tmp*.mjs,
+// .env, ...) che non devono finire in uno snapshot pubblico. Fuori da un repository git si ripiega sulla visita.
+let allFiles;
+try {
+  const listed = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "-z"], {
+    cwd: REPO_ROOT,
+    maxBuffer: 64 * 1024 * 1024,
+  }).toString("utf8");
+  allFiles = parseGitFileList(listed, EXCLUDE_DIR_NAMES, (rel) => existsSync(join(REPO_ROOT, rel)));
+} catch {
+  allFiles = [];
+  walk(REPO_ROOT, allFiles);
+  allFiles.sort();
+}
 
 function classify(rel) {
   const name = basename(rel);
@@ -540,7 +551,7 @@ console.log(
 
 ### `scripts/snapshot-lib.mjs`
 
-87 righe
+103 righe
 
 ```js
 // Funzioni pure di generate-snapshot.mjs, separate perché lo script esegue
@@ -629,15 +640,37 @@ export function blockNames(area, count) {
   }
   return names;
 }
+
+/**
+ * Percorsi dall'output di `git ls-files -co --exclude-standard -z`: tracciati e non tracciati MA non ignorati
+ * (un file ignorato, come gli script .tmp*.mjs locali, non deve finire in uno snapshot pubblico). Senza i
+ * file che non esistono più (cancellati e non ancora registrati) e senza le cartelle escluse.
+ */
+export function parseGitFileList(output, excludeDirNames, exists = () => true) {
+  const seen = new Set();
+  for (const rel of output.split("\0")) {
+    if (!rel || seen.has(rel)) continue;
+    if (rel.split("/").some((part) => excludeDirNames.has(part))) continue;
+    if (!exists(rel)) continue;
+    seen.add(rel);
+  }
+  return [...seen].sort();
+}
 ```
 
 ### `scripts/snapshot-lib.test.mjs`
 
-73 righe
+92 righe
 
 ```js
 import { describe, expect, it } from "vitest";
-import { BINARY_EXT, blockNames, blockSuffix, isBinaryContent } from "./snapshot-lib.mjs";
+import {
+  BINARY_EXT,
+  blockNames,
+  blockSuffix,
+  isBinaryContent,
+  parseGitFileList,
+} from "./snapshot-lib.mjs";
 
 describe("blockSuffix", () => {
   it("va da a a z e poi continua con aa, ab, …", () => {
@@ -706,6 +739,19 @@ describe("file binari", () => {
   it("un carattere spezzato dal taglio a 8000 byte non rende binario un file lungo", () => {
     const text = Buffer.from("a".repeat(7999) + "é" + "b".repeat(100), "utf8");
     expect(isBinaryContent(text)).toBe(false);
+  });
+});
+
+describe("parseGitFileList", () => {
+  const out = ["src/a.ts", "scripts/b.mjs", "node_modules/x/i.js", "src/a.ts", "gone.md", ""].join(
+    "\0",
+  );
+  it("toglie duplicati, cartelle escluse e file che non esistono più, e ordina", () => {
+    const r = parseGitFileList(out, new Set(["node_modules"]), (f) => f !== "gone.md");
+    expect(r).toEqual(["scripts/b.mjs", "src/a.ts"]);
+  });
+  it("un file ignorato (non elencato da git) non compare mai", () => {
+    expect(parseGitFileList("src/a.ts\0", new Set()).includes("scripts/.tmpdiff.mjs")).toBe(false);
   });
 });
 ```

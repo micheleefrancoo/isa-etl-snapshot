@@ -4,13 +4,12 @@ File in questo blocco:
 
 - `src/etl-canvas/README.md`
 - `src/etl-canvas/__tests__/animator.test.ts`
-- `src/etl-canvas/__tests__/autofit.test.ts`
 
 ---
 
 ### `src/etl-canvas/README.md`
 
-280 righe
+309 righe
 
 ```md
 # etl-canvas — Fasi 4a, 4b, 5, 6a e 6b.1: il canvas, le sue animazioni, i gesti, i pannelli e l'Inspector
@@ -202,6 +201,35 @@ di data, colore, intervallo), nessuna tendina del sistema; ogni menu è un
 spazi in `src/theme/layout-tokens.css`, controllata da `scripts/check-tokens.mjs`
 in `src/etl-canvas/inspector/**`. Prove: `__tests__/inspector*.test.ts(x)`,
 `menu.test.ts`, `inspector-logic.test.ts` e `scripts/e2e-fase6b1.mjs`.
+
+## Fase 6b.2 — Condizioni di filtro e join, connettori, gruppi, anteprima, tre colonne
+
+Si porta la versione FINALE del prototipo (`docs/prototype/isa-fusion-prototype.html`).
+Il dominio c'è già (`etl-core`): qui sono solo interfaccia. Righe del prototipo:
+
+| Elemento del prototipo                                                                                                                                                                                  | Righe                                                       | Qui                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `renderFilter`: area condizioni, riga comprimibile (`cond`, `cond-head`, `cond-body`), riassunto, una aperta per volta, «+ Aggiungi condizione», colonna con il tipo sotto, valore (`valueControl`)     | 3394-3454, 2940-2952 (`openCond`)                           | `ConditionList.tsx`, `FilterCondition.tsx`; riassunto `summarizeCond` (3109-3121) di etl-core                      |
+| `bindFilter`: apri/chiudi, aggiungi, rimuovi, modalità, campi (cambiando colonna il prototipo azzera i valori, 3498-3501)                                                                               | 3456-3505                                                   | `ConditionList.tsx`, `FilterCondition.tsx` (i valori NON si azzerano: `NOTE_DIVERGENZE.md` § 14)                   |
+| `connRow` (superata, senza gruppi) e `connRowG`: pastiglia del connettore con i sei operatori e `LOGIC_HELP`, pulsanti `( )` e `)(`                                                                     | 3299-3308 (`LOGIC_OPS`, `LOGIC_HELP`), 3304-3310, 3344-3351 | `ConnectorSelect.tsx` (nessun selettore globale E/O); pulsanti in `ConditionList.tsx`                              |
+| `assembleGrouped`: ordine delle righe, riquadro `cgroup` con «Gruppo», «Sciogli», «+ Condizione nel gruppo»                                                                                             | 3352-3365 (CSS 588-599)                                     | `GroupFrame.tsx`, `ConditionList.tsx`                                                                              |
+| `groupRuns`, `normalizeGroups`, `groupPair` (fusione di gruppi adiacenti), `splitAt`, `newGroupId`                                                                                                      | 3310-3343                                                   | `etl-core/logic/expressions.ts` (già portate); l'identificativo nuovo è `nextGroupId` in `inspector/conditions.ts` |
+| Azioni sui gruppi: raggruppa, dividi, sciogli, aggiungi nel gruppo, `normalizeGroups` dopo ogni azione                                                                                                  | 3603-3626                                                   | `inspector/conditions.ts` (funzioni pure, tutto passa da `setParams`)                                              |
+| `groupedPreview` (anteprima: parentesi sui gruppi, da sinistra a destra) e `leftAssoc`                                                                                                                  | 3366-3385                                                   | `etl-core` (stringa pura); riquadro in `ExpressionPreview.tsx`                                                     |
+| `logicPreview` (anteprima senza gruppi)                                                                                                                                                                 | 3386-3392                                                   | non portata: superata da `groupedPreview`                                                                          |
+| `renderJoinKeys`: condizioni di unione, riga comprimibile, anteprima, avviso di prestazioni                                                                                                             | 3195-3232 (`openKey` 3157, avviso 3219-3222)                | `ConditionList.tsx`, `JoinCondition.tsx`; criterio `hasEquiJoinCondition` di etl-core                              |
+| `joinSideHtml`: lato sinistro (Colonna / Valore), lato destro (Colonna / Valore / Lista), valore dal dominio dell'altro lato o «scrivi»                                                                 | 3165-3182, `domainOf` 3156                                  | `JoinCondition.tsx`                                                                                                |
+| `joinOpHtml`: confronto (`JOIN_OPS` con i nomi), `LIST_OPS` se il lato destro è una lista                                                                                                               | 3183-3189, 3158-3159, 3142                                  | `JoinCondition.tsx`                                                                                                |
+| `jkModeSeg`: scelta Colonna / Valore / Lista                                                                                                                                                            | 3160-3164 (CSS 546-551)                                     | `Segmented.tsx` (radiogroup accessibile, non radio nativi)                                                         |
+| `bindJoin`: cambio di modalità (il confronto segue il lato destro: con una lista passa a «è uno di», uscendo torna a «=»), aggiungi, rimuovi                                                            | 3235-3298 (modalità 3243-3253)                              | `JoinCondition.tsx`, `inspector/conditions.ts`                                                                     |
+| Tabelle del join (`leftTable`, `rightTable`) e tipo di join (`PARAM_DEFS.join`)                                                                                                                         | 3747-3774, 3777-3779                                        | `JoinSettings.tsx` (le tabelle già della 6b.1: `Inspector.tsx`)                                                    |
+| `arrangeMasterDetail`: tre sezioni (impostazioni, struttura, dettaglio), titolo «Condizioni e gruppi» o «Elenco», solo sui bordi alto e basso                                                           | 3547-3572 (CSS 346-374)                                     | `Columns3.tsx`                                                                                                     |
+| `activateMd`, `updateMdTitle`, `condOf`: la voce attiva si evidenzia, il dettaglio ripete numero e riassunto, un clic non comprime (3627-3635); lo stato sopravvive ai ridisegni (3580-3593, 3528-3545) | 3574-3601, 3627-3635                                        | `Columns3.tsx` (la voce attiva è stato di React: nessun ridisegno da DOM)                                          |
+
+**Scartato perché superato:** il selettore globale E/O (`par.logic`, 3396-3400, già migrato
+da `migrateFilterLogic`), l'anteprima in HTML (`logic-prev` con `lp-hint`), le modalità
+elenco/manuale dei valori (`mode`, `text`, `sep`), `logicPreview`, il `<datalist>` delle
+colonne e il `select` nativo.
 
 ## Rendering lato server
 
@@ -563,425 +591,6 @@ describe("un solo requestAnimationFrame", () => {
       const code = readFileSync(resolve(dir, f), "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
       expect(code, f).not.toMatch(/requestAnimationFrame|\braf\(/);
     }
-  });
-});
-```
-
-### `src/etl-canvas/__tests__/autofit.test.ts`
-
-413 righe
-
-```ts
-import { describe, expect, it } from "vitest";
-import type { Card } from "../../etl-core";
-import type { Panels, View } from "../../etl-store";
-import { ZOOM_MAX } from "../../etl-store";
-import { CARD, LABEL_H } from "../../etl-layout";
-import {
-  AUTOFIT_MS,
-  SAFE_MARGIN,
-  easing,
-  fitTarget,
-  interpolateArea,
-  interpolateView,
-  nodeInside,
-  planChange,
-  requiredNodes,
-  safeBox,
-} from "../panels/autoFit";
-import type { Area } from "../panels/autoFit";
-import { restArea } from "../panels/dockArea";
-import type { WorkspaceMetrics } from "../panels/dockArea";
-import { MIN_ZOOM, fitView } from "../view";
-
-const card = (id: string, x: number, y: number): Card => ({ id, x, y }) as Card;
-const NOINS = { top: 0, right: 0, bottom: 0, left: 0 };
-const area = (w: number, h: number, insets = NOINS): Area => ({ size: { w, h }, insets });
-const V1: View = { x: 0, y: 0, zoom: 1 };
-const inside = (cards: readonly Card[], v: View, a: Area, tol = 1e-6) =>
-  cards.every((c) => nodeInside(c, v, a, tol));
-
-/** Scena rada: sei nodi sparsi. Scena densa: una griglia 7 × 5. */
-const sparse: Card[] = [
-  card("a", 40, 40),
-  card("b", 400, 40),
-  card("c", 700, 40),
-  card("d", 40, 300),
-  card("e", 700, 300),
-  card("m", 400, 170),
-];
-const dense: Card[] = Array.from({ length: 35 }, (_, i) =>
-  card(`n${i}`, 40 + (i % 7) * 150, 40 + Math.floor(i / 7) * 130),
-);
-
-const WINDOWS = [
-  { name: "1440×900", w: 1440, h: 900 },
-  { name: "1280×720", w: 1280, h: 720 },
-  { name: "1280×600", w: 1280, h: 600 },
-] as const;
-/** Lo spazio di lavoro: la finestra meno l'intestazione della pagina; la barra dei controlli sta sopra. */
-const ws = (w: { w: number; h: number }): WorkspaceMetrics => ({ w: w.w, h: w.h - 60, barH: 44 });
-const SIDES = ["left", "right", "top", "bottom"] as const;
-const closed: Panels = {
-  tools: { side: "left", open: false },
-  insp: { side: "right", open: false },
-};
-const opened = (panel: "tools" | "insp", side: (typeof SIDES)[number]): Panels => ({
-  tools: { side: panel === "tools" ? side : "left", open: panel === "tools" },
-  insp: { side: panel === "insp" ? side : "right", open: panel === "insp" },
-});
-
-describe("requiredNodes", () => {
-  it("sono i nodi interamente dentro l'area sicura; un nodo già tagliato non è richiesto", () => {
-    const cards = [card("in", 100, 100), card("cut", 950, 100), card("edge", 10, 100)];
-    const req = requiredNodes(cards, V1, area(1000, 600));
-    expect(req.map((c) => c.id)).toEqual(["in"]); // «cut» sporge a destra, «edge» sta nel margine di 24 px
-  });
-
-  it("l'ingombro di un widget restringe l'area sicura", () => {
-    const c = [card("n", 100, 460)]; // y2 = 460 + 88 + 26 = 574
-    expect(requiredNodes(c, V1, area(1000, 600))).toHaveLength(1);
-    expect(requiredNodes(c, V1, area(1000, 600, { ...NOINS, bottom: 100 }))).toHaveLength(0);
-    expect(safeBox(area(1000, 600))).toEqual({
-      x1: SAFE_MARGIN,
-      y1: SAFE_MARGIN,
-      x2: 1000 - SAFE_MARGIN,
-      y2: 600 - SAFE_MARGIN,
-    });
-  });
-});
-
-describe("fitTarget: i tre esiti", () => {
-  it("1: i nodi entrano allo zoom attuale, solo scorrimento minimo, zoom e posizioni invariati", () => {
-    const prev = area(1000, 600);
-    const next = area(700, 600);
-    const few = [card("p", 40, 40), card("q", 440, 40)]; // da 40 a 528
-    const r = fitTarget({ cards: few, view: V1, intent: 1, prev, next });
-    expect(r.outcome).toBe(1);
-    expect(r.reason).toBe("entrano");
-    expect(r.view).toEqual({ x: 0, y: 0, zoom: 1 }); // 528 ≤ 700 − 24: non serve scorrere
-    const tight = fitTarget({ cards: few, view: V1, intent: 1, prev, next: area(540, 600) });
-    expect(tight.outcome).toBe(1);
-    expect(tight.view).toEqual({ x: 540 - 24 - 528, y: 0, zoom: 1 });
-    expect(inside(few, tight.view, area(540, 600))).toBe(true);
-  });
-
-  it("2: non entrano: lo zoom scende e il riquadro dei nodi richiesti sta centrato nell'area", () => {
-    const prev = area(1000, 600);
-    const next = area(500, 600);
-    const r = fitTarget({ cards: sparse, view: V1, intent: 1, prev, next });
-    expect(r.outcome).toBe(2);
-    expect(r.reason).toBe("zoom-ridotto");
-    expect(r.view.zoom).toBeLessThan(1);
-    expect(r.view.zoom).toBeGreaterThanOrEqual(MIN_ZOOM);
-    expect(inside(sparse, r.view, next)).toBe(true);
-    // centrato: avanza quanto resta a sinistra e a destra del riquadro
-    const left = r.view.x + 40 * r.view.zoom;
-    const right = 500 - (r.view.x + (700 + CARD) * r.view.zoom);
-    expect(left).toBeCloseTo(right, 6);
-  });
-
-  it("3: nemmeno lo zoom minimo basta: zoom minimo, allineato in alto a sinistra, e il motivo lo dice", () => {
-    const wide = [card("a", 40, 40), card("b", 6000, 40), card("c", 40, 3000)];
-    const prev = area(8000, 4000);
-    const next = area(400, 300);
-    const r = fitTarget({ cards: wide, view: V1, intent: 1, prev, next });
-    expect(r.outcome).toBe(3);
-    expect(r.reason).toBe("zoom-minimo");
-    expect(r.view.zoom).toBe(MIN_ZOOM);
-    expect(r.view.x + 40 * MIN_ZOOM).toBeCloseTo(SAFE_MARGIN, 6);
-    expect(r.view.y + 40 * MIN_ZOOM).toBeCloseTo(SAFE_MARGIN, 6);
-  });
-
-  it("nessun nodo richiesto: la vista non cambia (stessa istanza)", () => {
-    const r = fitTarget({
-      cards: [card("x", 5000, 5000)],
-      view: V1,
-      intent: 1,
-      prev: area(800, 600),
-      next: area(300, 300),
-    });
-    expect(r.outcome).toBe(1);
-    expect(r.reason).toBe("nessun-nodo");
-    expect(r.view).toBe(V1);
-  });
-
-  it("un nodo già tagliato prima non fa scendere lo zoom", () => {
-    const cards = [card("p", 40, 40), card("cut", 940, 40)];
-    const r = fitTarget({
-      cards,
-      view: V1,
-      intent: 1,
-      prev: area(1000, 600),
-      next: area(500, 600),
-    });
-    expect(r.required).toBe(1);
-    expect(r.view.zoom).toBe(1);
-  });
-
-  it("lo zoom di intento è il tetto: un'area grande non lo supera", () => {
-    const small: View = { x: 0, y: 0, zoom: 0.5 };
-    const r = fitTarget({
-      cards: sparse,
-      view: small,
-      intent: 0.8,
-      prev: area(1000, 600),
-      next: area(3000, 2000),
-    });
-    expect(r.outcome).toBe(2);
-    expect(r.reason).toBe("zoom-ripreso");
-    expect(r.view.zoom).toBeCloseTo(0.8, 9);
-  });
-
-  it("l'intento sale dopo uno zoom manuale: la discesa parte da lì e non supera quello scelto", () => {
-    const manual: View = { x: 10, y: 10, zoom: 1.5 };
-    const few = [card("p", 40, 40), card("q", 300, 40)];
-    const prev = area(1400, 800);
-    const next = area(500, 800);
-    const r = fitTarget({ cards: few, view: manual, intent: 1.5, prev, next });
-    expect(r.view.zoom).toBeLessThanOrEqual(1.5);
-    expect(r.view.zoom).toBeLessThan(1.5); // 340 × 1,5 > 452: serve scendere
-    expect(inside(few, r.view, next)).toBe(true);
-    // con più spazio risale fino all'intento, mai oltre
-    const back = fitTarget({
-      cards: few,
-      view: r.view,
-      intent: 1.5,
-      prev: next,
-      next: area(2000, 900),
-    });
-    expect(back.view.zoom).toBeCloseTo(1.5, 9);
-    expect(ZOOM_MAX).toBeGreaterThanOrEqual(1.5);
-  });
-});
-
-describe("planChange: punto di ripristino", () => {
-  const prev = area(1000, 600);
-  const next = area(500, 600);
-
-  it("apri → chiudi senza altre azioni: la vista torna ESATTAMENTE quella di prima", () => {
-    const v0: View = { x: 12.345, y: -6.789, zoom: 1 };
-    const open = planChange({ cards: sparse, view: v0, intent: 1, prev, next, restore: null });
-    expect(open.fit?.outcome).toBe(2);
-    expect(open.restore).toEqual({ view: v0, area: prev });
-    const close = planChange({
-      cards: sparse,
-      view: open.view,
-      intent: 1,
-      prev: next,
-      next: area(1000, 600),
-      restore: open.restore,
-    });
-    expect(close.restored).toBe(true);
-    expect(close.view).toEqual(v0);
-    expect(close.restore).toBeNull();
-  });
-
-  it("senza punto di ripristino (azione dell'utente) vale la regola generale con lo zoom di intento", () => {
-    const v0: View = { x: 0, y: 0, zoom: 1 };
-    const open = planChange({ cards: sparse, view: v0, intent: 1, prev, next, restore: null });
-    const close = planChange({
-      cards: sparse,
-      view: open.view,
-      intent: 1,
-      prev: next,
-      next: prev,
-      restore: null,
-    });
-    expect(close.restored).toBe(false);
-    expect(close.fit?.reason).toBe("zoom-ripreso");
-    expect(close.view.zoom).toBeCloseTo(1, 9);
-  });
-
-  it("il primo adattamento salva la vista di prima; i successivi non la sostituiscono", () => {
-    const v0: View = { x: 0, y: 0, zoom: 1 };
-    const one = planChange({ cards: sparse, view: v0, intent: 1, prev, next, restore: null });
-    const two = planChange({
-      cards: sparse,
-      view: one.view,
-      intent: 1,
-      prev: next,
-      next: area(400, 600),
-      restore: one.restore,
-    });
-    expect(two.restore).toBe(one.restore);
-  });
-
-  it("un cambio che non tocca la vista non crea un punto di ripristino", () => {
-    const r = planChange({
-      cards: sparse,
-      view: V1,
-      intent: 1,
-      prev,
-      next: area(1200, 800),
-      restore: null,
-    });
-    expect(r.restore).toBeNull();
-  });
-});
-
-describe("tabella pannelli × bordi × finestre × scene", () => {
-  let cases = 0;
-  const outcomes = { 1: 0, 2: 0, 3: 0 };
-  for (const win of WINDOWS) {
-    for (const [sceneName, scene] of [
-      ["rada", sparse],
-      ["densa", dense],
-    ] as const) {
-      for (const panel of ["tools", "insp"] as const) {
-        for (const side of SIDES) {
-          it(`${win.name}, scena ${sceneName}, ${panel} su ${side}: R1 e ripristino`, () => {
-            const m = ws(win);
-            const a0 = restArea(closed, m);
-            const a1 = restArea(opened(panel, side), m);
-            const v0: View = { x: 0, y: 0, zoom: 1 };
-            const open = planChange({
-              cards: scene,
-              view: v0,
-              intent: 1,
-              prev: a0,
-              next: a1,
-              restore: null,
-            });
-            const fit = open.fit!;
-            outcomes[fit.outcome]++;
-            cases++;
-            const req = requiredNodes(scene, v0, a0);
-            if (fit.outcome !== 3) expect(inside(req, open.view, a1)).toBe(true);
-            expect(open.view.zoom).toBeLessThanOrEqual(1);
-            expect(open.view.zoom).toBeGreaterThanOrEqual(MIN_ZOOM);
-            // a ogni istante della transizione i nodi richiesti restano dentro (convessità)
-            if (fit.outcome !== 3) {
-              for (let s = 0; s <= 1.0001; s += 0.05) {
-                expect(
-                  inside(req, interpolateView(v0, open.view, s), interpolateArea(a0, a1, s)),
-                ).toBe(true);
-              }
-            }
-            const close = planChange({
-              cards: scene,
-              view: open.view,
-              intent: 1,
-              prev: a1,
-              next: a0,
-              restore: open.restore,
-            });
-            if (open.restore) expect(close.view).toEqual(v0);
-            else if (close.fit && close.fit.outcome !== 3)
-              expect(inside(requiredNodes(scene, open.view, a1), close.view, a0)).toBe(true);
-          });
-        }
-      }
-    }
-  }
-  it("la tabella tocca tutti e tre gli esiti sul canvas con i pannelli aperti, o almeno 1 e 2", () => {
-    expect(cases).toBe(3 * 2 * 2 * 4);
-    expect(outcomes[1]).toBeGreaterThan(0);
-    expect(outcomes[2]).toBeGreaterThan(0);
-  });
-});
-
-describe("interpolateView", () => {
-  const a: View = { x: 10, y: -20, zoom: 1 };
-  const b: View = { x: 110, y: 80, zoom: 0.4 };
-  it("estremi esatti e interpolazione lineare in x, y e zoom", () => {
-    expect(interpolateView(a, b, 0)).toBe(a);
-    expect(interpolateView(a, b, 1)).toBe(b);
-    const m = interpolateView(a, b, 0.25);
-    expect(m.x).toBeCloseTo(35, 12);
-    expect(m.y).toBeCloseTo(5, 12);
-    expect(m.zoom).toBeCloseTo(0.85, 12); // lineare, non logaritmica
-  });
-  it("lo zoom è monotono", () => {
-    let prev = a.zoom;
-    for (let i = 1; i <= 100; i++) {
-      const z = interpolateView(a, b, i / 100).zoom;
-      expect(z).toBeLessThanOrEqual(prev);
-      prev = z;
-    }
-  });
-});
-
-describe("easing", () => {
-  it("valori noti: estremi esatti, simmetrica, pendenza al più π/2", () => {
-    expect(easing(0)).toBe(0);
-    expect(easing(1)).toBe(1);
-    expect(easing(-1)).toBe(0);
-    expect(easing(2)).toBe(1);
-    expect(easing(0.5)).toBeCloseTo(0.5, 12);
-    expect(easing(0.25)).toBeCloseTo((1 - Math.SQRT1_2) / 2, 12);
-    expect(easing(0.75)).toBeCloseTo(1 - easing(0.25), 12);
-    let maxSlope = 0;
-    for (let i = 0; i < 1000; i++)
-      maxSlope = Math.max(maxSlope, (easing((i + 1) / 1000) - easing(i / 1000)) * 1000);
-    expect(maxSlope).toBeLessThanOrEqual(Math.PI / 2 + 1e-3);
-  });
-  it("monotona crescente", () => {
-    let prev = 0;
-    for (let i = 1; i <= 1000; i++) {
-      const e = easing(i / 1000);
-      expect(e).toBeGreaterThanOrEqual(prev);
-      prev = e;
-    }
-  });
-  it("la durata copre almeno 10 frame a 60 fps", () => {
-    expect(AUTOFIT_MS / (1000 / 60)).toBeGreaterThanOrEqual(10);
-  });
-});
-
-describe("convessità: dentro all'inizio e alla fine → dentro a ogni s (200 casi, seme fisso)", () => {
-  function rng(seed: number) {
-    let t = seed;
-    return () => {
-      t = (t + 0x6d2b79f5) | 0;
-      let r = Math.imul(t ^ (t >>> 15), 1 | t);
-      r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
-      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-    };
-  }
-  it("vale per tutti i casi generati", () => {
-    const rand = rng(20261005);
-    let checked = 0;
-    while (checked < 200) {
-      const n = 2 + Math.floor(rand() * 10);
-      const cards = Array.from({ length: n }, (_, i) => card(`k${i}`, rand() * 900, rand() * 600));
-      const a0 = area(600 + rand() * 900, 300 + rand() * 500, {
-        top: rand() * 60,
-        right: rand() * 200,
-        bottom: rand() * 130,
-        left: rand() * 60,
-      });
-      const a1 = area(300 + rand() * 1200, 200 + rand() * 600, {
-        top: rand() * 60,
-        right: rand() * 200,
-        bottom: rand() * 130,
-        left: rand() * 60,
-      });
-      const v0: View = { x: rand() * 120 - 30, y: rand() * 120 - 30, zoom: 0.5 + rand() * 1.2 };
-      const req = requiredNodes(cards, v0, a0);
-      if (req.length === 0) continue;
-      const fit = fitTarget({ cards, view: v0, intent: v0.zoom, prev: a0, next: a1 });
-      if (fit.outcome === 3) continue;
-      checked++;
-      expect(inside(req, fit.view, a1)).toBe(true);
-      for (let i = 0; i <= 40; i++) {
-        const s = i / 40;
-        expect(inside(req, interpolateView(v0, fit.view, s), interpolateArea(a0, a1, s))).toBe(
-          true,
-        );
-      }
-    }
-    expect(checked).toBe(200);
-  });
-});
-
-describe("fitView riusato", () => {
-  it("senza opzioni è «Adatta» del prototipo (margine 48, zoom al più 1,25)", () => {
-    expect(fitView([{ x: 100, y: 100 }], { w: 2000, h: 2000 }).zoom).toBe(1.25);
-  });
-  it("con margine 0 e tetto: il riquadro riempie l'area sicura", () => {
-    const v = fitView([{ x: 0, y: 0 }], { w: 400, h: 400 }, NOINS, { pad: 0, maxZoom: 5 });
-    expect(v.zoom).toBeCloseTo(Math.min(400 / CARD, 400 / (CARD + LABEL_H)), 9);
   });
 });
 ```

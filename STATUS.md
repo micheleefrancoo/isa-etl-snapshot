@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-10-06T09:10:26Z (UTC)
+Generato: 2026-10-07T11:48:41Z (UTC)
 
 ## Type check
 
@@ -9,7 +9,7 @@ Nessuno script "typecheck" in package.json: eseguito il comando diretto.
 Comando: `npx tsc --noEmit`
 
 Esito: OK (exit 0)
-Durata: 14s
+Durata: 16s
 
 Ultime 60 righe di output:
 ```
@@ -20,26 +20,26 @@ Ultime 60 righe di output:
 Comando: `npm run lint`
 
 Esito: FALLITO (exit 1)
-Durata: 14s
+Durata: 17s
 
 Ultime 60 righe di output:
 ```
-
-> lint
-> eslint .
-
-
-/workspaces/isa-glass-platform/scripts/.tmpdiff.mjs
-   4:35  error  Replace `·` with `⏎`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      prettier/prettier
-   7:30  error  Insert `⏎····`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            prettier/prettier
-   8:5   error  Replace `const·load·=·(u)·=>·new·Promise((res)·=>·{·const·i·=·new·Image();·i.onload·=·()·=>·res(i);·i.src·=·u;` with `··const·load·=·(u)·=>⏎········new·Promise((res)·=>·{⏎··········const·i·=·new·Image();⏎··········i.onload·=·()·=>·res(i);⏎··········i.src·=·u;⏎·······`                                                                                                                                                                                                                              prettier/prettier
-   9:5   error  Insert `··`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               prettier/prettier
-  10:1   error  Insert `··`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               prettier/prettier
-  11:5   error  Replace `const·d·=·(i)·=>·{·const·k·=·document.createElement("canvas");·k.width·=·i.width;·k.height·=·i.height;·const·g·=·k.getContext("2d");·g.drawImage(i,·0,·0);·return·g.getImageData(0,·0,·i.width,·i.height).data;` with `··const·d·=·(i)·=>·{⏎········const·k·=·document.createElement("canvas");⏎········k.width·=·i.width;⏎········k.height·=·i.height;⏎········const·g·=·k.getContext("2d");⏎········g.drawImage(i,·0,·0);⏎········return·g.getImageData(0,·0,·i.width,·i.height).data;⏎·····`  prettier/prettier
-  12:1   error  Replace `····const·A·=·d(x),·B·=·d(y);` with `······const·A·=·d(x),⏎········B·=·d(y);⏎·····`                                                                                                                                                                                                                                                                                                                                                                                                              prettier/prettier
-  13:1   error  Replace `····for·(let·i·=·0;·i·<·A.length;·i·+=·4)·if·(Math.max(Math.abs(A[i]-B[i]),·Math.abs(A[i+1]-B[i+1]),·Math.abs(A[i+2]-B[i+2]))·>·8)` with `······for·(let·i·=·0;·i·<·A.length;·i·+=·4)⏎········if·(⏎··········Math.max(⏎············Math.abs(A[i]·-·B[i]),⏎············Math.abs(A[i·+·1]·-·B[i·+·1]),⏎············Math.abs(A[i·+·2]·-·B[i·+·2]),⏎··········)·>·8⏎········)⏎·········`                                                                                                             prettier/prettier
-  14:1   error  Insert `··`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               prettier/prettier
-  15:3   error  Replace `},·[rd(A_·+·"/"·+·n),·rd(B_·+·"/"·+·n)]` with `··},⏎····[rd(A_·+·"/"·+·n),·rd(B_·+·"/"·+·n)],⏎··`                                                                                                                                                                                                                                                                                                                                                                                                prettier/prettier
+  722:1   error  Replace `····]·}` with `········],⏎······},⏎···`                                                                                                                                                                                                                                                                                                                                                                                             prettier/prettier
+  727:11  error  Replace ``${tag}·elenco:·l'operazione·a·voci·ha·«Elenco»·come·colonna·centrale`,·three·&&·(await·page.locator(".ei-col-master·.ei-col-head").textContent())·===·"Elenco"` with `⏎······`${tag}·elenco:·l'operazione·a·voci·ha·«Elenco»·come·colonna·centrale`,⏎······three·&&·(await·page.locator(".ei-col-master·.ei-col-head").textContent())·===·"Elenco",⏎····`                                                                          prettier/prettier
+  733:9   error  Replace ``${tag}·ordina:·una·maniglia·per·criterio,·con·nome·accessibile`,·(await·page.locator(".ec-insp·.ei-row-grip").count())·===·3·&&·(await·grip(0).getAttribute("aria-label"))·===·"Sposta·Criterio·1"` with `⏎····`${tag}·ordina:·una·maniglia·per·criterio,·con·nome·accessibile`,⏎····(await·page.locator(".ec-insp·.ei-row-grip").count())·===·3·&&⏎······(await·grip(0).getAttribute("aria-label"))·===·"Sposta·Criterio·1",⏎··`  prettier/prettier
+  739:9   error  Replace ``${tag}·ordina:·Alt+↓·sposta·il·primo·criterio·in·seconda·posizione`,·(await·order())·===·"importo,regione,stato",·await·order()` with `⏎····`${tag}·ordina:·Alt+↓·sposta·il·primo·criterio·in·seconda·posizione`,⏎····(await·order())·===·"importo,regione,stato",⏎····await·order(),⏎··`                                                                                                                                          prettier/prettier
+  742:96  error  Insert `⏎·····`                                                                                                                                                                                                                                                                                                                                                                                                                              prettier/prettier
+  748:9   error  Replace ``${tag}·ordina:·Alt+↑·lo·riporta·in·prima·posizione`,·(await·order())·===·"regione,importo,stato",·await·order()` with `⏎····`${tag}·ordina:·Alt+↑·lo·riporta·in·prima·posizione`,⏎····(await·order())·===·"regione,importo,stato",⏎····await·order(),⏎··`                                                                                                                                                                          prettier/prettier
+  755:9   error  Replace ``${tag}·ordina:·annullare·uno·spostamento·da·tastiera·lo·riporta·com'era,·in·un·passo`,·(await·order())·===·"regione,importo,stato",·await·order()` with `⏎····`${tag}·ordina:·annullare·uno·spostamento·da·tastiera·lo·riporta·com'era,·in·un·passo`,⏎····(await·order())·===·"regione,importo,stato",⏎····await·order(),⏎··`                                                                                                      prettier/prettier
+  760:35  error  Replace `".ec-insp·.ei-list·>·[data-row=\"2\"]"` with `'.ec-insp·.ei-list·>·[data-row="2"]'`                                                                                                                                                                                                                                                                                                                                                 prettier/prettier
+  766:27  error  Replace `g0.x·+·g0.width·/·2,·g0.y·+·g0.height·/·2·+·((targetY·-·(g0.y·+·g0.height·/·2))·*·i)·/·steps` with `⏎······g0.x·+·g0.width·/·2,⏎······g0.y·+·g0.height·/·2·+·((targetY·-·(g0.y·+·g0.height·/·2))·*·i)·/·steps,⏎····`                                                                                                                                                                                                                prettier/prettier
+  772:9   error  Replace ``${tag}·ordina:·trascinare·la·maniglia·del·primo·criterio·in·fondo·lo·porta·per·ultimo`,·(await·order())·===·"importo,stato,regione",·await·order()` with `⏎····`${tag}·ordina:·trascinare·la·maniglia·del·primo·criterio·in·fondo·lo·porta·per·ultimo`,⏎····(await·order())·===·"importo,stato,regione",⏎····await·order(),⏎··`                                                                                                    prettier/prettier
+  775:9   error  Replace ``${tag}·ordina:·un·solo·annullamento·riporta·il·trascinamento·com'era`,·(await·order())·===·"regione,importo,stato",·await·order()` with `⏎····`${tag}·ordina:·un·solo·annullamento·riporta·il·trascinamento·com'era`,⏎····(await·order())·===·"regione,importo,stato",⏎····await·order(),⏎··`                                                                                                                                      prettier/prettier
+  785:9   error  Replace ``${tag}·ordina:·Esc·durante·il·trascinamento·lo·annulla`,·(await·order())·===·"regione,importo,stato",·await·order()` with `⏎····`${tag}·ordina:·Esc·durante·il·trascinamento·lo·annulla`,⏎····(await·order())·===·"regione,importo,stato",⏎····await·order(),⏎··`                                                                                                                                                                  prettier/prettier
+  817:15  error  Replace `resolve(OUT,·"misure.json"),·JSON.stringify({·risultati:·results,·misure:·measures·},·null,·2)` with `⏎··resolve(OUT,·"misure.json"),⏎··JSON.stringify({·risultati:·results,·misure:·measures·},·null,·2),⏎`                                                                                                                                                                                                                        prettier/prettier
+  820:13  error  Replace ``\nprove:·${results.length},·fallite:·${failed},·secondi·clic·sulle·tendine:·${retries}`` with `⏎··`\nprove:·${results.length},·fallite:·${failed},·secondi·clic·sulle·tendine:·${retries}`,⏎`                                                                                                                                                                                                                                      prettier/prettier
+  823:21  error  Replace `·Math.min(m.menu.x,·m.menu.y,·m.finestra.w·-·(m.menu.x·+·m.menu.w),·m.finestra.h·-·(m.menu.y·+·m.menu.h)` with `⏎····Math.min(⏎······m.menu.x,⏎······m.menu.y,⏎······m.finestra.w·-·(m.menu.x·+·m.menu.w),⏎······m.finestra.h·-·(m.menu.y·+·m.menu.h),⏎····`                                                                                                                                                                        prettier/prettier
+  824:15  error  Replace ``tendine·misurate:·${menus.length},·distanza·minima·dai·bordi:·${Math.min(...menus.map(gap)).toFixed(1)}·px`` with `⏎····`tendine·misurate:·${menus.length},·distanza·minima·dai·bordi:·${Math.min(...menus.map(gap)).toFixed(1)}·px`,⏎··`                                                                                                                                                                                          prettier/prettier
 
 /workspaces/isa-glass-platform/src/canvas/components/CanvasContainer.tsx
   23:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
@@ -71,14 +71,18 @@ Ultime 60 righe di output:
 /workspaces/isa-glass-platform/src/components/ui/toggle.tsx
   42:18  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
 
+/workspaces/isa-glass-platform/src/etl-canvas/inspector/Menu.tsx
+  47:99  error  Insert `⏎···`    prettier/prettier
+  52:90  error  Insert `⏎·····`  prettier/prettier
+
 /workspaces/isa-glass-platform/src/lib/solutions-store.tsx
   327:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
 
 /workspaces/isa-glass-platform/src/lib/theme.tsx
   54:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
 
-✖ 24 problems (10 errors, 14 warnings)
-  10 errors and 0 warnings potentially fixable with the `--fix` option.
+✖ 113 problems (99 errors, 14 warnings)
+  99 errors and 0 warnings potentially fixable with the `--fix` option.
 
 ```
 
@@ -100,13 +104,13 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
  RUN  v5.0.1 /workspaces/isa-glass-platform
 
 
- Test Files  56 passed (56)
-      Tests  1139 passed (1139)
-   Start at  09:10:55
-   Duration  45.23s (tests 87%, import 8%, transform 4%, worker 1%)
+ Test Files  61 passed (61)
+      Tests  1239 passed (1239)
+   Start at  11:49:14
+   Duration  46.29s (tests 87%, import 8%, transform 4%, worker 1%)
 
-    Isolate  56 workers spawned · ~116ms startup each (spawn + environment, per file)
-             at least ~6.37s faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  61 workers spawned · ~110ms startup each (spawn + environment, per file)
+             at least ~6.63s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -115,7 +119,7 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 Comando: `npm run build`
 
 Esito: OK (exit 0)
-Durata: 7s
+Durata: 9s
 
 Ultime 60 righe di output:
 ```
@@ -126,7 +130,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/templates-BxgvM8qO.mjs                          0.61 kB │ gzip:   0.39 kB
 .output/server/_ssr/solutions._solutionId.dashboard-CujVFx5K.mjs    0.86 kB │ gzip:   0.47 kB
 .output/server/_ssr/solutions._solutionId.model-D5GqwrKQ.mjs        0.88 kB │ gzip:   0.47 kB
-.output/server/_ssr/solutions._solutionId.etl-PFVm6SnC.mjs          1.09 kB │ gzip:   0.58 kB
+.output/server/_ssr/solutions._solutionId.etl-Dz4HNvhk.mjs          1.09 kB │ gzip:   0.58 kB
 .output/server/_libs/hookable.mjs                                   1.16 kB │ gzip:   0.51 kB
 .output/server/_ssr/start-RKGGYzjZ.mjs                              1.53 kB │ gzip:   0.70 kB
 .output/server/_runtime.mjs                                         1.61 kB │ gzip:   0.74 kB
@@ -135,7 +139,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/createCsrfMiddleware-B2To0gPJ.mjs               3.11 kB │ gzip:   1.01 kB
 .output/server/_libs/d3-path.mjs                                    3.25 kB │ gzip:   1.16 kB
 .output/server/_ssr/activity-C06WSQVD.mjs                           3.45 kB │ gzip:   0.97 kB
-.output/server/_tanstack-start-manifest_v-BmDltdg0.mjs              3.71 kB │ gzip:   0.86 kB
+.output/server/_tanstack-start-manifest_v-DR3GzHiF.mjs              3.71 kB │ gzip:   0.87 kB
 .output/server/_ssr/solutions._solutionId.model-DN1m8FSz.mjs        4.05 kB │ gzip:   1.32 kB
 .output/server/_ssr/ssr.mjs                                         4.55 kB │ gzip:   1.92 kB
 .output/server/_libs/d3-interpolate.mjs                             5.02 kB │ gzip:   1.61 kB
@@ -148,29 +152,29 @@ Ultime 60 righe di output:
 .output/server/_libs/d3-color.mjs                                  10.38 kB │ gzip:   3.57 kB
 .output/server/_libs/d3-format.mjs                                 10.56 kB │ gzip:   3.02 kB
 .output/server/_libs/tanstack__history.mjs                         12.09 kB │ gzip:   3.48 kB
-.output/server/_ssr/router-XahF6gKW.mjs                            14.47 kB │ gzip:   3.90 kB
+.output/server/_ssr/router-BwDGZJDF.mjs                            14.47 kB │ gzip:   3.90 kB
 .output/server/_ssr/theme-Dujx4GV7.mjs                             15.18 kB │ gzip:   6.06 kB
 .output/server/_libs/fast-equals.mjs                               15.91 kB │ gzip:   4.13 kB
 .output/server/_libs/h3-v2+rou3+srvx+unenv.mjs                     15.92 kB │ gzip:   4.39 kB
-.output/server/index.mjs                                           16.41 kB │ gzip:   4.70 kB
+.output/server/index.mjs                                           16.41 kB │ gzip:   4.69 kB
 .output/server/_libs/h3+rou3+srvx.mjs                              17.30 kB │ gzip:   4.98 kB
 .output/server/_libs/react+tanstack__react-query.mjs               18.47 kB │ gzip:   4.82 kB
 .output/server/_libs/decimal.js-light.mjs                          23.31 kB │ gzip:   6.89 kB
 .output/server/_ssr/app-shell-DCrQJ3mI.mjs                         24.55 kB │ gzip:   5.63 kB
 .output/server/_libs/d3-shape.mjs                                  24.56 kB │ gzip:   5.02 kB
-.output/server/_ssr/routes-BP81naRf.mjs                            24.84 kB │ gzip:   4.48 kB
+.output/server/_ssr/routes-CyxR9BVE.mjs                            24.84 kB │ gzip:   4.48 kB
 .output/server/_libs/lucide-react.mjs                              37.25 kB │ gzip:   7.17 kB
 .output/server/_libs/react-smooth.mjs                              37.83 kB │ gzip:   8.14 kB
 .output/server/_libs/tanstack__query-core.mjs                      49.84 kB │ gzip:  11.12 kB
-.output/server/_ssr/server-BGHWuer8.mjs                            54.77 kB │ gzip:  14.39 kB
+.output/server/_ssr/server-D6VL85kT.mjs                            54.77 kB │ gzip:  14.39 kB
 .output/server/_libs/d3-scale+[...].mjs                            58.22 kB │ gzip:  12.11 kB
 .output/server/_libs/@tanstack/router-core+[...].mjs              125.35 kB │ gzip:  26.53 kB
 .output/server/_libs/lodash.mjs                                   161.80 kB │ gzip:  29.45 kB
-.output/server/_ssr/solutions._solutionId.etl-BYyueX4b.mjs        506.70 kB │ gzip: 133.82 kB
 .output/server/_libs/recharts+[...].mjs                           515.72 kB │ gzip:  96.80 kB
+.output/server/_ssr/solutions._solutionId.etl-C-FJe3rQ.mjs        560.37 kB │ gzip: 149.38 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.12s
+✓ built in 1.11s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -188,7 +192,7 @@ Colori, raggi e ombre letterali nei file controllati (scripts/check-tokens.mjs).
 Comando: `node scripts/check-tokens.mjs`
 
 Esito: OK (exit 0)
-Durata: 1s
+Durata: 0s
 
 Ultime 60 righe di output:
 ```
@@ -198,6 +202,16 @@ check-tokens: 0 violazioni nei file controllati; debito preesistente: 26 (6 ombr
 ## Git log (ultimi 20 commit)
 
 ```
+852be60 Fase 6b.2: verifica e2e di condizioni, layout a tre colonne e riordino, con le schermate
+28c5a8a Fase 6b.2: Alt+frecce non muovono i nodi e il menu segue il campo quando il pannello scorre
+ba05eb9 Fase 6b.2: riordino dei criteri di Ordina con la maniglia e test dei componenti
+cbfd632 Fase 6b.2: condizioni di filtro e join, gruppi, anteprima e layout a tre colonne
+ca41077 Fase 6b.2: Segmented, ConnectorSelect e transizioni delle condizioni
+1b0f681 Fase 6b.2: righe del prototipo da portare (README di etl-canvas)
+c8535cd Fase 6b.2, Passo 0c: le tacche dei pannelli stanno nell'area sicura
+17a9cb2 Fase 6b.2, Passo 0b: regola delle tabelle del join assenti nei parametri
+89576d3 Fase 6b.2, Passo 0a: colonne non presenti nei dati in ingresso
+94f3974 Snapshot: i file vengono da git (tracciati e non ignorati), non dalla visita del working tree
 9affb87 Snapshot: esclude i binari multimediali, suffisso dei blocchi oltre la 'z'
 f9e1cfb Fase 6b.1.1: report di validazione, registro delle richieste di rete fallite
 78cb9ee Fase 6b.1.1: verifica nel browser dello zoom automatico e correzione della misura a fine animazione
@@ -208,16 +222,6 @@ aa9fb9c Fase 6b.1.1: animatore unico di pannelli e vista, al posto di keepVisibl
 6840ff1 Fase 6b.1: documentazione (README, note di divergenza, token di forma)
 8dec8e2 Fase 6b.1: e2e, notte in due schermate, selettori dei pulsanti circoscritti alle conferme
 738aa1e Fase 6b.1: e2e (colonne, valori, riordino), correzione del riordino per trascinamento delle etichette
-2f979c1 Fase 6b.1: verifica nel browser (e2e-fase6b1), prima parte: stato bloccato, collegamento, tendine vicino agli angoli
-d75d065 Fase 6b.1: test del tetto d'altezza, dei pulsanti sul nodo e dei passaggi
-2f435e8 Fase 6b.1: pulsanti sul nodo, pannello espanso, tetto d'altezza, test strutturali e di forma
-643005d Fase 6b.1: contenuto dell'Inspector (selettori, voci multiple, passaggi), stili a token
-d7b87b8 Fase 6b.1: menu.ts, posizionamento puro delle tendine, con la matrice di prova
-b4db69c Fase 6b.1: token di forma (scala tipografica e degli spazi), token semantici dell'Inspector in entrambi i temi, controlli di contrasto, check-tokens esteso
-a39ee3a Fase 6b.1: elenco delle parti del prototipo da portare (README di etl-canvas)
-d560fdd Fase 6b.0: dominio, colonne multiple nelle voci
-8db8087 Fase 6a.2: report di validazione
-a7a2127 Baseline visiva rigenerata: la barra dei controlli riduce l'altezza del canvas
 ```
 
 ## Branch
@@ -232,6 +236,7 @@ a7a2127 Baseline visiva rigenerata: la barra dei controlli riduce l'altezza del 
   feat/etl-layout-fix
   feat/etl-store
   feat/etl-store-fix
+* feat/inspector-conditions
   feat/inspector-core
   feat/interactions
   feat/link-click-delete
@@ -241,7 +246,7 @@ a7a2127 Baseline visiva rigenerata: la barra dei controlli riduce l'altezza del 
   feat/panels-fix
   feat/theme-system
   fix/drag-threshold
-* main
+  main
   wip/stato-2026-09-28
   remotes/origin/HEAD -> origin/main
   remotes/origin/feat/auto-zoom
@@ -365,6 +370,102 @@ Ultimo commit:
 
 Diff stat rispetto a main:
 ```
+```
+
+### `feat/inspector-conditions`
+
+Ultimo commit:
+```
+852be60 Fase 6b.2: verifica e2e di condizioni, layout a tre colonne e riordino, con le schermate
+```
+
+Diff stat rispetto a main:
+```
+ ...etta-a-sinistra-scena-densa-1280x720-chiaro.png |  Bin 163561 -> 167404 bytes
+ ...setta-a-sinistra-scena-densa-1280x720-scuro.png |  Bin 128678 -> 132608 bytes
+ ...cassetta-a-sinistra-scena-densa-1440-chiaro.png |  Bin 158644 -> 157426 bytes
+ .../cassetta-a-sinistra-scena-densa-1440-scuro.png |  Bin 132042 -> 131120 bytes
+ .../inspector-in-basso-1280x720-dopo-chiaro.png    |  Bin 145955 -> 143981 bytes
+ .../inspector-in-basso-1280x720-dopo-scuro.png     |  Bin 105820 -> 104068 bytes
+ .../inspector-in-basso-1440-dopo-chiaro.png        |  Bin 132428 -> 134879 bytes
+ .../inspector-in-basso-1440-dopo-scuro.png         |  Bin 104015 -> 106689 bytes
+ docs/visual/fase6b11/misure.json                   |  850 +++++---
+ .../striscia-apertura-inspector-in-basso.png       |  Bin 164873 -> 155066 bytes
+ .../striscia-chiusura-inspector-in-basso.png       |  Bin 170578 -> 161567 bytes
+ docs/visual/fase6b2/anteprima-chiaro.png           |  Bin 0 -> 165834 bytes
+ docs/visual/fase6b2/anteprima-scuro.png            |  Bin 0 -> 139840 bytes
+ .../fase6b2/condizioni-filtro-gruppi-chiaro.png    |  Bin 0 -> 159765 bytes
+ .../condizioni-filtro-gruppi-notte-chiaro.png      |  Bin 0 -> 143219 bytes
+ .../fase6b2/condizioni-filtro-gruppi-scuro.png     |  Bin 0 -> 135188 bytes
+ docs/visual/fase6b2/connettore-aperto-chiaro.png   |  Bin 0 -> 164623 bytes
+ docs/visual/fase6b2/connettore-aperto-scuro.png    |  Bin 0 -> 138007 bytes
+ .../inspector-tre-colonne-1280x720-chiaro.png      |  Bin 0 -> 161507 bytes
+ .../inspector-tre-colonne-1280x720-scuro.png       |  Bin 0 -> 123570 bytes
+ .../fase6b2/inspector-tre-colonne-1440-chiaro.png  |  Bin 0 -> 160288 bytes
+ .../inspector-tre-colonne-1440-notte-scuro.png     |  Bin 0 -> 111486 bytes
+ .../fase6b2/inspector-tre-colonne-1440-scuro.png   |  Bin 0 -> 134675 bytes
+ .../fase6b2/inspector-tre-colonne-alto-chiaro.png  |  Bin 0 -> 160240 bytes
+ .../fase6b2/inspector-tre-colonne-alto-scuro.png   |  Bin 0 -> 135119 bytes
+ .../fase6b2/join-avviso-prestazioni-chiaro.png     |  Bin 0 -> 159007 bytes
+ .../fase6b2/join-avviso-prestazioni-scuro.png      |  Bin 0 -> 132875 bytes
+ ...join-condizioni-colonna-valore-lista-chiaro.png |  Bin 0 -> 155223 bytes
+ .../join-condizioni-colonna-valore-lista-scuro.png |  Bin 0 -> 130666 bytes
+ docs/visual/fase6b2/misure.json                    | 2057 ++++++++++++++++++++
+ .../operazione-a-voci-tre-colonne-chiaro.png       |  Bin 0 -> 158621 bytes
+ .../operazione-a-voci-tre-colonne-scuro.png        |  Bin 0 -> 133375 bytes
+ docs/visual/fase6b2/ordina-riordino-chiaro.png     |  Bin 0 -> 159990 bytes
+ docs/visual/fase6b2/ordina-riordino-scuro.png      |  Bin 0 -> 133995 bytes
+ scripts/e2e-fase6b11.mjs                           |   53 +-
+ scripts/e2e-fase6b2.mjs                            |  826 ++++++++
+ scripts/generate-snapshot.mjs                      |   21 +-
+ scripts/snapshot-lib.mjs                           |   16 +
+ scripts/snapshot-lib.test.mjs                      |   21 +-
+ src/etl-canvas/EtlCanvas.tsx                       |    2 +
+ src/etl-canvas/NOTE_DIVERGENZE.md                  |   26 +
+ src/etl-canvas/README.md                           |   29 +
+ src/etl-canvas/__tests__/autofit.test.ts           |   58 +
+ src/etl-canvas/__tests__/conditions-ui.test.tsx    |  464 +++++
+ src/etl-canvas/__tests__/conditions.test.ts        |  184 ++
+ src/etl-canvas/__tests__/inspector-rules.test.ts   |   14 +
+ src/etl-canvas/__tests__/inspector.test.tsx        |   90 +-
+ src/etl-canvas/__tests__/overlay-layout.test.ts    |   63 +
+ src/etl-canvas/__tests__/reorder.test.ts           |  110 ++
+ src/etl-canvas/__tests__/segmented.test.tsx        |   81 +
+ src/etl-canvas/inspector/Columns3.tsx              |   63 +
+ src/etl-canvas/inspector/ConditionList.tsx         |  178 ++
+ src/etl-canvas/inspector/ConnectorSelect.tsx       |   42 +
+ src/etl-canvas/inspector/ExpressionPreview.tsx     |   30 +
+ src/etl-canvas/inspector/FilterCondition.tsx       |  140 ++
+ src/etl-canvas/inspector/GroupFrame.tsx            |   34 +
+ src/etl-canvas/inspector/Inspector.tsx             |  218 ++-
+ src/etl-canvas/inspector/JoinCondition.tsx         |  205 ++
+ src/etl-canvas/inspector/JoinSettings.tsx          |   79 +
+ src/etl-canvas/inspector/ListRow.tsx               |  122 ++
+ src/etl-canvas/inspector/Menu.tsx                  |   21 +-
+ src/etl-canvas/inspector/MultiList.tsx             |  254 ++-
+ src/etl-canvas/inspector/Segmented.tsx             |   71 +
+ src/etl-canvas/inspector/StyledSelect.tsx          |   18 +-
+ src/etl-canvas/inspector/conditions.ts             |  102 +
+ src/etl-canvas/inspector/copy.ts                   |   56 +-
+ src/etl-canvas/inspector/inspector.css             |  270 +++
+ src/etl-canvas/inspector/joinKeys.ts               |   25 +
+ src/etl-canvas/inspector/joinSides.ts              |   86 +
+ src/etl-canvas/inspector/logic.ts                  |   68 +
+ src/etl-canvas/inspector/masterDetail.ts           |   42 +
+ src/etl-canvas/inspector/params.ts                 |   19 +
+ src/etl-canvas/inspector/useReorder.ts             |  149 ++
+ src/etl-canvas/panels/InspectorShell.tsx           |    2 +-
+ src/etl-canvas/panels/autoFit.ts                   |   24 +-
+ src/etl-canvas/panels/overlayLayout.ts             |   28 +-
+ src/etl-core/README.md                             |   30 +
+ src/etl-core/__tests__/join-tables.test.ts         |   67 +
+ src/etl-core/__tests__/multi-columns.test.ts       |   44 +-
+ src/etl-core/__tests__/schema.test.ts              |   28 +-
+ src/etl-core/index.ts                              |    2 +-
+ src/etl-core/rules/state.ts                        |   29 +-
+ src/etl-core/schema/schema.ts                      |   17 +
+ src/theme/layout-tokens.css                        |    5 +
+ 84 files changed, 7027 insertions(+), 506 deletions(-)
 ```
 
 ### `feat/inspector-core`

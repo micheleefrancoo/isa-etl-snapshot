@@ -15,7 +15,7 @@ File in questo blocco:
 
 ### `src/etl-core/__tests__/multi-columns.test.ts`
 
-404 righe
+446 righe
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -262,7 +262,49 @@ describe("completezza: stepMissing e nodeState", () => {
     };
     expect(nodeState(make([]), "op-1")).toBe("Da configurare: Converti tipo");
     expect(nodeState(make(["a"]), "op-1")).toBeNull();
-    expect(nodeState(make(["a", "b"]), "op-1")).toBeNull();
+    // «b» non è nei dati in ingresso: la riga è incompleta (Fase 6b.2, Passo 0)
+    expect(nodeState(make(["a", "b"]), "op-1")).toBe("Da configurare: Converti tipo");
+  });
+});
+
+describe("colonne assenti dallo schema in ingresso (Fase 6b.2, Passo 0)", () => {
+  const cols: ColumnDef[] = [
+    { name: "a", type: "stringa", values: ["x"] },
+    { name: "b", type: "stringa", values: ["y"] },
+  ];
+  const par = (columns: string[]): Params => ({ items: [{ columns, to: "testo" }] });
+
+  it("stepMissing: con lo schema una colonna assente rende la riga incompleta", () => {
+    expect(stepMissing("cast", par(["a", "zz"]), cols)).toBe(true);
+    expect(stepMissing("cast", par(["a", "b"]), cols)).toBe(false);
+  });
+
+  it("stepMissing: senza schema, o con schema vuoto, non cambia nulla", () => {
+    expect(stepMissing("cast", par(["zz"]))).toBe(false);
+    expect(stepMissing("cast", par(["zz"]), [])).toBe(false);
+    expect(stepMissing("cast", par(["zz"]), null)).toBe(false);
+  });
+
+  it("nodeState: puntino ambra finché la colonna manca; tolta, il nodo torna pronto", () => {
+    const ds = dataset("ds-1", {
+      params0: { source: "CSV", path: "a.csv", header: "Sì", columns: cols } as Params,
+    });
+    const make = (columns: string[]) =>
+      addLink(buildGraph([ds, op("op-1", ["cast"], { params: [par(columns)] })]), {
+        from: "ds-1",
+        to: "op-1",
+      });
+    expect(nodeState(make(["a", "zz"]), "op-1")).toBe("Da configurare: Converti tipo");
+    expect(nodeState(make(["a"]), "op-1")).toBeNull();
+  });
+
+  it("nodeState: se la sorgente non ha colonne caricate non c'è avviso", () => {
+    const ds = dataset("ds-1", { params0: { source: "CSV", path: "a.csv" } as Params });
+    const g = addLink(buildGraph([ds, op("op-1", ["cast"], { params: [par(["zz"])] })]), {
+      from: "ds-1",
+      to: "op-1",
+    });
+    expect(nodeState(g, "op-1")).toBeNull();
   });
 });
 
@@ -957,14 +999,14 @@ describe("relation: matrice (scenario 8)", () => {
 
 ### `src/etl-core/__tests__/schema.test.ts`
 
-75 righe
+101 righe
 
 ```ts
 import { describe, expect, it } from "vitest";
 import { dataset, op, buildGraph, testIdGenerator } from "./helpers";
 import { connect, refreshOutput } from "../rules/mutations";
 import { outputOf } from "../model/graph";
-import { schemaOf } from "../schema/schema";
+import { columnsOutsideSchema, schemaOf } from "../schema/schema";
 import type { ColumnDef, DatasetParams } from "../model/types";
 
 const COLS_A: ColumnDef[] = [
@@ -1032,6 +1074,32 @@ describe("schemaOf (scenario 14)", () => {
     // inesistente passato con profondita elevata.
     const graph = buildGraph([]);
     expect(schemaOf(graph, "assente", 30)).toBeNull();
+  });
+});
+
+describe("columnsOutsideSchema (Fase 6b.2, Passo 0)", () => {
+  it("le colonne assenti dallo schema, nell'ordine elencato e senza ripetizioni", () => {
+    expect(columnsOutsideSchema(["id", "x", "regione", "y", "x"], COLS_A)).toEqual(["x", "y"]);
+  });
+
+  it("nessuna se tutte sono nello schema", () => {
+    expect(columnsOutsideSchema(["regione", "id"], COLS_A)).toEqual([]);
+  });
+
+  it("schema vuoto o sconosciuto: non si sa cosa manchi, nessun avviso", () => {
+    expect(columnsOutsideSchema(["x"], [])).toEqual([]);
+    expect(columnsOutsideSchema(["x"], null)).toEqual([]);
+    expect(columnsOutsideSchema(["x"], undefined)).toEqual([]);
+  });
+
+  it("distingue le maiuscole come lo schema", () => {
+    expect(columnsOutsideSchema(["ID"], COLS_A)).toEqual(["ID"]);
+  });
+
+  it("non modifica gli argomenti", () => {
+    const cols = ["x", "id"];
+    columnsOutsideSchema(cols, COLS_A);
+    expect(cols).toEqual(["x", "id"]);
   });
 });
 ```
