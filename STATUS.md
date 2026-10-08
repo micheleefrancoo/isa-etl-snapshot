@@ -1,6 +1,6 @@
 # STATUS.md
 
-Generato: 2026-10-07T11:48:41Z (UTC)
+Generato: 2026-10-08T12:00:10Z (UTC)
 
 ## Type check
 
@@ -9,7 +9,7 @@ Nessuno script "typecheck" in package.json: eseguito il comando diretto.
 Comando: `npx tsc --noEmit`
 
 Esito: OK (exit 0)
-Durata: 16s
+Durata: 22s
 
 Ultime 60 righe di output:
 ```
@@ -20,7 +20,7 @@ Ultime 60 righe di output:
 Comando: `npm run lint`
 
 Esito: FALLITO (exit 1)
-Durata: 17s
+Durata: 16s
 
 Ultime 60 righe di output:
 ```
@@ -91,7 +91,7 @@ Ultime 60 righe di output:
 Comando: `npm test`
 
 Esito: OK (exit 0)
-Durata: 46s
+Durata: 44s
 
 Ultime 60 righe di output:
 ```
@@ -106,11 +106,11 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 
  Test Files  61 passed (61)
       Tests  1239 passed (1239)
-   Start at  11:49:14
-   Duration  46.29s (tests 87%, import 8%, transform 4%, worker 1%)
+   Start at  12:00:50
+   Duration  42.13s (tests 84%, import 10%, transform 5%, worker 1%)
 
-    Isolate  61 workers spawned · ~110ms startup each (spawn + environment, per file)
-             at least ~6.63s faster with isolate: false — reuses workers across files instead of one per file
+    Isolate  61 workers spawned · ~104ms startup each (spawn + environment, per file)
+             at least ~6.24s faster with isolate: false — reuses workers across files instead of one per file
 
 ```
 
@@ -119,7 +119,7 @@ The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths r
 Comando: `npm run build`
 
 Esito: OK (exit 0)
-Durata: 9s
+Durata: 10s
 
 Ultime 60 righe di output:
 ```
@@ -174,7 +174,7 @@ Ultime 60 righe di output:
 .output/server/_ssr/solutions._solutionId.etl-C-FJe3rQ.mjs        560.37 kB │ gzip: 149.38 kB
 .output/server/_libs/@tanstack/react-router+[...].mjs             681.94 kB │ gzip: 143.15 kB
 
-✓ built in 1.11s
+✓ built in 1.06s
 [nitro] ℹ Using auto generated worker name: micheleefrancoo-isa-glass-platform
 ℹ Generated .output/server/wrangler.json
 ℹ Generated .wrangler/deploy/config.json
@@ -202,6 +202,8 @@ check-tokens: 0 violazioni nei file controllati; debito preesistente: 26 (6 ombr
 ## Git log (ultimi 20 commit)
 
 ```
+30e4265 Fase 6b.2: screenshot di nuovo in docs/visual/fase6b2
+428fcfe Fase 6b.2: screenshot spostati in docs/visual
 852be60 Fase 6b.2: verifica e2e di condizioni, layout a tre colonne e riordino, con le schermate
 28c5a8a Fase 6b.2: Alt+frecce non muovono i nodi e il menu segue il campo quando il pannello scorre
 ba05eb9 Fase 6b.2: riordino dei criteri di Ordina con la maniglia e test dei componenti
@@ -220,8 +222,6 @@ aa9fb9c Fase 6b.1.1: animatore unico di pannelli e vista, al posto di keepVisibl
 6c3fb88 Fase 6b.1.1: modulo puro autoFit (nodi richiesti, bersaglio, ripristino, interpolazione, easing)
 5dad418 Fase 6b.1: schermate dell'Inspector e report di validazione
 6840ff1 Fase 6b.1: documentazione (README, note di divergenza, token di forma)
-8dec8e2 Fase 6b.1: e2e, notte in due schermate, selettori dei pulsanti circoscritti alle conferme
-738aa1e Fase 6b.1: e2e (colonne, valori, riordino), correzione del riordino per trascinamento delle etichette
 ```
 
 ## Branch
@@ -258,6 +258,7 @@ aa9fb9c Fase 6b.1.1: animatore unico di pannelli e vista, al posto di keepVisibl
   remotes/origin/feat/etl-layout-fix
   remotes/origin/feat/etl-store
   remotes/origin/feat/etl-store-fix
+  remotes/origin/feat/inspector-conditions
   remotes/origin/feat/inspector-core
   remotes/origin/feat/interactions
   remotes/origin/feat/link-click-delete
@@ -376,7 +377,7 @@ Diff stat rispetto a main:
 
 Ultimo commit:
 ```
-852be60 Fase 6b.2: verifica e2e di condizioni, layout a tre colonne e riordino, con le schermate
+30e4265 Fase 6b.2: screenshot di nuovo in docs/visual/fase6b2
 ```
 
 Diff stat rispetto a main:
